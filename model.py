@@ -374,8 +374,8 @@ def evaluate_multiple_models(dg, models, train_func, test_distributions,
                              **classifier_args):
     performance = np.zeros(models.shape + (len(test_distributions),))
     chance = np.zeros_like(performance)
-    for i, beta in enumerate(betas):
-        for j in range(n_reps):
+    for i in range(models.shape[0]):
+        for j in range(models.shape[1]):
             bvae = models[i, j]
             for k, td in enumerate(test_distributions):
                 out = classifier_generalization(dg, bvae, train_func,
