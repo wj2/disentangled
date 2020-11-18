@@ -11,6 +11,10 @@ def create_parser():
                         help='file to save the output in')
     parser.add_argument('-d', '--data_generator', default=None, type=str,
                         help='path to trained data generator')
+    parser.add_argument('-s', '--no_multiprocessing', default=False,
+                        action='store_true',
+                        help='path to trained data generator')
+    
     return parser
 
 if __name__ == '__main__':
@@ -25,8 +29,9 @@ if __name__ == '__main__':
         dg_p = pickle.load(args.data_generator)
     else:
         dg = None
-        
+
+    use_mp = not args.no_multiprocessing
     out = dm.test_generalization(dg=dg, est_inp_dim=est_inp_dim,
-                                 model_kinds=model_kinds)
+                                 model_kinds=model_kinds, use_mp=use_mp)
     
     pickle.dump(out, open(args.output_file, 'wb'))

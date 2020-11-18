@@ -26,7 +26,7 @@ class DataGenerator(object):
 
     def fit(self, train_x=None, train_y=None, eval_x=None, eval_y=None,
             source_distribution=None, epochs=15, train_samples=10**5,
-            eval_samples=10**3, batch_size=32):
+            eval_samples=10**3, batch_size=32, **kwargs):
         if not self.compiled:
             self._compile()
 
@@ -44,7 +44,7 @@ class DataGenerator(object):
             eval_y = eval_x
 
         out = self.model.fit(train_x, train_y, validation_data=(eval_x, eval_y),
-                             epochs=epochs, batch_size=batch_size)
+                             epochs=epochs, batch_size=batch_size, **kwargs)
         return out
 
     def representation_dimensionality(self, source_distribution=None,
@@ -298,7 +298,7 @@ class SupervisedDisentangler(object):
         return self.fit(train_x, train_y, eval_x=eval_x, eval_y=eval_y, **kwargs)
         
     def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
-            data_generator=None, batch_size=32):
+            data_generator=None, batch_size=32, **kwargs):
         if not self.compiled:
             self._compile()
 
@@ -313,7 +313,8 @@ class SupervisedDisentangler(object):
             eval_set = None
 
         out = self.model.fit(x=train_x, y=train_y, epochs=epochs,
-                           validation_data=eval_set, batch_size=batch_size)
+                             validation_data=eval_set, batch_size=batch_size,
+                             **kwargs)
         return out   
 
     def get_representation(self, samples):
@@ -385,7 +386,7 @@ class StandardAE(object):
         return self.fit(train_x, eval_x=eval_x, **kwargs)
         
     def fit(self, train_x, eval_x=None, epochs=15,
-            data_generator=None, batch_size=32):
+            data_generator=None, batch_size=32, **kwargs):
         if not self.compiled:
             self._compile()
             
@@ -395,7 +396,8 @@ class StandardAE(object):
             eval_set = None
 
         out = self.model.fit(x=train_x, y=train_x, epochs=epochs,
-                           validation_data=eval_set, batch_size=batch_size)
+                             validation_data=eval_set, batch_size=batch_size,
+                             **kwargs)
         return out   
 
     def get_representation(self, samples):
@@ -498,7 +500,7 @@ class BetaVAE(object):
         return self.fit(train_x, eval_x=eval_x, **kwargs)
         
     def fit(self, train_x, train_y=None, eval_x=None, eval_y=None, epochs=15,
-            data_generator=None, batch_size=32):
+            data_generator=None, batch_size=32, **kwargs):
         if not self.compiled:
             self._compile()
 
@@ -518,7 +520,8 @@ class BetaVAE(object):
             eval_set = (eval_data, eval_data)
             
         out = self.vae.fit(x=train_x, y=train_y, epochs=epochs,
-                           validation_data=eval_set, batch_size=batch_size)
+                           validation_data=eval_set, batch_size=batch_size,
+                           **kwargs)
         return out
 
     def sample_latents(self, sample_size=10):
@@ -674,7 +677,7 @@ def evaluate_multiple_models_dims(dg, models, *args, **kwargs):
 
 def train_multiple_models(dg, model_kinds, layer_spec, n_reps=10, batch_size=32,
                           n_train_samps=10**6, epochs=5, hide_print=False,
-                          input_dim=None, **kwargs):
+                          input_dim=None, use_mp=False, **kwargs):
     training_history = np.zeros((len(model_kinds), n_reps), dtype=object)
     models = np.zeros_like(training_history, dtype=object)
     if input_dim is None:
@@ -687,10 +690,12 @@ def train_multiple_models(dg, model_kinds, layer_spec, n_reps=10, batch_size=32,
             if hide_print:
                 with u.HiddenPrints():
                     th = m.fit_sets(train_set, eval_set=eval_set, epochs=epochs,
-                                    batch_size=batch_size)
+                                    batch_size=batch_size,
+                                    use_multiprocessing=use_mp)
             else:
                 th = m.fit_sets(train_set, eval_set=eval_set, epochs=epochs,
-                                batch_size=batch_size)
+                                batch_size=batch_size,
+                                use_multiprocessing=use_mp)
             training_history[i, j] = th
             models[i, j] = m
     return models, training_history
@@ -807,6 +812,7 @@ def get_model_dimensionality(dg, models, cutoff=.95, **pca_args):
 def test_generalization(dg=None, models_ths=None, train_models_blind=False,
                         p_c=None, dg_kind=FunctionalDataGenerator,
                         hide_print=True, est_inp_dim=None,
+                        use_mp=False,
                         model_kinds=(SupervisedDisentangler, StandardAE)):
 
     # train data generator
@@ -825,7 +831,8 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
                      l2_weight=reg_weight, noise=noise)
 
         source_distr = sts.multivariate_normal(np.zeros(inp_dim), source_var)
-        dg.fit(source_distribution=source_distr, epochs=epochs)
+        dg.fit(source_distribution=source_distr, epochs=epochs,
+               use_multiprocessing=use_mp)
     else:
         source_distr = dg.source_distribution
 
@@ -844,15 +851,15 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
         est_inp_dim = inp_dim
     layer_spec = ((40,), (40,), (25,), (10,))
     batch_size = 1000
-    epochs = 50
-    n_train_diffs = 6
-    train_samples = np.logspace(4, 5.5, n_train_diffs, dtype=int)
+    epochs = 60
+    n_train_diffs = 3
+    train_samples = np.logspace(3.5, 5.5, n_train_diffs, dtype=int)
     input_dims = (est_inp_dim,)*n_train_diffs
     samps_list = True
     use_x = train_samples
     log_x = True
     
-    n_reps = 5
+    n_reps = 3
 
     if models_ths is None:
         models, th = train_multiple_models_dims(input_dims, dg, model_kinds,
@@ -861,7 +868,8 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
                                                 epochs=epochs,
                                                 samps_list=samps_list,
                                                 hide_print=hide_print,
-                                                n_train_samps=train_samples)
+                                                n_train_samps=train_samples,
+                                                use_mp=use_mp)
 
     else:
         models, th = models_ths
