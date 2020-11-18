@@ -2,7 +2,6 @@ import numpy as np
 import scipy.stats as sts
 
 import tensorflow as tf
-import tensorflow_datasets as tfds
 import tensorflow_probability as tfp
 
 import sklearn.decomposition as skd
@@ -847,7 +846,7 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     batch_size = 1000
     epochs = 50
     n_train_diffs = 6
-    train_samples = np.logspace(4, 6.5, n_train_diffs, dtype=int)
+    train_samples = np.logspace(4, 5.5, n_train_diffs, dtype=int)
     input_dims = (est_inp_dim,)*n_train_diffs
     samps_list = True
     use_x = train_samples

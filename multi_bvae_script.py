@@ -23,7 +23,10 @@ if __name__ == '__main__':
 
     if args.data_generator is not None:
         dg_p = pickle.load(args.data_generator)
+    else:
+        dg = None
         
     out = dm.test_generalization(dg=dg, est_inp_dim=est_inp_dim,
                                  model_kinds=model_kinds)
+    
     pickle.dump(out, open(args.output_file, 'wb'))
