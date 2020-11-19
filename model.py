@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.stats as sts
+import pickle
 
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -655,7 +656,8 @@ def train_multiple_bvae(dg, betas, layer_spec, n_reps=10, batch_size=32,
     return models, training_history
 
 def train_multiple_models_dims(input_dims, *args, n_train_samps=10**5,
-                               samps_list=False, **kwargs):
+                               samps_list=False, parallel_within=False,
+                               **kwargs):
     models = []
     ths = []
     for i, inp_d in enumerate(input_dims):
@@ -812,7 +814,7 @@ def get_model_dimensionality(dg, models, cutoff=.95, **pca_args):
 def test_generalization(dg=None, models_ths=None, train_models_blind=False,
                         p_c=None, dg_kind=FunctionalDataGenerator,
                         hide_print=True, est_inp_dim=None,
-                        use_mp=False,
+                        use_mp=False, n_reps=5, n_train_diffs=6,
                         model_kinds=(SupervisedDisentangler, StandardAE)):
 
     # train data generator
@@ -852,15 +854,12 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     layer_spec = ((40,), (40,), (25,), (10,))
     batch_size = 1000
     epochs = 60
-    n_train_diffs = 6
     train_samples = np.logspace(3, 6.5, n_train_diffs, dtype=int)
     input_dims = (est_inp_dim,)*n_train_diffs
     samps_list = True
     use_x = train_samples
     log_x = True
     
-    n_reps = 6
-
     if models_ths is None:
         models, th = train_multiple_models_dims(input_dims, dg, model_kinds,
                                                 layer_spec, n_reps=n_reps, 
@@ -956,8 +955,8 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     dim_red = True
 
     psize = 4
-    f, axs = plt.subplots(n_ds, n_mks, figsize=(n_mks*psize,
-                                                n_ds*psize))
+    fsize = (n_mks*psize, n_ds*psize)
+    f, axs = plt.subplots(n_ds, n_mks, figsize=fsize, squeeze=False)
     
     for i in range(n_ds):
         for j in range(n_mks):
