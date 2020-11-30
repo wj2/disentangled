@@ -2,9 +2,11 @@ import numpy as np
 import scipy.stats as sts
 import pickle
 import os
+import itertools as it
 
 import sklearn.decomposition as skd
 import sklearn.svm as skc
+import sklearn.linear_model as sklm
 
 import general.utility as u
 import general.plotting as gpl
@@ -172,8 +174,15 @@ def train_and_evaluate_models(dg, betas, layer_spec, train_func,
                                    **classifier_args)
     return out, out2 
 
-def _model_pca(dg, model, n_dim_red=10**4, **pca_args):
-    distrib_pts = dg.source_distribution.rvs(n_dim_red)
+def _model_pca(dg, model, n_dim_red=10**4, use_arc_dim=False, **pca_args):
+    if use_arc_dim:
+        distrib_pts = np.zeros((n_dim_red, dg.input_dim))
+        x0_pts = np.linspace(0, dg.source_distribution.cov[0, 0], n_dim_red)
+        x1_pts = np.linspace(0, dg.source_distribution.cov[1, 1], n_dim_red)
+        distrib_pts[:, 0] = x0_pts
+        distrib_pts[:, 1] = x1_pts
+    else:
+        distrib_pts = dg.source_distribution.rvs(n_dim_red)
     distrib_reps = dg.generator(distrib_pts)
     mod_distrib_reps = model.get_representation(distrib_reps)
     p = skd.PCA(**pca_args)
@@ -181,7 +190,9 @@ def _model_pca(dg, model, n_dim_red=10**4, **pca_args):
     return p
 
 def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
-                     n_dim_red=10**4, pt_size=1.5, **pca_args):
+                     n_dim_red=10**4, pt_size=2, line_style='solid',
+                     markers=True, line_alpha=.5, use_arc_dim=False,
+                     **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1)
 
@@ -190,14 +201,19 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                    (np.zeros_like(angs),)*(dg.input_dim - 2), axis=1)
     
     if dim_red:
-        p = _model_pca(dg, model, n_dim_red=n_dim_red,  **pca_args)
+        p = _model_pca(dg, model, n_dim_red=n_dim_red, use_arc_dim=use_arc_dim,
+                       **pca_args)
         
     for r in rs:
         s_reps = dg.generator(r*pts)
         mod_reps = model.get_representation(s_reps)
         if dim_red:
             mod_reps = p.transform(mod_reps)
-        ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o', markersize=pt_size)
+        l = ax.plot(mod_reps[:, 0], mod_reps[:, 1], linestyle=line_style,
+                    alpha=line_alpha)
+        if markers:
+            ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o', markersize=pt_size,
+                    color=l[0].get_color())
 
     if n_arcs > 0:
         skips = int(np.round(n/n_arcs))
@@ -209,7 +225,21 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
             mod_reps = model.get_representation(s_reps)
             if dim_red:
                 mod_reps = p.transform(mod_reps)
-            ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o')
+            l = ax.plot(mod_reps[:, 0], mod_reps[:, 1], linestyle=line_style,
+                        alpha=line_alpha)
+            if markers:
+                ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o', markersize=pt_size,
+                        color=l[0].get_color())
+    return ax
+
+def plot_partitions(pf_planes, ax, dim_red=None, scale=1):
+    for pfp in pf_planes:
+        if dim_red is not None:
+            pfp = dim_red(pfp)
+        pfp = np.stack((pfp, np.zeros_like(pfp)), axis=1)*scale
+        l = ax.plot(*pfp)
+        neg_pfp = -pfp
+        ax.plot(*neg_pfp, color=l[0].get_color())
     return ax
 
 def get_model_dimensionality(dg, models, cutoff=.95, **pca_args):
@@ -399,7 +429,8 @@ def plot_model_dimensionality(dg, models, use_x, ax=None, log_x=True):
         gpl.plot_trace_werr(use_x, dims[:, i].T, ax=ax, log_x=log_x)
     return ax
 
-def plot_training_progress(th, ax=None, line_styles=('-', '--', ':', '-.')):
+def plot_training_progress(th, labels, ax=None,
+                           line_styles=('-', '--', ':', '-.')):
     if ax is None:
         f, ax = plt.subplots(1, 1)
     legend_patches = []
@@ -413,18 +444,21 @@ def plot_training_progress(th, ax=None, line_styles=('-', '--', ':', '-.')):
                             linestyle=line_style)
                 color = l[0].get_color()
         lpatch = mpatches.Patch(color=color,
-                                label='N = {}'.format(train_samples[i]))
+                                label='N = {}'.format(labels[i]))
         legend_patches.append(lpatch)
     ax.legend(handles=legend_patches)
     return ax
 
 def plot_generalization_performance(use_x, p, plot_wid=3, ref_model=0,
                                     tds_labels=None, log_x=True,
+                                    indiv_pts=True,
                                     line_styles=('-', '--', ':', '-.')):
     if tds_labels is None:
         tds_labels = ('source', 'half-distribution generalization')
 
     n_models = p.shape[1]
+    n_tds = p.shape[-1]
+    n_reps = p.shape[-2]
     f = plt.figure(figsize=(plot_wid*(n_models + 1), plot_wid))
     ax_comp = f.add_subplot(1, n_models + 1, n_models + 1)
     ax_j = None
@@ -432,7 +466,7 @@ def plot_generalization_performance(use_x, p, plot_wid=3, ref_model=0,
     for j in range(n_models):
         ax_j = f.add_subplot(1, n_models + 1, j + 1, sharey=ax_j)
         line_style = line_styles[j % len(line_styles)]
-        for i in range(len(tds)):
+        for i in range(n_tds):
             p_diff = p[:, j] - p[:, ref_model]
             if j == 0:
                 label = tds_labels[i]
@@ -442,6 +476,9 @@ def plot_generalization_performance(use_x, p, plot_wid=3, ref_model=0,
                                     points=True, log_x=log_x,
                                     linestyle=line_style)
             col = l[0].get_color()
+            if indiv_pts:
+                for k in range(n_reps):
+                    ax_j.plot(use_x, p[:, j, k, i], 'o', color=col)
             l = gpl.plot_trace_werr(use_x, p_diff[..., i].T, ax=ax_comp,
                                     label=label, points=True,
                                     log_x=log_x, color=col,
@@ -450,8 +487,9 @@ def plot_generalization_performance(use_x, p, plot_wid=3, ref_model=0,
 
 def plot_model_manifolds(dg, models, rs=(.1, .2, .5), n_arcs=1, rep_ind=0,
                          dim_red=True, psize=4):
-    f, axs = plt.subplots(n_ds, n_mks, figsize=(n_mks*psize,
-                                                n_ds*psize))
+    n_ds, n_mks = models.shape[:2]
+    f, axs = plt.subplots(n_ds, n_mks, squeeze=False,
+                          figsize=(n_mks*psize, n_ds*psize))
     for i in range(n_ds):
         for j in range(n_mks):
             mod = models[i, j, rep_ind]
@@ -459,7 +497,40 @@ def plot_model_manifolds(dg, models, rs=(.1, .2, .5), n_arcs=1, rep_ind=0,
                                 dim_red=dim_red)
     return f
 
-def test_generalization_new(dg=None, models_ths=None, train_models_blind=False,
+def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False):
+    if ax is None:
+        f, ax = plt.subplots(1, 1)
+    _, n_mks = scores.shape[:2]
+    if use_x is None:
+        use_x = np.arange(n_ds)
+    for j in range(n_mks):
+        l = gpl.plot_trace_werr(use_x, scores[:, j].T, ax=ax, log_x=log_x)
+    return ax
+
+def find_linear_mappings(dg, model_arr, n_samps=10**5, **kwargs):
+    inds = it.product(*(range(x) for x in model_arr.shape))
+    scores = np.zeros_like(model_arr, dtype=float)
+    lintrans = np.zeros_like(model_arr, dtype=object)
+    for ind in inds:
+        lr, sc = find_linear_mapping(dg, model_arr[ind], n_samps=n_samps,
+                                     **kwargs)
+        scores[ind] = sc
+        lintrans[ind] = lintrans
+    return lintrans, scores
+
+def find_linear_mapping(dg, model, n_samps=10**5, **kwargs):
+    stim = dg.source_distribution.rvs(n_samps)
+    enc_pts = model.get_representation(dg.generator(stim))
+    test_stim = dg.source_distribution.rvs(n_samps)
+    test_enc_pts = model.get_representation(dg.generator(test_stim))
+    lr = sklm.LinearRegression(**kwargs)
+    lr.fit(enc_pts, stim)
+    score = lr.score(test_enc_pts, test_stim)
+    params = lr.get_params()
+    return lr, score
+
+def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
+                            train_models_blind=False,
                             p_c=None, dg_kind=dg_kind_default,
                             dg_args=None, dg_kwargs=None, dg_source_var=1,
                             dg_train_epochs=25, models_args=None,
@@ -467,6 +538,7 @@ def test_generalization_new(dg=None, models_ths=None, train_models_blind=False,
                             use_samples_x=True, models_n_diffs=6,
                             hide_print=True, est_inp_dim=None,
                             eval_n_iters=2, use_mp=False,
+                            train_test_distrs=None, n_reps=5,
                             model_kinds=model_kinds_default):
     # train data generator
     if dg_args is None:
@@ -506,15 +578,14 @@ def test_generalization_new(dg=None, models_ths=None, train_models_blind=False,
     if models_kwargs is None:
         batch_size = 1000
         epochs = 60
-        train_samples = np.logspace(3, 6.5, models_n_diffs, dtype=int)
+        train_samples = np.logspace(2, 6.5, models_n_diffs, dtype=int)
         samps_list = True
-        n_reps = 3 
         models_kwargs = {'batch_size':batch_size, 'epochs':epochs,
                          'samps_list':samps_list, 'n_train_samps':train_samples,
                          'use_mp':use_mp, 'hide_print':hide_print,
                          'n_reps':n_reps}
     if use_samples_x:
-        use_x = models_kwargs['train_samples']
+        use_x = models_kwargs['n_train_samps']
     else:
         use_x = models_args[0]
     
@@ -522,14 +593,15 @@ def test_generalization_new(dg=None, models_ths=None, train_models_blind=False,
         models, th = train_multiple_models_dims(*models_args, **models_kwargs)
     else:
         models, th = models_ths
-        
-    plot_training_progress(th)    
-    plot_model_dimensionality(dg, models, use_x, log_x=model_log_x)
 
+    if th is not None:
+        plot_training_progress(th, use_x)    
+    plot_model_dimensionality(dg, models, use_x, log_x=models_log_x)
 
     if train_test_distrs is None:
-        train_ds = (None, da.HalfMultidimensionalNormal(np.zeros(inp_dim), 1))
-        test_d2 = (None, train_d2.flip())
+        train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), 1)
+        train_ds = (None, train_d2)
+        test_ds = (None, train_d2.flip())
     else:
         train_ds, test_ds = train_test_distr
 
@@ -543,4 +615,8 @@ def test_generalization_new(dg=None, models_ths=None, train_models_blind=False,
     plot_generalization_performance(use_x, p, log_x=models_log_x)
     plot_model_manifolds(dg, models)
 
-    return dg, (models, th), (p, c)
+    if lts_scores is None:
+        lts_scores = find_linear_mappings(dg, models)
+    plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
+
+    return dg, (models, th), (p, c), lts_scores

@@ -5,6 +5,8 @@ import os
 import itertools as it
 import scipy.stats as sts
 import numpy as np
+import functools as ft
+import re
 
 import general.utility as u
 
@@ -27,10 +29,17 @@ class TFModel(object):
         pickle.dump(ndict, open(path, 'wb'))
 
     @staticmethod
-    def _load_model(dummy_object, path):
+    def _load_model(dummy_object, path, use_new_head=True, skip=None):
+        if use_new_head:
+            new_folder, _ = os.path.split(path)
         ndict = pickle.load(open(path, 'rb'))
         tf_items = ndict.pop('__paths__')
+        if skip is not None:
+            list(tf_items.pop(skip_item) for skip_item in skip)
         for attr, tf_path in tf_items.items():
+            if use_new_head:
+                _, targ_file = os.path.split(tf_path)
+                tf_path = os.path.join(new_folder, targ_file)
             m_attr = tf.keras.models.load_model(tf_path)
             setattr(dummy_object, attr, m_attr)
         for attr, value in ndict.items():
@@ -50,7 +59,10 @@ class InputGenerator(object):
     def rvs(self, n):
         out = self.proc(self.source.rvs(n))
         return out
-
+    
+def _binary_classification(x, plane=None, off=0):
+    return np.sum(plane*x, axis=1) - off > 0
+    
 def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
                                  orth_vec=None, orth_off=None):
     if orth_vec is not None:
@@ -68,8 +80,10 @@ def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
     if orth_off is not None:
         offsets = np.ones(n_funcs)*orth_off
     funcs = np.zeros(n_funcs, dtype=object)
+    
     for i in range(n_funcs):
-        funcs[i] = lambda x: np.sum(plane_vec[i:i+1]*x, axis=1) - offsets[i] > 0
+        funcs[i] = ft.partial(_binary_classification, plane=plane_vec[i:i+1],
+                              off=offsets[i])
     return funcs, plane_vec, offsets
     
 class HalfMultidimensionalNormal(object):
@@ -127,13 +141,18 @@ def save_histories(path, hist_arr):
         pickle.dump(hist, open(path_ind, 'wb'))
     save_object_arr(path, hist_arr, hist_save_func)
 
-def load_objects(path, load_method): 
+def load_objects(path, load_method, replace_head=True): 
     path_arr = pickle.load(open(path, 'rb'))
-
+    if replace_head:
+        replace_head_path, _ = os.path.split(path)
     model_arr = np.zeros_like(path_arr, dtype=object)
     inds = it.product(*(range(x) for x in model_arr.shape))
+    
     for ind in inds:
         path_ind = path_arr[ind]
+        if replace_head:
+            _, targ_file = os.path.split(path_ind)
+            path_ind = os.path.join(replace_head_path, targ_file)
         m = load_method(ind, path_ind)
         model_arr[ind] = m
     return model_arr
@@ -143,7 +162,7 @@ def load_history(path):
     history_arr = load_objects(path, load_method)
     return history_arr
     
-def load_models(path, model_type=None, model_type_arr=None):
+def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
     if model_type is None and model_type_arr is None:
         raise IOError('one of model_type or model_type_arr must be specified')
 
@@ -152,10 +171,10 @@ def load_models(path, model_type=None, model_type_arr=None):
         model_type_arr = np.zeros_like(path_arr, dtype=object)
         model_type_arr[:] = model_type
     load_method = lambda ind, path_ind: model_type_arr[ind].load(path_ind)
-    model_arr = load_objects(path, load_method)
+    model_arr = load_objects(path, load_method, replace_head=replace_head)
     return model_arr
 
-def save_generalization_output(folder, dg, models, th, p, c,
+def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
                                seed_str='genout_{}.tfmod'):
     os.mkdir(folder)
     path_base = os.path.join(folder, seed_str)
@@ -175,23 +194,71 @@ def save_generalization_output(folder, dg, models, th, p, c,
     c_file = seed_str.format('c')
     pickle.dump(c, open(os.path.join(folder, c_file), 'wb'))
 
-    manifest = (dg_file, models_file, p_file, c_file)
+    if lr is not None:
+        lr_file = seed_str.format('lr')
+        pickle.dump(lr, open(os.path.join(folder, lr_file), 'wb'))
+
+    if sc is not None:
+        sc_file = seed_str.format('sc')
+        pickle.dump(sc, open(os.path.join(folder, sc_file), 'wb'))
+
+    manifest = (dg_file, models_file, history_file, p_file, c_file)
+    if lr is not None:
+        manifest = manifest + (lr_file,)
+    if sc is not None:
+        manifest = manifest + (sc_file,)
     pickle.dump(manifest, open(os.path.join(folder, 'manifest.pkl'), 'wb'))
     
 def load_generalization_output(folder, manifest='manifest.pkl',
                                dg_type=None,
                                model_type=None, model_type_arr=None):
     fnames = pickle.load(open(os.path.join(folder, manifest), 'rb'))
-    fnames_full = (os.path.join(folder, x) for x in fnames)
-    dg_file, models_file, history_file, p_file, c_file = fnames_full
+    fnames_full = list(os.path.join(folder, x) for x in fnames)
+    if len(fnames_full) == 4:
+        dg_file, models_file, p_file, c_file = fnames_full
+        history_file = None
+    else:
+        dg_file, models_file, history_file, p_file, c_file = fnames_full
 
     dg = dg_type.load(dg_file)
     models = load_models(models_file, model_type=model_type,
                          model_type_arr=model_type_arr)
-    th = load_histories(history_file)
+    if history_file is not None:
+        th = load_histories(history_file)
+    else:
+        th = None
     p = pickle.load(open(p_file, 'rb'))
     c = pickle.load(open(c_file, 'rb'))
 
     return dg, models, th, p, c
-    
-    
+
+def load_full_run(folder, run_ind, merge_axis=1,
+                  file_template='bvae-n_([0-9])_{run_ind}',
+                  **kwargs):
+    tomatch = file_template.format(run_ind=run_ind)
+    fls = os.listdir(folder)
+    targ_inds = []
+    outs = []
+    for fl in fls:
+        x = re.match(tomatch, fl)
+        if x is not None:
+            print(fl)
+            ti = int(x.group(1))
+            targ_inds.append(ti)
+            fp = os.path.join(folder, fl)
+            out = load_generalization_output(fp, **kwargs)
+            outs.append(out)
+    sort_inds = np.argsort(targ_inds)
+    out_inds = []
+    for i, si in enumerate(sort_inds):
+        out_inds.append(targ_inds[si])
+        if i == 0:
+            dg_all, models_all, th_all, p_all, c_all = outs[si]
+        else:
+            _, models, th, p, c = outs[si]
+            models_all = np.concatenate((models_all, models), axis=merge_axis)
+            if th_all is not None:
+                th_all = np.concatenate((th_all, th), axis=merge_axis)
+            p_all = np.concatenate((p_all, p), axis=merge_axis)
+            ch_all = np.concatenate((c_all, c), axis=merge_axis)
+    return dg_all, models_all, th_all, p_all, c_all
