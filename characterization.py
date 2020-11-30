@@ -530,7 +530,7 @@ def find_linear_mapping(dg, model, n_samps=10**5, **kwargs):
     return lr, score
 
 def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
-                            train_models_blind=False,
+                            train_models_blind=False, inp_dim=2,
                             p_c=None, dg_kind=dg_kind_default,
                             dg_args=None, dg_kwargs=None, dg_source_var=1,
                             dg_train_epochs=25, models_args=None,
@@ -542,7 +542,6 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
                             model_kinds=model_kinds_default):
     # train data generator
     if dg_args is None:
-        inp_dim = 2
         out_dim = 30
         layers =  (20, 50, 50, 50, 30)
         dg_args = (inp_dim, layers, out_dim)

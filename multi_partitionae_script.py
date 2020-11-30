@@ -20,6 +20,8 @@ def create_parser():
                         help='file with saved data generator to use')
     parser.add_argument('-l', '--latent_dims', default=None, type=int,
                         help='number of dimensions to use in latent layer')
+    parser.add_argument('-i', '--input_dims', default=2, type=int,
+                        help='true number of dimensions in input')
     parser.add_argument('-p', '--partitions', nargs='*', type=int,
                         help='numbers of partitions to models with')
     parser.add_argument('-c', '--save_datagenerator', default=None,
@@ -36,17 +38,24 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     partitions = args.partitions
-    model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE, n_partitions=p)
-                       for p in partitions)
+    true_inp_dim = args.input_dims
     est_inp_dim = args.latent_dims
     n_reps = args.n_reps
     n_train_diffs = args.n_train_diffs
+    
 
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
+        inp_dim = dg_use.input_dim
     else:
         dg_use = None
 
+    model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
+                                  true_inp_dim=true_inp_dim,
+                                  n_partitions=p)
+                       for p in partitions)
+
+        
     use_mp = not args.no_multiprocessing
     out = dc.test_generalization_new(dg=dg_use, est_inp_dim=est_inp_dim,
                                      n_reps=n_reps, model_kinds=model_kinds,
