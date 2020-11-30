@@ -49,7 +49,6 @@ if __name__ == '__main__':
 
     use_mp = not args.no_multiprocessing
     out = dc.test_generalization_new(dg=dg_use, est_inp_dim=est_inp_dim,
-                                     dg_train_epochs=1,
                                      n_reps=n_reps, model_kinds=model_kinds,
                                      use_mp=use_mp, models_n_diffs=n_train_diffs)
     dg, (models, th), (p, c), (lrs, scrs) = out
