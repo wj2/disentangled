@@ -157,11 +157,11 @@ def load_objects(path, load_method, replace_head=True):
         model_arr[ind] = m
     return model_arr
    
-def load_history(path):
+def load_histories(path):
     load_method = lambda ind, p: pickle.load(open(p, 'rb'))
     history_arr = load_objects(path, load_method)
     return history_arr
-    
+
 def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
     if model_type is None and model_type_arr is None:
         raise IOError('one of model_type or model_type_arr must be specified')
@@ -175,18 +175,19 @@ def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
     return model_arr
 
 def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
-                               seed_str='genout_{}.tfmod'):
+                               seed_str='genout_{}.tfmod', save_tf_models=True):
     os.mkdir(folder)
     path_base = os.path.join(folder, seed_str)
 
-    dg_file = seed_str.format('dg')
-    dg.save(os.path.join(folder, dg_file))
+    if save_tf_models:
+        dg_file = seed_str.format('dg')
+        dg.save(os.path.join(folder, dg_file))
 
-    models_file = seed_str.format('models')
-    save_models(os.path.join(folder, models_file), models)
+        models_file = seed_str.format('models')
+        save_models(os.path.join(folder, models_file), models)
 
-    history_file = seed_str.format('histories')
-    save_histories(os.path.join(folder, history_file), th)
+        history_file = seed_str.format('histories')
+        save_histories(os.path.join(folder, history_file), th)
 
     p_file = seed_str.format('p')
     pickle.dump(p, open(os.path.join(folder, p_file), 'wb'))
@@ -202,7 +203,11 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
         sc_file = seed_str.format('sc')
         pickle.dump(sc, open(os.path.join(folder, sc_file), 'wb'))
 
-    manifest = (dg_file, models_file, history_file, p_file, c_file)
+    if save_tf_models:
+        manifest = (dg_file, models_file, history_file)
+    else:
+        manifest = ()
+    manifest = manifest + (p_file, c_file)
     if lr is not None:
         manifest = manifest + (lr_file,)
     if sc is not None:
@@ -210,31 +215,49 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
     pickle.dump(manifest, open(os.path.join(folder, 'manifest.pkl'), 'wb'))
     
 def load_generalization_output(folder, manifest='manifest.pkl',
-                               dg_type=None,
+                               dg_type=None, analysis_only=False,
                                model_type=None, model_type_arr=None):
     fnames = pickle.load(open(os.path.join(folder, manifest), 'rb'))
     fnames_full = list(os.path.join(folder, x) for x in fnames)
     if len(fnames_full) == 4:
         dg_file, models_file, p_file, c_file = fnames_full
         history_file = None
-    else:
+        ld_file, sc_file = None, None
+    elif len(fnames_full) == 5:
         dg_file, models_file, history_file, p_file, c_file = fnames_full
-
-    dg = dg_type.load(dg_file)
-    models = load_models(models_file, model_type=model_type,
-                         model_type_arr=model_type_arr)
-    if history_file is not None:
-        th = load_histories(history_file)
+        ld_file, sc_file = None, None
     else:
+        dg_file, models_file, history_file, p_file, c_file = fnames_full[:-2]
+        ld_file, sc_file = fnames_full[-2:]
+
+    if analysis_only:
+        dg = None
+        models = None
         th = None
+    else:
+        dg = dg_type.load(dg_file)
+        models = load_models(models_file, model_type=model_type,
+                             model_type_arr=model_type_arr)
+        if history_file is not None:
+            th = load_histories(history_file)
+        else:
+            th = None
     p = pickle.load(open(p_file, 'rb'))
     c = pickle.load(open(c_file, 'rb'))
+    if ld_file is not None:
+        ld = pickle.load(open(ld_file, 'rb'))
+    else:
+        ld = None
+    if sc_file is not None:
+        sc = pickle.load(open(sc_file, 'rb'))
+    else:
+        sc = None
 
-    return dg, models, th, p, c
+    return dg, models, th, p, c, ld, sc
 
 def load_full_run(folder, run_ind, merge_axis=1,
                   file_template='bvae-n_([0-9])_{run_ind}',
-                  **kwargs):
+                  analysis_only=False, **kwargs):
     tomatch = file_template.format(run_ind=run_ind)
     fls = os.listdir(folder)
     targ_inds = []
@@ -246,19 +269,24 @@ def load_full_run(folder, run_ind, merge_axis=1,
             ti = int(x.group(1))
             targ_inds.append(ti)
             fp = os.path.join(folder, fl)
-            out = load_generalization_output(fp, **kwargs)
+            out = load_generalization_output(fp, analysis_only=analysis_only,
+                                             **kwargs)
             outs.append(out)
     sort_inds = np.argsort(targ_inds)
     out_inds = []
     for i, si in enumerate(sort_inds):
         out_inds.append(targ_inds[si])
         if i == 0:
-            dg_all, models_all, th_all, p_all, c_all = outs[si]
+            dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all = outs[si]
         else:
-            _, models, th, p, c = outs[si]
-            models_all = np.concatenate((models_all, models), axis=merge_axis)
-            if th_all is not None:
-                th_all = np.concatenate((th_all, th), axis=merge_axis)
+            _, models, th, p, c, ld, sc = outs[si]
+            if not analysis_only:
+                models_all = np.concatenate((models_all, models),
+                                            axis=merge_axis)
+                if th_all is not None:
+                    th_all = np.concatenate((th_all, th), axis=merge_axis)
             p_all = np.concatenate((p_all, p), axis=merge_axis)
             ch_all = np.concatenate((c_all, c), axis=merge_axis)
-    return dg_all, models_all, th_all, p_all, c_all
+            ld_all = np.concatenate((ld_all, ld), axis=merge_axis)
+            sc_all = np.concatenate((sc_all, sc), axis=merge_axis)
+    return dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all
