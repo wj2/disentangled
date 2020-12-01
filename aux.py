@@ -104,6 +104,12 @@ class HalfMultidimensionalNormal(object):
             self.offset = None
         self.partition_func = set_partition
 
+    @classmethod
+    def partition(cls, norm):
+        m = norm.mean
+        s = norm.cov
+        return cls(m, s)
+        
     def rvs(self, rvs_shape):
         rvs = self.distr.rvs(rvs_shape)
         while not np.all(self.partition_func(rvs)):
