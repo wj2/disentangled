@@ -31,6 +31,8 @@ def create_parser():
     parser.add_argument('-t', '--n_train_diffs', default=6, type=int,
                         help='number of different training data sample sizes '
                         'to use')
+    parser.add_argument('-m', '--no_models', default=False, action='store_true',
+                        help='do not store tensorflow models')
     return parser
 
 if __name__ == '__main__':
@@ -42,7 +44,7 @@ if __name__ == '__main__':
     est_inp_dim = args.latent_dims
     n_reps = args.n_reps
     n_train_diffs = args.n_train_diffs
-    
+    save_tf_models = not args.no_models
 
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
@@ -64,4 +66,4 @@ if __name__ == '__main__':
     dg, (models, th), (p, c), (lrs, scrs) = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
-                                  lrs, scrs)
+                                  lrs, scrs, save_tf_models=save_tf_models)
