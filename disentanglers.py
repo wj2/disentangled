@@ -230,6 +230,11 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
     def save(self, path):
         tf_entries = ('model', 'rep_model')
         self._save_wtf(path, tf_entries)
+
+    @classmethod
+    def load(cls, path):
+        dummy = FlexibleDisentanglerAE(0, ((10,),), 0, 5)
+        return cls._load_model(dummy, path)
         
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
