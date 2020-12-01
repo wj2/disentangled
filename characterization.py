@@ -174,13 +174,17 @@ def train_and_evaluate_models(dg, betas, layer_spec, train_func,
                                    **classifier_args)
     return out, out2 
 
-def _model_pca(dg, model, n_dim_red=10**4, use_arc_dim=False, **pca_args):
+def _model_pca(dg, model, n_dim_red=10**4, use_arc_dim=False,
+               use_circ_dim=False, **pca_args):
     if use_arc_dim:
         distrib_pts = np.zeros((n_dim_red, dg.input_dim))
         x0_pts = np.linspace(0, dg.source_distribution.cov[0, 0], n_dim_red)
         x1_pts = np.linspace(0, dg.source_distribution.cov[1, 1], n_dim_red)
         distrib_pts[:, 0] = x0_pts
         distrib_pts[:, 1] = x1_pts
+    elif use_circ_dim:
+        r = np.sqrt(dg.source_distribution.cov[0, 0])
+        distrib_pts = _get_circle_pts(n_dim_red, dg.input_dim, r=r)
     else:
         distrib_pts = dg.source_distribution.rvs(n_dim_red)
     distrib_reps = dg.generator(distrib_pts)
@@ -189,10 +193,16 @@ def _model_pca(dg, model, n_dim_red=10**4, use_arc_dim=False, **pca_args):
     p.fit(mod_distrib_reps)
     return p
 
+def _get_circle_pts(n, inp_dim, r=1):
+    angs = np.linspace(0, 2*np.pi, n)
+    pts = np.stack((np.cos(angs), np.sin(angs),) +
+                   (np.zeros_like(angs),)*(inp_dim - 2), axis=1)
+    return r*pts
+
 def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
                      markers=True, line_alpha=.5, use_arc_dim=False,
-                     **pca_args):
+                     use_circ_dim=False, **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1)
 
@@ -202,7 +212,7 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
     
     if dim_red:
         p = _model_pca(dg, model, n_dim_red=n_dim_red, use_arc_dim=use_arc_dim,
-                       **pca_args)
+                       use_circ_dim=use_circ_dim, **pca_args)
         
     for r in rs:
         s_reps = dg.generator(r*pts)
@@ -497,14 +507,37 @@ def plot_model_manifolds(dg, models, rs=(.1, .2, .5), n_arcs=1, rep_ind=0,
                                 dim_red=dim_red)
     return f
 
-def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False):
+def plot_recon_gen_corr(scores, gens, color_ax=None, ax=None):
     if ax is None:
         f, ax = plt.subplots(1, 1)
-    _, n_mks = scores.shape[:2]
+    gens = np.mean(gens, axis=3)
+    if color_ax is None:
+        sc_flat = np.reshape(scores, (1, -1))
+        gen_flat = np.reshape(gens, (1, -1))
+        ax_sz = 1
+    else:
+        scores = np.swapaxes(scores, 0, color_ax)
+        gens = np.swapaxes(gens, 0, color_ax)
+        ax_sz = scores.shape[color_ax]
+        sc_flat = np.reshape(scores, (ax_sz, -1))
+        gen_flat = np.reshape(gens, (ax_sz, -1))
+    for i in range(ax_sz):
+        ax.plot(sc_flat[i], gen_flat[i], 'o')
+    return ax
+
+def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False,
+                        indiv_pts=True):
+    if ax is None:
+        f, ax = plt.subplots(1, 1)
+    n_ds, n_mks, n_reps = scores.shape
     if use_x is None:
         use_x = np.arange(n_ds)
     for j in range(n_mks):
         l = gpl.plot_trace_werr(use_x, scores[:, j].T, ax=ax, log_x=log_x)
+        if indiv_pts:
+            col = l[0].get_color()
+            for k in range(n_reps):
+                ax.plot(use_x, scores[:, j, k], 'o', color=col)
     return ax
 
 def find_linear_mappings(dg, model_arr, n_samps=10**5, **kwargs):
