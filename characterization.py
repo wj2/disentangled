@@ -551,10 +551,19 @@ def find_linear_mappings(dg, model_arr, n_samps=10**5, **kwargs):
         lintrans[ind] = lintrans
     return lintrans, scores
 
-def find_linear_mapping(dg, model, n_samps=10**5, **kwargs):
-    stim = dg.source_distribution.rvs(n_samps)
+def find_linear_mapping(dg, model, n_samps=10**5, half=True, **kwargs):
+    if half:
+        src = da.HalfMultidimensionalNormal.partition(dg.source_distribution)
+        stim = src.rvs(n_samps)
+    else:
+        stim = dg.source_distribution.rvs(n_samps)
     enc_pts = model.get_representation(dg.generator(stim))
-    test_stim = dg.source_distribution.rvs(n_samps)
+
+    if half:
+        flipped = src.flip()
+        test_stim = flipped.rvs(n_samps)
+    else:
+        test_stim = dg.source_distribution.rvs(n_samps)
     test_enc_pts = model.get_representation(dg.generator(test_stim))
     lr = sklm.LinearRegression(**kwargs)
     lr.fit(enc_pts, stim)
