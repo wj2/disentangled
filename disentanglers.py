@@ -211,10 +211,6 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         inputs, rep, class_branch, autoenc_branch = out
 
         self.branch_names = branch_names
-        # self.branches = dict(zip(branch_names,
-        #                          (class_branch, autoenc_branch)))
-        # self.class_branch = class_branch
-        # self.autoenc_branch = autoenc_branch
         outputs = [class_branch, autoenc_branch]
         self.model = tfk.Model(inputs=inputs,
                                outputs=outputs)

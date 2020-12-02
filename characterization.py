@@ -540,9 +540,14 @@ def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False,
                 ax.plot(use_x, scores[:, j, k], 'o', color=col)
     return ax
 
-def find_linear_mappings(dg, model_arr, n_samps=10**5, **kwargs):
+def find_linear_mappings(dg, model_arr, n_samps=10**5, half_ns=100, half=True,
+                         **kwargs):
     inds = it.product(*(range(x) for x in model_arr.shape))
-    scores = np.zeros_like(model_arr, dtype=float)
+    if half:
+        scores_shape = model_arr.shape + (half_ns,)
+    else:
+        scores_shape = model_arr.shape
+    scores = np.zeros_like(scores_shape, dtype=float)
     lintrans = np.zeros_like(model_arr, dtype=object)
     for ind in inds:
         lr, sc = find_linear_mapping(dg, model_arr[ind], n_samps=n_samps,
@@ -551,7 +556,18 @@ def find_linear_mappings(dg, model_arr, n_samps=10**5, **kwargs):
         lintrans[ind] = lintrans
     return lintrans, scores
 
-def find_linear_mapping(dg, model, n_samps=10**5, half=True, **kwargs):
+def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
+                        **kwargs):
+    if half:
+        score = np.zeros(half_ns)
+        for i in range(half_ns):
+            lr, sc = _find_linear_mapping_single(*args, half=half, **kwargs)
+            score[i] = sc
+    else:
+        lr, score = _find_linear_mapping_single(*args, half=half, **kwargs)
+    return lr, score
+
+def _find_linear_mapping_single(dg, model, n_samps=10**5, half=True, **kwargs):
     if half:
         src = da.HalfMultidimensionalNormal.partition(dg.source_distribution)
         stim = src.rvs(n_samps)
