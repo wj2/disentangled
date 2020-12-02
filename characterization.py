@@ -657,7 +657,7 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
     plot_model_manifolds(dg, models)
 
     if lts_scores is None:
-        lts_scores = find_linear_mappings(dg, models)
+        lts_scores = find_linear_mappings(dg, models, half=True)
     plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 
     return dg, (models, th), (p, c), lts_scores
