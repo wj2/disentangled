@@ -196,7 +196,7 @@ def pad_zeros(x, dim):
 class FlexibleDisentanglerAE(FlexibleDisentangler):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
-                 true_inp_dim=None, n_partitions=5, regularizer_weight=.01,
+                 true_inp_dim=None, n_partitions=5, regularizer_weight=0,
                  act_func=tf.nn.relu,
                  branch_names=('class_branch', 'autoenc_branch'),
                  **layer_params):
