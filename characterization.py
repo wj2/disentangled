@@ -529,6 +529,8 @@ def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False,
                         indiv_pts=True):
     if ax is None:
         f, ax = plt.subplots(1, 1)
+    if len(scores.shape) > 3:
+        scores = np.mean(scores, axis=3)
     n_ds, n_mks, n_reps = scores.shape
     if use_x is None:
         use_x = np.arange(n_ds)
@@ -547,7 +549,7 @@ def find_linear_mappings(dg, model_arr, n_samps=10**5, half_ns=100, half=True,
         scores_shape = model_arr.shape + (half_ns,)
     else:
         scores_shape = model_arr.shape
-    scores = np.zeros_like(scores_shape, dtype=float)
+    scores = np.zeros(scores_shape, dtype=float)
     lintrans = np.zeros_like(model_arr, dtype=object)
     for ind in inds:
         lr, sc = find_linear_mapping(dg, model_arr[ind], n_samps=n_samps,
