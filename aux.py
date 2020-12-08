@@ -226,9 +226,13 @@ def load_generalization_output(folder, manifest='manifest.pkl',
     fnames = pickle.load(open(os.path.join(folder, manifest), 'rb'))
     fnames_full = list(os.path.join(folder, x) for x in fnames)
     if len(fnames_full) == 4:
-        dg_file, models_file, p_file, c_file = fnames_full
-        history_file = None
-        ld_file, sc_file = None, None
+        if re.match('.*_sc\.tfmod', fnames_full[-1]) is not None:
+            p_file, c_file, ld_file, sc_file = fnames_full
+            analysis_only = True
+        else:
+            dg_file, models_file, p_file, c_file = fnames_full
+            history_file = None
+            ld_file, sc_file = None, None
     elif len(fnames_full) == 5:
         dg_file, models_file, history_file, p_file, c_file = fnames_full
         ld_file, sc_file = None, None
@@ -271,13 +275,14 @@ def load_full_run(folder, run_ind, merge_axis=1,
     for fl in fls:
         x = re.match(tomatch, fl)
         if x is not None:
-            print(fl)
             ti = int(x.group(1))
             targ_inds.append(ti)
             fp = os.path.join(folder, fl)
             out = load_generalization_output(fp, analysis_only=analysis_only,
                                              **kwargs)
             outs.append(out)
+    if len(outs) == 0:
+        raise IOError('no files found')
     sort_inds = np.argsort(targ_inds)
     out_inds = []
     for i, si in enumerate(sort_inds):
@@ -287,12 +292,19 @@ def load_full_run(folder, run_ind, merge_axis=1,
         else:
             _, models, th, p, c, ld, sc = outs[si]
             if not analysis_only:
-                models_all = np.concatenate((models_all, models),
+                models_all = _concatenate_none((models_all, models),
                                             axis=merge_axis)
                 if th_all is not None:
-                    th_all = np.concatenate((th_all, th), axis=merge_axis)
-            p_all = np.concatenate((p_all, p), axis=merge_axis)
-            ch_all = np.concatenate((c_all, c), axis=merge_axis)
-            ld_all = np.concatenate((ld_all, ld), axis=merge_axis)
-            sc_all = np.concatenate((sc_all, sc), axis=merge_axis)
-    return dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all
+                    th_all = _concatenate_none((th_all, th), axis=merge_axis)
+            p_all = _concatenate_none((p_all, p), axis=merge_axis)
+            ch_all = _concatenate_none((c_all, c), axis=merge_axis)
+            ld_all = _concatenate_none((ld_all, ld), axis=merge_axis)
+            sc_all = _concatenate_none((sc_all, sc), axis=merge_axis)
+    return out_inds, dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all
+
+def _concatenate_none(arrs, axis=0):
+    if np.any(list(arr is None for arr in arrs)):
+        out = None
+    else:
+        out = np.concatenate(arrs, axis=axis)
+    return out

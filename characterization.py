@@ -525,6 +525,40 @@ def plot_recon_gen_corr(scores, gens, color_ax=None, ax=None):
         ax.plot(sc_flat[i], gen_flat[i], 'o')
     return ax
 
+def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
+                                 plot_labels='train egs = {}', n_plots=None,
+                                 ylabel='', ylim=None, **kwargs):
+    if len(scores.shape) == 4:
+        scores = np.mean(scores, axis=3)
+    n_ds, n_mks, n_reps = scores.shape
+        
+    if axs is None:
+        f, axs = plt.subplots(n_ds, 1, sharey=True,
+                              figsize=(fwid, n_ds*fwid))
+    for i, sc in enumerate(scores):
+        plot_recon_accuracy_partition(sc, ax=axs[i], mks=xs, **kwargs)
+        axs[i].set_ylabel(ylabel)
+        if n_plots is not None:
+            axs[i].set_title(plot_labels.format(n_plots[i]))
+        if ylim is not None:
+            axs[i].set_ylim(ylim)
+    axs[i].set_xlabel('partitions')
+    return axs        
+
+def plot_recon_accuracy_partition(scores, mks=None, ax=None, indiv_pts=True,
+                                  log_x=False, **kwargs):
+    if ax is None:
+        f, ax = plt.subplots(1, 1)
+    n_mks, n_reps = scores.shape
+    if mks is None:
+        mks = np.arange(n_mks)
+    l = gpl.plot_trace_werr(mks, scores.T, ax=ax, log_x=log_x, **kwargs)
+    if indiv_pts:
+        col = l[0].get_color()
+        for k in range(n_reps):
+            ax.plot(mks, scores[:, k], 'o', color=col)
+    return ax
+            
 def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False,
                         indiv_pts=True):
     if ax is None:
