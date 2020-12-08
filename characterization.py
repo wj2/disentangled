@@ -630,6 +630,7 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
                             dg_train_epochs=25, models_args=None,
                             models_kwargs=None, models_log_x=True,
                             use_samples_x=True, models_n_diffs=6,
+                            models_n_bounds=(2, 6.5),
                             hide_print=True, est_inp_dim=None,
                             eval_n_iters=2, use_mp=False,
                             train_test_distrs=None, n_reps=5,
@@ -671,7 +672,8 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
     if models_kwargs is None:
         batch_size = 1000
         epochs = 60
-        train_samples = np.logspace(2, 6.5, models_n_diffs, dtype=int)
+        train_samples = np.logspace(models_n_bounds[0], models_n_bounds[1],
+                                    models_n_diffs, dtype=int)
         samps_list = True
         models_kwargs = {'batch_size':batch_size, 'epochs':epochs,
                          'samps_list':samps_list, 'n_train_samps':train_samples,

@@ -31,6 +31,10 @@ def create_parser():
     parser.add_argument('-t', '--n_train_diffs', default=6, type=int,
                         help='number of different training data sample sizes '
                         'to use')
+    parser.add_argument('--n_train_bounds', nargs=2, default=(2, 6.5),
+                        type=float, help='order of magnitudes for range to '
+                        'sample training differences from within (using '
+                        'logspace)')
     parser.add_argument('-m', '--no_models', default=False, action='store_true',
                         help='do not store tensorflow models')
     parser.add_argument('--test', default=False, action='store_true',
@@ -71,7 +75,8 @@ if __name__ == '__main__':
                                      inp_dim=true_inp_dim,
                                      dg_train_epochs=dg_train_epochs,
                                      n_reps=n_reps, model_kinds=model_kinds,
-                                     use_mp=use_mp, models_n_diffs=n_train_diffs)
+                                     use_mp=use_mp, models_n_diffs=n_train_diffs,
+                                     models_n_bounds=args.n_train_bounds)
     dg, (models, th), (p, c), (lrs, scrs) = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
