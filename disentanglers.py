@@ -197,7 +197,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
                  true_inp_dim=None, n_partitions=5, regularizer_weight=0,
-                 act_func=tf.nn.relu,
+                 act_func=tf.nn.relu, orthog_partitions=False,
                  branch_names=('class_branch', 'autoenc_branch'),
                  **layer_params):
         if true_inp_dim is None:
@@ -215,7 +215,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.model = tfk.Model(inputs=inputs,
                                outputs=outputs)
         out = da.generate_partition_functions(true_inp_dim,
-                                              n_funcs=n_partitions)
+                                              n_funcs=n_partitions,
+                                              random_orth_vec=orthog_partitions)
         self.n_partitions = n_partitions
         self.p_funcs, self.p_vectors, self.p_offsets = out
         self.rep_model = tfk.Model(inputs=inputs, outputs=rep)

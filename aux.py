@@ -64,7 +64,12 @@ def _binary_classification(x, plane=None, off=0):
     return np.sum(plane*x, axis=1) - off > 0
     
 def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
-                                 orth_vec=None, orth_off=None):
+                                 orth_vec=None, orth_off=None,
+                                 random_orth_vec=False):
+    if random_orth_vec:
+        direction = np.random.randn(1, dim)
+        norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
+        orth_vec = direction/norms
     if orth_vec is not None:
         orth_vecs = u.get_orthogonal_basis(orth_vec)[:, 1:]
         rand_inds = np.random.choice(orth_vecs.shape[1], n_funcs)

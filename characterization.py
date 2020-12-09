@@ -715,3 +715,32 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
     plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 
     return dg, (models, th), (p, c), lts_scores
+
+def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
+                           dg_type=dg.FunctionalDataGenerator,
+                           model_type=dd.FlexibleDisentanglerAE,
+                           folder='disentangled/simulation_data/partition/'):
+    out = da.load_full_run(folder, run_ind, 
+                       dg_type=dg_type, model_type=model_type,
+                       file_template=f_pattern, analysis_only=True) 
+    n_parts, _, _, _, p, _, _, sc = out
+
+    n_panels = sc.shape[0]
+    n_train_egs = np.logspace(2, 6.5, p.shape[0], dtype=int)
+
+    dim_labels = (n_parts, n_train_egs)
+    ylim_cont = [0, 1]
+    ylim_part = [.5, 1]
+    
+    f, axs = plt.subplots(sc.shape[0], 2, figsize=(2*fwid, fwid*n_panels))
+
+    axs_sc = plot_recon_accuracies_ntrain(sc, central_tendency=np.nanmedian,
+                                          axs=axs[:, 0], xs=n_parts,
+                                          log_x=log_x, n_plots=n_train_egs,
+                                          ylabel='continuous gen',
+                                          ylim=ylim_cont)
+    axs_p = plot_recon_accuracies_ntrain(p, central_tendency=np.nanmedian,
+                                         axs=axs[:, 1], xs=n_parts,
+                                         log_x=log_x, ylabel='partition gen',
+                                         ylim=ylim_part)
+    

@@ -39,6 +39,11 @@ def create_parser():
                         help='do not store tensorflow models')
     parser.add_argument('--test', default=False, action='store_true',
                         help='run minimal code to test that this script works')
+    parser.add_argument('--use_orthog_partitions', default=False,
+                        action='store_true',
+                        help='use only mutually orthogonal partition functions '
+                        '(if the number of partitions exceeds the number of '
+                        'dimensions, they will just be resampled')
     return parser
 
 if __name__ == '__main__':
@@ -64,9 +69,11 @@ if __name__ == '__main__':
     else:
         dg_use = None
 
+    orthog_partitions = args.use_orthog_partitions
     model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
                                   true_inp_dim=true_inp_dim,
-                                  n_partitions=p)
+                                  n_partitions=p,
+                                  orthog_partitions=orthog_partitions)
                        for p in partitions)
 
         
