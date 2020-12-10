@@ -720,10 +720,11 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
                            model_type=dd.FlexibleDisentanglerAE,
                            folder='disentangled/simulation_data/partition/'):
-    out = da.load_full_run(folder, run_ind, 
-                       dg_type=dg_type, model_type=model_type,
-                       file_template=f_pattern, analysis_only=True) 
-    n_parts, _, _, _, p, _, _, sc = out
+    data, info = da.load_full_run(folder, run_ind, 
+                                  dg_type=dg_type, model_type=model_type,
+                                  file_template=f_pattern, analysis_only=True) 
+    n_parts, _, _, _, p, _, _, sc = data
+    print(info)
 
     n_panels = sc.shape[0]
     n_train_egs = np.logspace(2, 6.5, p.shape[0], dtype=int)

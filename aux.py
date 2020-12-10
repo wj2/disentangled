@@ -71,9 +71,9 @@ def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
         norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
         orth_vec = direction/norms
     if orth_vec is not None:
-        orth_vecs = u.get_orthogonal_basis(orth_vec)[:, 1:]
-        rand_inds = np.random.choice(orth_vecs.shape[1], n_funcs)
-        plane_vec = orth_vecs[:, rand_inds].T
+        orth_vecs = u.generate_orthonormal_basis(dim)
+        seq_inds = np.arange(n_funcs, dtype=int) % dim
+        plane_vec = orth_vecs[:, seq_inds].T
     else:
         direction = np.random.randn(n_funcs, dim)
         norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
@@ -270,6 +270,29 @@ def load_generalization_output(folder, manifest='manifest.pkl',
 
     return dg, models, th, p, c, ld, sc
 
+def _interpret_foldername(fl, td_pattern='-td([0-9]+)-',
+                          ld_pattern='-ld([0-9]+)-',
+                          bd_pattern='-bd([0-9.]+)-([0-9.]+)-([0-9]+)-',
+                          orth_pattern='-orth-'):
+    td_out= re.search(td_pattern, fl)
+    if td_out is not None:
+        td_out = int(td_out.group(1))
+
+    ld_out = re.search(ld_pattern, fl)
+    if ld_out is not None:
+        ld_out = int(ld_out.group(1))
+
+    bd_out = re.search(bd_pattern, fl)
+    if bd_out is not None:
+        bd_out = (float(bd_out.group(1)), float(bd_out.group(2)),
+                  int(bd_out.group(3)))
+
+    orth_out = re.search(orth_pattern, fl)
+    if orth_out is not None:
+        orth_out = True
+    return dict(input_dimensions=td_out, latent_dimensions=ld_out,
+                training_eg_args=bd_out, orthogonal_partitions=orth_out)
+
 def load_full_run(folder, run_ind, merge_axis=1,
                   file_template='bvae-n_([0-9])_{run_ind}',
                   analysis_only=False, **kwargs):
@@ -277,10 +300,14 @@ def load_full_run(folder, run_ind, merge_axis=1,
     fls = os.listdir(folder)
     targ_inds = []
     outs = []
+    have_info = False
+    info = None
     for fl in fls:
         x = re.match(tomatch, fl)
         if x is not None:
             ti = int(x.group(1))
+            if not have_info:
+                info = _interpret_foldername(fl)
             targ_inds.append(ti)
             fp = os.path.join(folder, fl)
             out = load_generalization_output(fp, analysis_only=analysis_only,
@@ -305,7 +332,8 @@ def load_full_run(folder, run_ind, merge_axis=1,
             ch_all = _concatenate_none((c_all, c), axis=merge_axis)
             ld_all = _concatenate_none((ld_all, ld), axis=merge_axis)
             sc_all = _concatenate_none((sc_all, sc), axis=merge_axis)
-    return out_inds, dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all
+    data = out_inds, dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all
+    return data, info
 
 def _concatenate_none(arrs, axis=0):
     if np.any(list(arr is None for arr in arrs)):
