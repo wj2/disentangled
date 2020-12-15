@@ -584,26 +584,31 @@ def find_linear_mappings(dg, model_arr, n_samps=10**5, half_ns=100, half=True,
     else:
         scores_shape = model_arr.shape
     scores = np.zeros(scores_shape, dtype=float)
-    lintrans = np.zeros_like(model_arr, dtype=object)
+    sims = np.zeros_like(scores, dtype=object)
+    lintrans = np.zeros(model_arr.shape + (2,), dtype=object)
     for ind in inds:
-        lr, sc = find_linear_mapping(dg, model_arr[ind], n_samps=n_samps,
-                                     **kwargs)
+        lr, sc, sim = find_linear_mapping(dg, model_arr[ind], n_samps=n_samps,
+                                          **kwargs)
         scores[ind] = sc
         lintrans[ind] = lintrans
-    return lintrans, scores
+        sims[ind] = sim
+    return lintrans, scores, sim
 
 def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
                         **kwargs):
     if half:
         score = np.zeros(half_ns)
+        sims = np.zeros_like(score, dtype=object)
         for i in range(half_ns):
-            lr, sc = _find_linear_mapping_single(*args, half=half, **kwargs)
+            lr, sc, sim = _find_linear_mapping_single(*args, half=half, **kwargs)
             score[i] = sc
+            sims[i] = sim
     else:
-        lr, score = _find_linear_mapping_single(*args, half=half, **kwargs)
-    return lr, score
+        lr, score, sim = _find_linear_mapping_single(*args, half=half, **kwargs)
+    return lr, score, sims
 
-def _find_linear_mapping_single(dg, model, n_samps=10**5, half=True, **kwargs):
+def _find_linear_mapping_single(dg, model, n_samps=10**5, half=True,
+                                get_parallelism=True, **kwargs):
     if half:
         src = da.HalfMultidimensionalNormal.partition(dg.source_distribution)
         stim = src.rvs(n_samps)
@@ -621,7 +626,14 @@ def _find_linear_mapping_single(dg, model, n_samps=10**5, half=True, **kwargs):
     lr.fit(enc_pts, stim)
     score = lr.score(test_enc_pts, test_stim)
     params = lr.get_params()
-    return lr, score
+    if get_parallelism:
+        lr2 = sklm.LinearRegression(**kwargs)
+        lr2.fit(test_enc_pts, test_stim)
+        sim = u.cosine_similarity(lr.coef_, lr2.coef_)
+    else:
+        lr2 = None
+        sim = None
+    return (lr, lr2), score, sim
 
 def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
                             train_models_blind=False, inp_dim=2,
