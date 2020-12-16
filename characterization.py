@@ -527,7 +527,8 @@ def plot_recon_gen_corr(scores, gens, color_ax=None, ax=None):
 
 def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
                                  plot_labels='train egs = {}', n_plots=None,
-                                 ylabel='', ylim=None, **kwargs):
+                                 ylabel='', ylim=None, num_dims=None,
+                                 **kwargs):
     if len(scores.shape) == 4:
         scores = np.mean(scores, axis=3)
     n_ds, n_mks, n_reps = scores.shape
@@ -542,6 +543,8 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
             axs[i].set_title(plot_labels.format(n_plots[i]))
         if ylim is not None:
             axs[i].set_ylim(ylim)
+        if num_dims is not None:
+            gpl.add_vlines(num_dims, axs[i])
     axs[i].set_xlabel('partitions')
     return axs        
 
@@ -751,9 +754,11 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                           axs=axs[:, 0], xs=n_parts,
                                           log_x=log_x, n_plots=n_train_egs,
                                           ylabel='continuous gen',
-                                          ylim=ylim_cont)
+                                          ylim=ylim_cont,
+                                          num_dims=info['input_dimensions'])
     axs_p = plot_recon_accuracies_ntrain(p, central_tendency=np.nanmedian,
                                          axs=axs[:, 1], xs=n_parts,
                                          log_x=log_x, ylabel='partition gen',
-                                         ylim=ylim_part)
+                                         ylim=ylim_part,
+                                         num_dims=info['input_dimensions'])
     
