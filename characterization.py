@@ -593,7 +593,7 @@ def find_linear_mappings(dg, model_arr, n_samps=10**5, half_ns=100, half=True,
         lr, sc, sim = find_linear_mapping(dg, model_arr[ind], n_samps=n_samps,
                                           **kwargs)
         scores[ind] = sc
-        lintrans[ind] = lintrans
+        lintrans[ind] = lr
         sims[ind] = sim
     return lintrans, scores, sim
 
