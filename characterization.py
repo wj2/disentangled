@@ -202,9 +202,10 @@ def _get_circle_pts(n, inp_dim, r=1):
 def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
                      markers=True, line_alpha=.5, use_arc_dim=False,
-                     use_circ_dim=False, **pca_args):
+                     use_circ_dim=False, arc_col=(.8, .8, .8), scale_mag=.5,
+                     fwid=2.5, **pca_args):
     if ax is None:
-        f, ax = plt.subplots(1, 1)
+        f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
 
     angs = np.linspace(0, 2*np.pi, n)
     pts = np.stack((np.cos(angs), np.sin(angs),) +
@@ -214,17 +215,6 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
         p = _model_pca(dg, model, n_dim_red=n_dim_red, use_arc_dim=use_arc_dim,
                        use_circ_dim=use_circ_dim, **pca_args)
         
-    for r in rs:
-        s_reps = dg.generator(r*pts)
-        mod_reps = model.get_representation(s_reps)
-        if dim_red:
-            mod_reps = p.transform(mod_reps)
-        l = ax.plot(mod_reps[:, 0], mod_reps[:, 1], linestyle=line_style,
-                    alpha=line_alpha)
-        if markers:
-            ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o', markersize=pt_size,
-                    color=l[0].get_color())
-
     if n_arcs > 0:
         skips = int(np.round(n/n_arcs))
         sub_pts = rs[-1]*pts[::skips]
@@ -236,10 +226,26 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
             if dim_red:
                 mod_reps = p.transform(mod_reps)
             l = ax.plot(mod_reps[:, 0], mod_reps[:, 1], linestyle=line_style,
-                        alpha=line_alpha)
+                        alpha=line_alpha, color=arc_col)
             if markers:
                 ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o', markersize=pt_size,
                         color=l[0].get_color())
+
+    for r in rs:
+        s_reps = dg.generator(r*pts)
+        mod_reps = model.get_representation(s_reps)
+        if dim_red:
+            mod_reps = p.transform(mod_reps)
+        l = gpl.plot_trace_werr(mod_reps[:, 0], mod_reps[:, 1], ax=ax,
+                                linestyle=line_style, alpha=line_alpha)
+        if markers:
+            ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o', markersize=pt_size,
+                    color=l[0].get_color())
+
+
+    ax.set_aspect('equal')
+    gpl.make_xaxis_scale_bar(ax, scale_mag)
+    gpl.make_yaxis_scale_bar(ax, scale_mag)
     return ax
 
 def plot_partitions(pf_planes, ax, dim_red=None, scale=1):
@@ -528,7 +534,7 @@ def plot_recon_gen_corr(scores, gens, color_ax=None, ax=None):
 def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
                                  plot_labels='train egs = {}', n_plots=None,
                                  ylabel='', ylim=None, num_dims=None,
-                                 **kwargs):
+                                 xlab='partitions', **kwargs):
     if len(scores.shape) == 4:
         scores = np.mean(scores, axis=3)
     n_ds, n_mks, n_reps = scores.shape
@@ -539,13 +545,13 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
     for i, sc in enumerate(scores):
         plot_recon_accuracy_partition(sc, ax=axs[i], mks=xs, **kwargs)
         axs[i].set_ylabel(ylabel)
-        if n_plots is not None:
+        if n_plots is not None and len(plot_labels) > 0:
             axs[i].set_title(plot_labels.format(n_plots[i]))
         if ylim is not None:
             axs[i].set_ylim(ylim)
         if num_dims is not None:
             gpl.add_vlines(num_dims, axs[i])
-    axs[i].set_xlabel('partitions')
+    axs[i].set_xlabel(xlab)
     return axs        
 
 def plot_recon_accuracy_partition(scores, mks=None, ax=None, indiv_pts=True,
@@ -740,25 +746,42 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                   file_template=f_pattern, analysis_only=True) 
     n_parts, _, _, _, p, _, _, sc = data
     print(info)
+    plot_recon_gen_summary_data((p, sc), n_parts, ylims=((0, 1), (.5, 1)),
+                                labels=('gen cont', 'gen part'), info=info)
 
-    n_panels = sc.shape[0]
-    n_train_egs = np.logspace(2, 6.5, p.shape[0], dtype=int)
+def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
+                                ylims=None, labels=None, x_ax=1, panel_ax=0,
+                                fwid=3, info=None, log_x=True, label='',
+                                panel_labels='train egs = {}',
+                                xlab='partitions', axs=None):
+    n_plots = len(quants_plot)
+    n_panels = quants_plot[0].shape[panel_ax]
+    if ylims is None:
+        ylims = ((0, 1),)*n_plots
+    if labels is None:
+        labels = ('',)*n_plots
+    if panel_vals is None:
+        panel_vals = np.logspace(2, 6.5, quants_plot[0].shape[panel_ax],
+                                 dtype=int)
 
-    dim_labels = (n_parts, n_train_egs)
-    ylim_cont = [0, 1]
-    ylim_part = [.5, 1]
-    
-    f, axs = plt.subplots(sc.shape[0], 2, figsize=(2*fwid, fwid*n_panels))
+    fsize = (n_plots*fwid, fwid*n_panels)
+    if axs is None:
+        f, axs = plt.subplots(n_panels, n_plots, figsize=fsize, squeeze=False)
 
-    axs_sc = plot_recon_accuracies_ntrain(sc, central_tendency=np.nanmedian,
-                                          axs=axs[:, 0], xs=n_parts,
-                                          log_x=log_x, n_plots=n_train_egs,
-                                          ylabel='continuous gen',
-                                          ylim=ylim_cont,
-                                          num_dims=info['input_dimensions'])
-    axs_p = plot_recon_accuracies_ntrain(p, central_tendency=np.nanmedian,
-                                         axs=axs[:, 1], xs=n_parts,
-                                         log_x=log_x, ylabel='partition gen',
-                                         ylim=ylim_part,
-                                         num_dims=info['input_dimensions'])
-    
+    for i, qp in enumerate(quants_plot):
+        if info is not None:
+            nd = info.get('input_dimensions', None)
+        else:
+            nd = None
+        if x_ax == 0 and panel_ax == 1:
+            qp = np.swapaxes(qp, 0, 1)
+        else:
+            qp = np.swapaxes(qp, x_ax, 1)
+            qp = np.swapaxes(qp, panel_ax, 0)
+        axs_i = plot_recon_accuracies_ntrain(qp, central_tendency=np.nanmedian,
+                                             axs=axs[:, i], xs=x_vals,
+                                             log_x=log_x, n_plots=panel_vals,
+                                             ylabel=labels[i], ylim=ylims[i],
+                                             num_dims=nd, xlab=xlab,
+                                             label=label,
+                                             plot_labels=panel_labels)
