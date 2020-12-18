@@ -88,9 +88,11 @@ class SupervisedDisentangler(da.TFModel):
     
 class FlexibleDisentangler(da.TFModel):
 
-    def __init__(self, input_shape, layer_shapes, encoded_size, true_inp_dim,
+    def __init__(self, input_shape, layer_shapes, encoded_size,
+                 true_inp_dim=None,
                  n_partitions=5, regularizer_weight=.01, act_func=tf.nn.relu,
                  **layer_params):
+        true_inp_dim = encoded_size
         enc = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                 n_partitions, act_func=act_func,
                                 regularizer_weight=regularizer_weight,
