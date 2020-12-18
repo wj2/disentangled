@@ -92,7 +92,8 @@ class FlexibleDisentangler(da.TFModel):
                  true_inp_dim=None,
                  n_partitions=5, regularizer_weight=.01, act_func=tf.nn.relu,
                  **layer_params):
-        true_inp_dim = encoded_size
+        if true_inp_dim is None:
+            true_inp_dim = encoded_size
         enc = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                 n_partitions, act_func=act_func,
                                 regularizer_weight=regularizer_weight,
