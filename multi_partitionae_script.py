@@ -44,7 +44,7 @@ def create_parser():
                         help='use only mutually orthogonal partition functions '
                         '(if the number of partitions exceeds the number of '
                         'dimensions, they will just be resampled')
-    parser.add_argument('--offset_distr_var', default=0, type=float
+    parser.add_argument('--offset_distr_var', default=0, type=float,
                         help='variance of the binary partition offset '
                         'distribution (will be Gaussian, default 0)')
     return parser
