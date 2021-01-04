@@ -44,6 +44,9 @@ def create_parser():
                         help='use only mutually orthogonal partition functions '
                         '(if the number of partitions exceeds the number of '
                         'dimensions, they will just be resampled')
+    parser.add_argument('--offset_distr_var', default=0, type=float
+                        help='variance of the binary partition offset '
+                        'distribution (will be Gaussian, default 0)')
     return parser
 
 if __name__ == '__main__':
@@ -69,11 +72,17 @@ if __name__ == '__main__':
     else:
         dg_use = None
 
+    if args.offset_distr_var == 0:
+        offset_distr = None
+    else:
+        offset_distr = sts.norm(0, np.sqrt(args.offset_distr_var))
+        
     orthog_partitions = args.use_orthog_partitions
     model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
                                   true_inp_dim=true_inp_dim,
                                   n_partitions=p,
-                                  orthog_partitions=orthog_partitions)
+                                  orthog_partitions=orthog_partitions,
+                                  offset_distr=offset_distr)
                        for p in partitions)
 
         
