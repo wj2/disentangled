@@ -89,9 +89,8 @@ class SupervisedDisentangler(da.TFModel):
 class FlexibleDisentangler(da.TFModel):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
-                 true_inp_dim=None,
-                 n_partitions=5, regularizer_weight=.01, act_func=tf.nn.relu,
-                 **layer_params):
+                 true_inp_dim=None, n_partitions=5, regularizer_weight=.01,
+                 act_func=tf.nn.relu, offset_distr=None, **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         enc = self.make_encoder(input_shape, layer_shapes, encoded_size,
@@ -103,7 +102,8 @@ class FlexibleDisentangler(da.TFModel):
         self.model = tfk.Model(inputs=self.encoder.inputs,
                                outputs=self.encoder.outputs[0])
         out = da.generate_partition_functions(true_inp_dim,
-                                              n_funcs=n_partitions)
+                                              n_funcs=n_partitions,
+                                              offset_distribution=offset_distr)
         self.p_funcs, self.p_vectors, self.p_offsets = out
         self.n_partitions = n_partitions
         self.rep_model = tfk.Model(inputs=self.encoder.inputs,
@@ -202,7 +202,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  true_inp_dim=None, n_partitions=5, regularizer_weight=0,
                  act_func=tf.nn.relu, orthog_partitions=False,
                  branch_names=('class_branch', 'autoenc_branch'),
-                 **layer_params):
+                 offset_distr=None, **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
@@ -219,7 +219,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                outputs=outputs)
         out = da.generate_partition_functions(true_inp_dim,
                                               n_funcs=n_partitions,
-                                              random_orth_vec=orthog_partitions)
+                                              random_orth_vec=orthog_partitions,
+                                              offset_distribution=offset_distr)
         self.n_partitions = n_partitions
         self.p_funcs, self.p_vectors, self.p_offsets = out
         self.rep_model = tfk.Model(inputs=inputs, outputs=rep)
