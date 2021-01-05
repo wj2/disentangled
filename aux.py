@@ -322,6 +322,10 @@ def load_full_run(folder, run_ind, merge_axis=1,
         out_inds.append(targ_inds[si])
         if i == 0:
             dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all = outs[si]
+            try:
+                sc_all.shape
+            except AttributeError:
+                sc_all, _ = sc_all
         else:
             _, models, th, p, c, ld, sc = outs[si]
             if not analysis_only:
@@ -329,6 +333,10 @@ def load_full_run(folder, run_ind, merge_axis=1,
                                             axis=merge_axis)
                 if th_all is not None:
                     th_all = _concatenate_none((th_all, th), axis=merge_axis)
+            try:
+                sc.shape
+            except AttributeError:
+                sc, _ = sc
             p_all = _concatenate_none((p_all, p), axis=merge_axis)
             ch_all = _concatenate_none((c_all, c), axis=merge_axis)
             ld_all = _concatenate_none((ld_all, ld), axis=merge_axis)
