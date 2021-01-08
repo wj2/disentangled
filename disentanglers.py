@@ -167,7 +167,8 @@ class FlexibleDisentangler(da.TFModel):
             self._compile()
 
         train_y = self.generate_target(train_y)
-        eval_y = self.generate_target(eval_y)
+        if eval_y is not None:
+            eval_y = self.generate_target(eval_y)
             
         if eval_x is not None and eval_y is not None:
             eval_set = (eval_x, eval_y)
@@ -195,6 +196,59 @@ def pad_zeros(x, dim):
     add = np.zeros((x.shape[0], to_pad))
     x_new = np.concatenate((x, add), axis=1)
     return x_new
+
+class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
+
+    @classmethod
+    def load(cls, path):
+        dummy = FlexibleDisentanglerAEConv(0, ((10,),), 0, 5)
+        return cls._load_model(dummy, path)
+
+    def make_encoder(self, input_shape, layer_shapes, encoded_size,
+                     n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
+                     layer_type_enc=tfkl.Conv2D,
+                     layer_type_dec=tfkl.Conv2DTranspose,
+                     branch_names=('a', 'b'), stride=2, last_kernel=20,
+                     **layer_params):
+        inputs = tfk.Input(shape=input_shape)
+        x = inputs
+        for lp in layer_shapes:
+            x = layer_type_enc(*lp, activation=act_func, strides=stride,
+                               **layer_params)(x)
+
+        x = tfkl.Flatten()(x)
+            
+        # representation layer
+        l2_reg = tfk.regularizers.L2(l2=regularizer_weight)
+        rep = tfkl.Dense(encoded_size, activation=None,
+                         activity_regularizer=l2_reg)(x)
+
+        # partition branch
+        sig_act = tf.keras.activations.sigmoid
+        class_branch = tfkl.Dense(n_partitions, activation=sig_act,
+                                  name=branch_names[0])(rep)
+
+        # decoder branch
+        contraction = stride**len(layer_shapes)
+        n_units_from_latent = int(np.product(input_shape)/(contraction**2))
+        z = tfkl.Dense(units=n_units_from_latent,
+                       activation=act_func, **layer_params)(rep)
+        r_shape = (int(input_shape[0]/contraction),
+                   int(input_shape[1]/contraction),
+                   input_shape[2])
+
+        print(r_shape)
+        z = tfkl.Reshape(target_shape=r_shape)(z)
+                       
+        for lp in layer_shapes[::-1]:
+            z = layer_type_dec(*lp, activation=act_func, strides=stride,
+                               padding='same', **layer_params)(z)
+
+        autoenc_branch = layer_type_dec(1, 1, strides=1,
+                                        activation=None, name=branch_names[1],
+                                        padding='same', **layer_params)(z)
+        return inputs, rep, class_branch, autoenc_branch
+
 
 class FlexibleDisentanglerAE(FlexibleDisentangler):
 
@@ -280,8 +334,9 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         train_y = self.generate_target(train_y)
         train_y_dict = {self.branch_names[0]:train_y,
                         self.branch_names[1]:train_x}
-        
-        eval_y = self.generate_target(eval_y)
+
+        if eval_y is not None:
+            eval_y = self.generate_target(eval_y)
             
         if eval_x is not None and eval_y is not None:
             eval_y_dict = {self.branch_names[0]:eval_y,
