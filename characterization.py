@@ -631,12 +631,12 @@ def _find_linear_mapping_single(dg, model, n_samps=10**5, half=True,
     else:
         test_stim = dg.source_distribution.rvs(n_samps)
     test_enc_pts = model.get_representation(dg.generator(test_stim))
-    lr = sklm.LinearRegression(**kwargs)
+    lr = sklm.Ridge(**kwargs)
     lr.fit(enc_pts, stim)
     score = lr.score(test_enc_pts, test_stim)
     params = lr.get_params()
     if get_parallelism:
-        lr2 = sklm.LinearRegression(**kwargs)
+        lr2 = sklm.Ridge(**kwargs)
         lr2.fit(test_enc_pts, test_stim)
         sim = u.cosine_similarity(lr.coef_, lr2.coef_)
     else:
