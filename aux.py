@@ -7,6 +7,8 @@ import scipy.stats as sts
 import numpy as np
 import functools as ft
 import re
+import PIL.Image as pImage
+import pandas as pd
 
 import general.utility as u
 
@@ -350,3 +352,34 @@ def _concatenate_none(arrs, axis=0):
     else:
         out = np.concatenate(arrs, axis=axis)
     return out
+
+chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
+def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
+                      img_size=(256, 256)):
+    subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
+                                                os.listdir(folder))
+    names = []
+    nums = []
+    pitchs = []
+    rots = []
+    dists = []
+    imgs = []
+    for sfl in subfolders:
+        p = os.path.join(folder, sfl, mid_folder)
+        img_fls = os.listdir(p)
+        for ifl in img_fls:
+            m = re.match(file_template, ifl)
+            if m is not None:
+                names.append(ifl)
+                nums.append(int(m.group(1)))
+                pitchs.append(int(m.group(2)))
+                rots.append(int(m.group(3)))
+                dists.append(int(m.group(4)))
+                img = pImage.open(os.path.join(p, ifl))
+                img_rs = img.resize(img_size)
+                imgs.append(np.asarray(img_rs))
+                img.close()
+    d = {'names':names, 'img_nums':nums, 'pitch':pitchs, 'rotation':rots,
+         'distances':dists, 'images':imgs}
+    data = pd.DataFrame(data=d)
+    return data
