@@ -235,7 +235,6 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
 
     if sc is not None:
         sc_file = seed_str.format('sc')
-        print(sc)
         pickle.dump(sc, open(os.path.join(folder, sc_file), 'wb'))
 
     if save_tf_models:
