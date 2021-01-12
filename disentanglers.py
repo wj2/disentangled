@@ -266,7 +266,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         # partition branch
         sig_act = tf.keras.activations.sigmoid
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
-                                  name=branch_names[0])(x)
+                                  name=branch_names[0])(rep)
 
         # decoder branch
         z = rep
