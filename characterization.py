@@ -52,6 +52,9 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
 
         test_samples = test_distrib.rvs(n_test_samples)
         test_labels = test_func[i](test_samples)
+        mask = np.logical_not(np.isnan(test_labels))
+        test_samples = test_samples[mask]
+        test_labels = test_labels[mask].astype(int)
         if shuffle:
             snp.random.shuffle(test_labels)
         type_balance = np.histogram(test_labels.astype(int), bins=2)[0]
