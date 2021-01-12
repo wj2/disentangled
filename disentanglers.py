@@ -197,58 +197,14 @@ def pad_zeros(x, dim):
     x_new = np.concatenate((x, add), axis=1)
     return x_new
 
-class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
-    @classmethod
-    def load(cls, path):
-        dummy = FlexibleDisentanglerAEConv(0, ((10,),), 0, 5)
-        return cls._load_model(dummy, path)
-
-    def make_encoder(self, input_shape, layer_shapes, encoded_size,
-                     n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
-                     layer_type_enc=tfkl.Conv2D,
-                     layer_type_dec=tfkl.Conv2DTranspose,
-                     branch_names=('a', 'b'), stride=2, last_kernel=20,
-                     **layer_params):
-        inputs = tfk.Input(shape=input_shape)
-        x = inputs
-        for lp in layer_shapes:
-            x = layer_type_enc(*lp, activation=act_func, strides=stride,
-                               **layer_params)(x)
-
-        x = tfkl.Flatten()(x)
-            
-        # representation layer
-        l2_reg = tfk.regularizers.L2(l2=regularizer_weight)
-        rep = tfkl.Dense(encoded_size, activation=None,
-                         activity_regularizer=l2_reg)(x)
-
-        # partition branch
-        sig_act = tf.keras.activations.sigmoid
-        class_branch = tfkl.Dense(n_partitions, activation=sig_act,
-                                  name=branch_names[0])(rep)
-
-        # decoder branch
-        contraction = stride**len(layer_shapes)
-        n_units_from_latent = int(np.product(input_shape)/(contraction**2))
-        z = tfkl.Dense(units=n_units_from_latent,
-                       activation=act_func, **layer_params)(rep)
-        r_shape = (int(input_shape[0]/contraction),
-                   int(input_shape[1]/contraction),
-                   input_shape[2])
-
-        print(r_shape)
-        z = tfkl.Reshape(target_shape=r_shape)(z)
-                       
-        for lp in layer_shapes[::-1]:
-            z = layer_type_dec(*lp, activation=act_func, strides=stride,
-                               padding='same', **layer_params)(z)
-
-        autoenc_branch = layer_type_dec(1, 1, strides=1,
-                                        activation=None, name=branch_names[1],
-                                        padding='same', **layer_params)(z)
-        return inputs, rep, class_branch, autoenc_branch
-
+def _mse_nanloss(label, prediction):
+    nan_mask = tf.math.logical_not(tf.math.is_nan(label))
+    label = tf.boolean_mask(label, nan_mask)
+    prediction = tf.boolean_mask(prediction, nan_mask)
+    mult = tf.square(prediction - label)
+    mse_nanloss = tf.reduce_sum(mult)
+    return mse_nanloss
 
 class FlexibleDisentanglerAE(FlexibleDisentangler):
 
@@ -256,7 +212,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  true_inp_dim=None, n_partitions=5, regularizer_weight=0,
                  act_func=tf.nn.relu, orthog_partitions=False,
                  branch_names=('class_branch', 'autoenc_branch'),
-                 offset_distr=None, **layer_params):
+                 offset_distr=None, contextual_partitions=False,
+                 **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
@@ -274,7 +231,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         out = da.generate_partition_functions(true_inp_dim,
                                               n_funcs=n_partitions,
                                               random_orth_vec=orthog_partitions,
-                                              offset_distribution=offset_distr)
+                                              offset_distribution=offset_distr,
+                                              contextual=contextual_partitions)
         self.n_partitions = n_partitions
         self.p_funcs, self.p_vectors, self.p_offsets = out
         self.rep_model = tfk.Model(inputs=inputs, outputs=rep)
@@ -319,7 +277,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                     name=branch_names[1], **layer_params)(z)
         return inputs, rep, class_branch, autoenc_branch
 
-    def _compile(self, *args, loss=tf.losses.MeanSquaredError(), **kwargs):
+    def _compile(self, *args, loss=_mse_nanloss, **kwargs):
         loss_dict = {self.branch_names[0]:loss,
                      self.branch_names[1]:loss}
         if self.n_partitions == 0:
@@ -350,6 +308,66 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                              **kwargs)
         return out   
 
+class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
+
+    @classmethod
+    def load(cls, path):
+        dummy = FlexibleDisentanglerAEConv(0, ((10,),), 0, 5)
+        return cls._load_model(dummy, path)
+
+    def make_encoder(self, input_shape, layer_shapes, encoded_size,
+                     n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
+                     layer_type_enc=tfkl.Conv2D, 
+                     layer_type_dec=tfkl.Conv2DTranspose,
+                     branch_names=('a', 'b'), last_kernel=20,
+                     **layer_params):
+        inputs = tfk.Input(shape=input_shape)
+        x = inputs
+        strides = []
+        for lp in layer_shapes:
+            x = layer_type_enc(*lp, activation=act_func,
+                               **layer_params)(x)
+            strides.append(lp[2])
+
+        x = tfkl.Flatten()(x)
+            
+        # representation layer
+        l2_reg = tfk.regularizers.L2(l2=regularizer_weight)
+        rep = tfkl.Dense(encoded_size, activation=None,
+                         activity_regularizer=l2_reg)(x)
+
+        # partition branch
+        sig_act = tf.keras.activations.sigmoid
+        class_branch = tfkl.Dense(n_partitions, activation=sig_act,
+                                  name=branch_names[0])(rep)
+
+        # decoder branch
+        contraction = np.product(strides)
+        n_units_from_latent = int(np.product(input_shape)/(contraction**2))
+        z = tfkl.Dense(units=n_units_from_latent,
+                       activation=act_func, **layer_params)(rep)
+        r_shape = (int(input_shape[0]/contraction),
+                   int(input_shape[1]/contraction),
+                   input_shape[2])
+
+        print(r_shape)
+        z = tfkl.Reshape(target_shape=r_shape)(z)
+                       
+        for lp in layer_shapes[::-1]:
+            z = layer_type_dec(*lp, activation=act_func,
+                               padding='same', **layer_params)(z)
+
+        z = layer_type_dec(3, 1, strides=1,
+                           activation=None,
+                           padding='same', **layer_params)(z)
+
+        autoenc_branch = layer_type_dec(3, 1, strides=1,
+                                        activation=tf.nn.sigmoid,
+                                        name=branch_names[1],
+                                        padding='same', **layer_params)(z)
+        return inputs, rep, class_branch, autoenc_branch
+
+    
 class StandardAE(da.TFModel):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,

@@ -64,10 +64,19 @@ class InputGenerator(object):
     
 def _binary_classification(x, plane=None, off=0):
     return np.sum(plane*x, axis=1) - off > 0
-    
+
+def _contextual_binary_classification(x, plane=None, off=0, context=None,
+                                      context_off=0):
+    ret = (np.sum(plane*x, axis=1) - off > 0).astype(float)
+    if context[0] is not None:
+        mask = np.sum(context*x, axis=1) - context_off < 0
+        ret[mask] = np.nan
+    return ret
+
 def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
                                  orth_vec=None, orth_off=None,
-                                 random_orth_vec=False):
+                                 random_orth_vec=False, contextual=False,
+                                 smaller=False, context_offset=False):
     if random_orth_vec:
         direction = np.random.randn(1, dim)
         norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
@@ -86,11 +95,23 @@ def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
         offsets = np.zeros(n_funcs)
     if orth_off is not None:
         offsets = np.ones(n_funcs)*orth_off
+    offsets_context = np.zeros(n_funcs)
+    if contextual:
+        direction_c = np.random.randn(n_funcs, dim)
+        norms_c = np.expand_dims(np.sqrt(np.sum(direction_c**2, axis=1)), 1)
+        plane_vec_context = direction_c/norms_c
+    else:
+        plane_vec_context = (None,)*n_funcs
+    if context_offset:
+        offsets_context = offset_distribution.rvs(n_funcs)
+        
     funcs = np.zeros(n_funcs, dtype=object)
     
     for i in range(n_funcs):
-        funcs[i] = ft.partial(_binary_classification, plane=plane_vec[i:i+1],
-                              off=offsets[i])
+        funcs[i] = ft.partial(_contextual_binary_classification,
+                              plane=plane_vec[i:i+1], off=offsets[i],
+                              context=plane_vec_context[i:i+1],
+                              context_off=offsets_context[i])
     return funcs, plane_vec, offsets
     
 class HalfMultidimensionalNormal(object):
@@ -355,7 +376,7 @@ def _concatenate_none(arrs, axis=0):
 
 chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
-                      img_size=(256, 256)):
+                      img_size=(128, 128), max_load=np.inf, norm_pixels=True):
     subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
                                                 os.listdir(folder))
     names = []
@@ -364,6 +385,7 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
     rots = []
     dists = []
     imgs = []
+    loaded = 0
     for sfl in subfolders:
         p = os.path.join(folder, sfl, mid_folder)
         img_fls = os.listdir(p)
@@ -377,8 +399,15 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                 dists.append(int(m.group(4)))
                 img = pImage.open(os.path.join(p, ifl))
                 img_rs = img.resize(img_size)
-                imgs.append(np.asarray(img_rs))
+                img_arr = np.asarray(img_rs)
+                if norm_pixels:
+                    img_arr = img_arr/255
+                imgs.append(img_arr)
                 img.close()
+                
+                loaded = loaded + 1
+            if loaded >= max_load:
+                break
     d = {'names':names, 'img_nums':nums, 'pitch':pitchs, 'rotation':rots,
          'distances':dists, 'images':imgs}
     data = pd.DataFrame(data=d)
