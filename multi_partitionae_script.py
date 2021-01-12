@@ -47,6 +47,13 @@ def create_parser():
     parser.add_argument('--offset_distr_var', default=0, type=float,
                         help='variance of the binary partition offset '
                         'distribution (will be Gaussian, default 0)')
+    parser.add_argument('--show_prints', default=False,
+                        action='store_true',
+                        help='print training information for disentangler '
+                        'models')
+    parser.add_argument('--contextual_partitions', default=False,
+                        action='store_true',
+                        help='use contextual partitions')
     return parser
 
 if __name__ == '__main__':
@@ -76,19 +83,22 @@ if __name__ == '__main__':
         offset_distr = None
     else:
         offset_distr = sts.norm(0, np.sqrt(args.offset_distr_var))
-        
+
+    hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
+    contextual_partitions = args.contextual_partitions
     model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
                                   true_inp_dim=true_inp_dim,
                                   n_partitions=p,
+                                  contextual_partitions=contextual_partitions,
                                   orthog_partitions=orthog_partitions,
                                   offset_distr=offset_distr)
                        for p in partitions)
-
         
     use_mp = not args.no_multiprocessing
     out = dc.test_generalization_new(dg=dg_use, est_inp_dim=est_inp_dim,
                                      inp_dim=true_inp_dim,
+                                     hide_print=hide_print,
                                      dg_train_epochs=dg_train_epochs,
                                      n_reps=n_reps, model_kinds=model_kinds,
                                      use_mp=use_mp, models_n_diffs=n_train_diffs,
