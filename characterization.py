@@ -612,28 +612,36 @@ def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
         score = np.zeros(half_ns)
         sims = np.zeros_like(score, dtype=object)
         for i in range(half_ns):
-            lr, sc, sim = _find_linear_mapping_single(*args, half=half, **kwargs)
+            lr, sc, sim = find_linear_mapping_single(*args, half=half, **kwargs)
             score[i] = sc
             sims[i] = sim
     else:
-        lr, score, sim = _find_linear_mapping_single(*args, half=half, **kwargs)
+        lr, score, sim = find_linear_mapping_single(*args, half=half, **kwargs)
     return lr, score, sims
 
-def _find_linear_mapping_single(dg, model, n_samps=10**5, half=True,
-                                get_parallelism=True, **kwargs):
-    if half:
-        src = da.HalfMultidimensionalNormal.partition(dg.source_distribution)
-        stim = src.rvs(n_samps)
+def find_linear_mapping_single(dg, model, n_samps=10**5, half=True,
+                               get_parallelism=True, train_stim_set=None,
+                               train_labels=None, test_stim_set=None,
+                               test_labels=None, **kwargs):
+    if train_stim_set is not None and test_stim_set is not None:
+        enc_pts = model.get_representation(train_stim_set)
+        test_enc_pts = model.get_representation(test_stim_set)
+        stim = train_labels
+        test_stim = test_labels
     else:
-        stim = dg.source_distribution.rvs(n_samps)
-    enc_pts = model.get_representation(dg.generator(stim))
+        if half:
+            src = da.HalfMultidimensionalNormal.partition(dg.source_distribution)
+            stim = src.rvs(n_samps)
+        else:
+            stim = dg.source_distribution.rvs(n_samps)
 
-    if half:
-        flipped = src.flip()
-        test_stim = flipped.rvs(n_samps)
-    else:
-        test_stim = dg.source_distribution.rvs(n_samps)
-    test_enc_pts = model.get_representation(dg.generator(test_stim))
+        enc_pts = model.get_representation(dg.generator(stim))
+        if half:
+            flipped = src.flip()
+            test_stim = flipped.rvs(n_samps)
+        else:
+            test_stim = dg.source_distribution.rvs(n_samps)
+        test_enc_pts = model.get_representation(dg.generator(test_stim))
     lr = sklm.Ridge(**kwargs)
     lr.fit(enc_pts, stim)
     score = lr.score(test_enc_pts, test_stim)

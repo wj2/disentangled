@@ -285,9 +285,14 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         super()._compile(*args, loss=loss_dict, **kwargs)
     
     def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
-            data_generator=None, batch_size=32, **kwargs):
+            data_generator=None, batch_size=32, standard_loss=False,
+            **kwargs):
+        if standard_loss:
+            comp_kwargs = {'loss':tf.losses.MeanSquaredError()}
+        else:
+            comp_kwargs = {}
         if not self.compiled:
-            self._compile()
+            self._compile(**comp_kwargs)
 
         train_y = self.generate_target(train_y)
         train_y_dict = {self.branch_names[0]:train_y,
