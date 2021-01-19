@@ -375,7 +375,8 @@ def _concatenate_none(arrs, axis=0):
 
 chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
-                      img_size=(128, 128), max_load=np.inf, norm_pixels=True):
+                      img_size=(128, 128), max_load=np.inf, norm_pixels=True,
+                      norm_params=False):
     subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
                                                 os.listdir(folder))
     names = []
@@ -407,6 +408,10 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                 loaded = loaded + 1
             if loaded >= max_load:
                 break
+    if norm_params:
+        pitchs = u.demean_unit_std(pitchs)
+        rots = u.demean_unit_std(rots)
+        dists = u.demean_unit_std(dists)
     d = {'names':names, 'img_nums':nums, 'pitch':pitchs, 'rotation':rots,
          'distances':dists, 'images':imgs}
     data = pd.DataFrame(data=d)

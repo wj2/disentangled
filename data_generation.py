@@ -134,6 +134,63 @@ class VariationalDataGenerator(DataGenerator):
     def get_representation(self, x):
         return self.generator(x).mean()
 
+class ChairSourceDistrib():
+
+    def __init__(self, datatable, params):
+        self.data_list = np.array(datatable[params])
+
+    def rvs(self, n):
+        inds = np.random.choice(self.data_list.shape[0], n)
+        return self.data_list[inds]
+    
+class ChairGenerator(DataGenerator):
+
+    def __init__(self, folder, norm_params=True, img_size=(128, 128), **kwargs):
+        data = da.load_chair_images(folder, img_size=img_size, **kwargs)
+        self.data_table = data
+        self.params = ['rotation', 'pitch']
+        self.out_label = ['images']
+        self.source_distribution = ChairSourceDistrib(data, self.params)
+        self.img_size = data['images'][0].shape
+        self.output_dim = self.img_size
+        self.input_dim = len(self.params)
+
+    def fit(*args, **kwargs):
+        return tf.keras.callbacks.History()
+
+    def generator(self, x):
+        return self.get_representation(x)
+    
+    def get_representation(self, x, flat=False):
+        x = np.array(x)
+        if len(x.shape) == 1:
+            x = np.expand_dims(x, 0)
+        out = np.zeros(x.shape[0], dtype=object)
+        for i, xi in enumerate(x):
+            mask = np.product(self.data_table[self.params] == xi, axis=1)
+            s = np.array(self.data_table[self.out_label])[mask]
+            out_ind = np.random.choice(range(s.shape[0]))
+            samp = s[out_ind][0]
+            if flat:
+                samp = samp.flatten()
+            out[i] = samp
+        return np.stack(out)
+
+    def representation_dimensionality(self, source_distribution=None,
+                                      sample_size=10**1, **pca_args):
+        if source_distribution is None and self.source_distribution is not None:
+            source_distribution = self.source_distribution
+        elif source_distribution is None:
+            raise Exception('no source distribution provided')
+
+        samples = source_distribution.rvs(sample_size)
+        rep = self.get_representation(samples, flat=True)
+        p = skd.PCA(**pca_args)
+        p.fit(rep)
+        out = (p.explained_variance_ratio_, p.components_)
+        return out
+    
+    
 class RFDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=.01,

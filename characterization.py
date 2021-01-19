@@ -190,7 +190,7 @@ def _model_pca(dg, model, n_dim_red=10**4, use_arc_dim=False,
         distrib_pts = _get_circle_pts(n_dim_red, dg.input_dim, r=r)
     else:
         distrib_pts = dg.source_distribution.rvs(n_dim_red)
-    distrib_reps = dg.generator(distrib_pts)
+    distrib_reps = dg.get_representation(distrib_pts)
     mod_distrib_reps = model.get_representation(distrib_reps)
     p = skd.PCA(**pca_args)
     p.fit(mod_distrib_reps)
@@ -280,7 +280,7 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
                         p_c=None, dg_kind=dg_kind_default,
                         hide_print=True, est_inp_dim=None,
                         use_mp=False, n_reps=5, n_train_diffs=6,
-                        model_kinds=model_kinds_default):
+                        model_kinds=model_kinds_default, layer_spec=None):
 
     # train data generator
     inp_dim = 2
@@ -316,7 +316,8 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     # train models
     if est_inp_dim is None:
         est_inp_dim = inp_dim
-    layer_spec = ((40,), (40,), (25,), (10,))
+    if layer_spec is None:
+        layer_spec = ((40,), (40,), (25,), (10,))
     batch_size = 1000
     epochs = 60
     train_samples = np.logspace(3, 6.5, n_train_diffs, dtype=int)
@@ -666,7 +667,8 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
                             hide_print=True, est_inp_dim=None,
                             eval_n_iters=2, use_mp=False,
                             train_test_distrs=None, n_reps=5,
-                            model_kinds=model_kinds_default):
+                            model_kinds=model_kinds_default,
+                            layer_spec=None, model_n_epochs=60):
     # train data generator
     if dg_args is None:
         out_dim = 30
@@ -699,11 +701,12 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
         if est_inp_dim is None:
             est_inp_dim = inp_dim
         input_dims = (est_inp_dim,)*models_n_diffs
-        layer_spec = ((40,), (40,), (25,), (10,))
+        if layer_spec is None:
+            layer_spec = ((40,), (40,), (25,), (est_inp_dim,))
         models_args = (input_dims, dg, model_kinds, layer_spec)
     if models_kwargs is None:
         batch_size = 1000
-        epochs = 60
+        epochs = model_n_epochs
         train_samples = np.logspace(models_n_bounds[0], models_n_bounds[1],
                                     models_n_diffs, dtype=int)
         samps_list = True
