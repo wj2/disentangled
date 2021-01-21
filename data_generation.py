@@ -134,32 +134,101 @@ class VariationalDataGenerator(DataGenerator):
     def get_representation(self, x):
         return self.generator(x).mean()
 
-class ChairSourceDistrib():
+class ChairSourceDistrib(object):
 
-    def __init__(self, datatable, params):
-        self.data_list = np.array(datatable[params])
+    def __init__(self, datalist, set_partition=None, position_distr=None,
+                 use_partition=False):
+        self.data_list = np.array(datalist)
+        if position_distr is not None and use_partition:
+            position_distr = da.HalfMultidimensionalNormal.partition(
+                position_distr)
+        self.position_distr = position_distr
+        if use_partition:
+            if set_partition is None:
+                out = da.generate_partition_functions(self.data_list.shape[1],
+                                                      n_funcs=1)
+                pfs, vecs, offs = out
+                set_partition = pfs[0]
+                self.partition = vecs[0]
+                self.offset = offs[0]
+            else:
+                self.partition = None
+                self.offset = None
+            self.partition_func = set_partition
+        else:
+            self.partition_func = None
 
     def rvs(self, n):
+        if self.partition_func is not None:
+            mask = self.partition_func(self.data_list).astype(bool)
+            dl = self.data_list[mask]
+        else:
+            dl = self.data_list
         inds = np.random.choice(self.data_list.shape[0], n)
-        return self.data_list[inds]
+        out = self.data_list[inds]
+        if self.position_distr is not None:
+            ps = self.position_distr.rvs(n)
+            out = np.concatenate((out, ps), axis=1)
+        return out
+
+    def make_partition(self, set_partition=None):
+        return ChairSourceDistrib(self.data_list,
+                                  position_distr=self.position_distr,
+                                  set_partition=set_partition,
+                                  use_partition=True)
+
+    def flip(self):
+        if self.partition_func is not None:
+            set_part = lambda x: np.logical_not(self.partition_func(x))
+            new = ChairSourceDistrib(self.data_list, set_partition=set_part,
+                                     use_partition=True)
+            new.partition = self.partition
+            new.offset = self.offset
+            if self.position_distr is not None:
+                new.position_distr = self.position_distr.flip()
+        else:
+            print('no partition to flip')
+            new = ChairSourceDistrib(self.data_list)
+        return new        
     
 class ChairGenerator(DataGenerator):
 
-    def __init__(self, folder, norm_params=True, img_size=(128, 128), **kwargs):
-        data = da.load_chair_images(folder, img_size=img_size, **kwargs)
+    def __init__(self, folder, norm_params=True, img_size=(128, 128),
+                 include_position=False, position_distr=None, max_move=4,
+                 **kwargs):
+        data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
+                                    **kwargs)
+        if include_position and position_distr is None:
+            position_distr = sts.multivariate_normal((0, 0), 1)
+        self.position_distr = position_distr
         self.data_table = data
-        self.params = ['rotation', 'pitch']
-        self.out_label = ['images']
-        self.source_distribution = ChairSourceDistrib(data, self.params)
-        self.img_size = data['images'][0].shape
+        self.img_params = ['rotation', 'pitch']
+        self.n_img_params = len(self.img_params)
+        self.img_out_label = ['images'][0]
+        self.source_distribution = ChairSourceDistrib(
+            data[self.img_params],
+            position_distr=position_distr)
+        self.img_size = data[self.img_out_label][0].shape
+        self.params = self.img_params
+        if include_position:
+            self.params = self.params + ['horiz_offset', 'vert_offset']
         self.output_dim = self.img_size
         self.input_dim = len(self.params)
+        self.max_move = max_move
 
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()
 
     def generator(self, x):
         return self.get_representation(x)
+
+    def _move_img(self, img, coords):
+        coords[coords > self.max_move] = self.max_move
+        coords[coords < -self.max_move] = -self.max_move
+        img_dim = np.array(self.output_dim[:-1])
+        shifts = np.round(img_dim*coords/2).astype(int)
+        s_img = np.roll(img, shifts, axis=(0,1))
+        return s_img
     
     def get_representation(self, x, flat=False):
         x = np.array(x)
@@ -167,10 +236,14 @@ class ChairGenerator(DataGenerator):
             x = np.expand_dims(x, 0)
         out = np.zeros(x.shape[0], dtype=object)
         for i, xi in enumerate(x):
-            mask = np.product(self.data_table[self.params] == xi, axis=1)
-            s = np.array(self.data_table[self.out_label])[mask]
+            xi_img = xi[:self.n_img_params]
+            mask = np.product(self.data_table[self.img_params] == xi_img,
+                              axis=1)
+            s = np.array(self.data_table[self.img_out_label])[mask]
             out_ind = np.random.choice(range(s.shape[0]))
-            samp = s[out_ind][0]
+            samp = s[out_ind]
+            if self.position_distr is not None:
+                samp = self._move_img(samp, xi[self.n_img_params:])
             if flat:
                 samp = samp.flatten()
             out[i] = samp

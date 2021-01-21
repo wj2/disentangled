@@ -46,7 +46,8 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
     for i in range(n_iters):
         train_samples = train_distrib.rvs(n_train_samples)
         train_labels = train_func[i](train_samples)
-        train_rep = vae.get_representation(gen.generator(train_samples))
+        inp_reps = gen.generator(train_samples)
+        train_rep = vae.get_representation(inp_reps)
         c = classifier(kernel=kernel, **classifier_params)
         c.fit(train_rep, train_labels)
 
@@ -589,7 +590,7 @@ def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False,
                 ax.plot(use_x, scores[:, j, k], 'o', color=col)
     return ax
 
-def find_linear_mappings(dg, model_arr, n_samps=10**5, half_ns=100, half=True,
+def find_linear_mappings(dg, model_arr, n_samps=10**4, half_ns=100, half=True,
                          **kwargs):
     inds = it.product(*(range(x) for x in model_arr.shape))
     if half:
@@ -620,7 +621,7 @@ def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
         lr, score, sim = find_linear_mapping_single(*args, half=half, **kwargs)
     return lr, score, sims
 
-def find_linear_mapping_single(dg, model, n_samps=10**5, half=True,
+def find_linear_mapping_single(dg, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
                                test_labels=None, **kwargs):
@@ -631,7 +632,11 @@ def find_linear_mapping_single(dg, model, n_samps=10**5, half=True,
         test_stim = test_labels
     else:
         if half:
-            src = da.HalfMultidimensionalNormal.partition(dg.source_distribution)
+            try:
+                src = dg.source_distribution.make_partition()
+            except AttributeError:
+                src = da.HalfMultidimensionalNormal.partition(
+                    dg.source_distribution)
             stim = src.rvs(n_samps)
         else:
             stim = dg.source_distribution.rvs(n_samps)
@@ -668,7 +673,8 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
                             eval_n_iters=2, use_mp=False,
                             train_test_distrs=None, n_reps=5,
                             model_kinds=model_kinds_default,
-                            layer_spec=None, model_n_epochs=60):
+                            layer_spec=None, model_n_epochs=60,
+                            plot=True):
     # train data generator
     if dg_args is None:
         out_dim = 30
@@ -689,7 +695,8 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
         source_distr = dg.source_distribution
 
     # test dimensionality
-    plot_representation_dimensionality(dg, source_distr=source_distr)
+    if plot:
+        plot_representation_dimensionality(dg, source_distr=source_distr)
 
     if train_models_blind:
         train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), dg_source_var)
@@ -724,9 +731,10 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
     else:
         models, th = models_ths
 
-    if th is not None:
-        plot_training_progress(th, use_x)    
-    plot_model_dimensionality(dg, models, use_x, log_x=models_log_x)
+    if th is not None and plot:
+        plot_training_progress(th, use_x)
+    if plot:
+        plot_model_dimensionality(dg, models, use_x, log_x=models_log_x)
 
     if train_test_distrs is None:
         train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), 1)
@@ -742,12 +750,14 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
     else:
         p, c = p_c
 
-    plot_generalization_performance(use_x, p, log_x=models_log_x)
-    plot_model_manifolds(dg, models)
+    if plot:
+        plot_generalization_performance(use_x, p, log_x=models_log_x)
+        plot_model_manifolds(dg, models)
 
     if lts_scores is None:
         lts_scores = find_linear_mappings(dg, models, half=True)
-    plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
+    if plot:
+        plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 
     return dg, (models, th), (p, c), lts_scores
 
@@ -761,7 +771,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     n_parts, _, _, _, p, _, _, sc = data
     print(info)
     plot_recon_gen_summary_data((p, sc), n_parts, ylims=((0, 1), (.5, 1)),
-                                labels=('gen cont', 'gen part'), info=info)
+                                labels=('gen cont', 'gen part'), info=info,
+                                log_x=log_x)
 
 def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 ylims=None, labels=None, x_ax=1, panel_ax=0,

@@ -375,8 +375,8 @@ def _concatenate_none(arrs, axis=0):
 
 chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
-                      img_size=(128, 128), max_load=np.inf, norm_pixels=True,
-                      norm_params=False):
+                      img_size=(64, 64), max_load=np.inf, norm_pixels=True,
+                      norm_params=False, grayscale=False):
     subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
                                                 os.listdir(folder))
     names = []
@@ -398,8 +398,12 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                 rots.append(int(m.group(3)))
                 dists.append(int(m.group(4)))
                 img = pImage.open(os.path.join(p, ifl))
+                if grayscale:
+                    img = img.convert('L')
                 img_rs = img.resize(img_size)
                 img_arr = np.asarray(img_rs)
+                if grayscale:
+                    img_arr = np.expand_dims(img_arr, -1)
                 if norm_pixels:
                     img_arr = img_arr/255
                 imgs.append(img_arr)
@@ -408,10 +412,12 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                 loaded = loaded + 1
             if loaded >= max_load:
                 break
+        if loaded >= max_load:
+            break
     if norm_params:
-        pitchs = u.demean_unit_std(pitchs)
-        rots = u.demean_unit_std(rots)
-        dists = u.demean_unit_std(dists)
+        pitchs = u.demean_unit_std(np.array(pitchs))
+        rots = u.demean_unit_std(np.array(rots))
+        dists = u.demean_unit_std(np.array(dists))
     d = {'names':names, 'img_nums':nums, 'pitch':pitchs, 'rotation':rots,
          'distances':dists, 'images':imgs}
     data = pd.DataFrame(data=d)
