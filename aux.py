@@ -75,16 +75,14 @@ def _contextual_binary_classification(x, plane=None, off=0, context=None,
 
 def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
                                  orth_vec=None, orth_off=None,
-                                 random_orth_vec=False, contextual=False,
+                                 orth_basis=False, contextual=False,
                                  smaller=False, context_offset=False):
-    if random_orth_vec:
-        direction = np.random.randn(1, dim)
-        norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
-        orth_vec = direction/norms
-    if orth_vec is not None:
+    if orth_basis:
         orth_vecs = u.generate_orthonormal_basis(dim)
         seq_inds = np.arange(n_funcs, dtype=int) % dim
         plane_vec = orth_vecs[:, seq_inds].T
+    if orth_vec is not None:
+        plane_vec = u.generate_orthonormal_vectors(orth_vec, n_funcs)
     else:
         direction = np.random.randn(n_funcs, dim)
         norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
