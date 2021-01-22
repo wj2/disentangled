@@ -106,5 +106,5 @@ if __name__ == '__main__':
     dg, (models, th), (p, c), (lrs, scrs, sims) = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
-                                  lrs, (scrs, sims),
+                                  lrs, (scrs, sims), save_args=args,
                                   save_tf_models=save_tf_models)
