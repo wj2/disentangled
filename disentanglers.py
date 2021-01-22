@@ -139,7 +139,7 @@ class FlexibleDisentangler(da.TFModel):
             l_i = layer_type(*lp, activation=act_func, **layer_params)
             layer_list.append(l_i)
 
-        l2_reg = tfk.regularizers.L2(l2=regularizer_weight)
+        l2_reg = tfk.regularizers.l2(l2=regularizer_weight)
         layer_list.append(tfkl.Dense(encoded_size, activation=None,
                                      activity_regularizer=l2_reg))
         
@@ -259,7 +259,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             x = layer_type(*lp, activation=act_func, **layer_params)(x)
 
         # representation layer
-        l2_reg = tfk.regularizers.L2(l2=regularizer_weight)
+        l2_reg = tfk.regularizers.l2(l2=regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=l2_reg)(x)
 
@@ -337,7 +337,7 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
         x = tfkl.Flatten()(x)
             
         # representation layer
-        l2_reg = tfk.regularizers.L2(l2=regularizer_weight)
+        l2_reg = tfk.regularizers.l2(l2=regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=l2_reg)(x)
 
