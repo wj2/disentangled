@@ -230,7 +230,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                outputs=outputs)
         out = da.generate_partition_functions(true_inp_dim,
                                               n_funcs=n_partitions,
-                                              random_orth_vec=orthog_partitions,
+                                              orth_basis=orthog_partitions,
                                               offset_distribution=offset_distr,
                                               contextual=contextual_partitions)
         self.n_partitions = n_partitions
