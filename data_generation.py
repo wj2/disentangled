@@ -235,10 +235,11 @@ class ChairGenerator(DataGenerator):
         if len(x.shape) == 1:
             x = np.expand_dims(x, 0)
         out = np.zeros(x.shape[0], dtype=object)
+        img_params = np.array(self.data_table[self.img_params])
         for i, xi in enumerate(x):
             xi_img = xi[:self.n_img_params]
-            mask = np.product(self.data_table[self.img_params] == xi_img,
-                              axis=1)
+            mask = np.product(img_params == xi_img,
+                              axis=1, dtype=bool)
             s = np.array(self.data_table[self.img_out_label])[mask]
             out_ind = np.random.choice(range(s.shape[0]))
             samp = s[out_ind]

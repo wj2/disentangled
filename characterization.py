@@ -624,7 +624,7 @@ def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
 def find_linear_mapping_single(dg, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
-                               test_labels=None, **kwargs):
+                               test_labels=None, feat_mask=None, **kwargs):
     if train_stim_set is not None and test_stim_set is not None:
         enc_pts = model.get_representation(train_stim_set)
         test_enc_pts = model.get_representation(test_stim_set)
@@ -648,13 +648,15 @@ def find_linear_mapping_single(dg, model, n_samps=10**4, half=True,
         else:
             test_stim = dg.source_distribution.rvs(n_samps)
         test_enc_pts = model.get_representation(dg.generator(test_stim))
+    if feat_mask is None:
+        feat_mask = np.ones(stim.shape[1], dtype=bool)
     lr = sklm.Ridge(**kwargs)
-    lr.fit(enc_pts, stim)
-    score = lr.score(test_enc_pts, test_stim)
+    lr.fit(enc_pts, stim[:, feat_mask])
+    score = lr.score(test_enc_pts, test_stim[:, feat_mask])
     params = lr.get_params()
     if get_parallelism:
         lr2 = sklm.Ridge(**kwargs)
-        lr2.fit(test_enc_pts, test_stim)
+        lr2.fit(test_enc_pts, test_stim[:, feat_mask])
         sim = u.cosine_similarity(lr.coef_, lr2.coef_)
     else:
         lr2 = None
