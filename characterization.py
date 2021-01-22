@@ -370,7 +370,11 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     td_same = None
     input_dim = None
 
-    train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), 1)
+    try:
+        train_d2 = dg.source_distribution.make_partition()
+    except AttributeError:
+        train_d2 = da.HalfMultidimensionalNormal.partition(
+            dg.source_distribution)
     test_d2 = train_d2.flip()
 
     train_ds = (None, train_d2)
