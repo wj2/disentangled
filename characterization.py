@@ -680,7 +680,7 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
                             train_test_distrs=None, n_reps=5,
                             model_kinds=model_kinds_default,
                             layer_spec=None, model_n_epochs=60,
-                            plot=True):
+                            plot=True, gpu_samples=False):
     # train data generator
     if dg_args is None:
         out_dim = 30
@@ -743,16 +743,29 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
         plot_model_dimensionality(dg, models, use_x, log_x=models_log_x)
 
     if train_test_distrs is None:
-        train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), 1)
+        try:
+            train_d2 = dg.source_distribution.make_partition()
+        except AttributeError:
+            train_d2 = da.HalfMultidimensionalNormal.partition(
+                dg.source_distribution)
         train_ds = (None, train_d2)
         test_ds = (None, train_d2.flip())
     else:
         train_ds, test_ds = train_test_distr
 
+    if gpu_samples:
+        n_train_samples = 2*10**3
+        n_test_samples = 10**3
+    else:
+        n_train_samples = 2*10**4
+        n_test_samples = 10**4
+        
     if p_c is None:
         p, c = evaluate_multiple_models_dims(dg, models, None, test_ds,
                                              train_distributions=train_ds,
-                                             n_iters=eval_n_iters)
+                                             n_iters=eval_n_iters,
+                                             n_train_samples=n_train_samples,
+                                             n_test_samples=n_test_samples)
     else:
         p, c = p_c
 
@@ -761,7 +774,8 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
         plot_model_manifolds(dg, models)
 
     if lts_scores is None:
-        lts_scores = find_linear_mappings(dg, models, half=True)
+        lts_scores = find_linear_mappings(dg, models, half=True,
+                                          n_samps=n_test_samples)
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 

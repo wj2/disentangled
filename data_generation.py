@@ -138,15 +138,15 @@ class ChairSourceDistrib(object):
 
     def __init__(self, datalist, set_partition=None, position_distr=None,
                  use_partition=False):
+        self.partition_func = None
         self.data_list = np.array(datalist)
-        if position_distr is not None and use_partition:
-            position_distr = da.HalfMultidimensionalNormal.partition(
-                position_distr)
         self.position_distr = position_distr
+        self.dim = self.data_list.shape[1] 
+        if position_distr is not None:
+            self.dim = self.dim + position_distr.dim
         if use_partition:
             if set_partition is None:
-                out = da.generate_partition_functions(self.data_list.shape[1],
-                                                      n_funcs=1)
+                out = da.generate_partition_functions(self.dim, n_funcs=1)
                 pfs, vecs, offs = out
                 set_partition = pfs[0]
                 self.partition = vecs[0]
@@ -155,15 +155,17 @@ class ChairSourceDistrib(object):
                 self.partition = None
                 self.offset = None
             self.partition_func = set_partition
-        else:
-            self.partition_func = None
 
-    def rvs(self, n):
-        if self.partition_func is not None:
-            mask = self.partition_func(self.data_list).astype(bool)
-            dl = self.data_list[mask]
-        else:
-            dl = self.data_list
+    def rvs(self, rvs_shape):
+        rvs = self._candidate_rvs(rvs_shape)
+        while (self.partition_func is not None
+               and not np.all(self.partition_func(rvs))):
+            mask = np.logical_not(self.partition_func(rvs))
+            sample = self._candidate_rvs(rvs_shape)
+            rvs[mask] = sample[mask]
+        return rvs
+
+    def _candidate_rvs(self, n):
         inds = np.random.choice(self.data_list.shape[0], n)
         out = self.data_list[inds]
         if self.position_distr is not None:
@@ -181,11 +183,10 @@ class ChairSourceDistrib(object):
         if self.partition_func is not None:
             set_part = lambda x: np.logical_not(self.partition_func(x))
             new = ChairSourceDistrib(self.data_list, set_partition=set_part,
+                                     position_distr=self.position_distr,
                                      use_partition=True)
-            new.partition = self.partition
+            new.partition = -self.partition
             new.offset = self.offset
-            if self.position_distr is not None:
-                new.position_distr = self.position_distr.flip()
         else:
             print('no partition to flip')
             new = ChairSourceDistrib(self.data_list)
@@ -241,6 +242,9 @@ class ChairGenerator(DataGenerator):
             mask = np.product(img_params == xi_img,
                               axis=1, dtype=bool)
             s = np.array(self.data_table[self.img_out_label])[mask]
+            if s.shape[0] == 0:
+                print(x, s.shape)
+                print(s)
             out_ind = np.random.choice(range(s.shape[0]))
             samp = s[out_ind]
             if self.position_distr is not None:

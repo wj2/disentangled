@@ -123,7 +123,8 @@ if __name__ == '__main__':
                                      use_mp=use_mp, models_n_diffs=n_train_diffs,
                                      models_n_bounds=args.n_train_bounds,
                                      layer_spec=layer_spec,
-                                     model_n_epochs=model_n_epochs)
+                                     model_n_epochs=model_n_epochs,
+                                     plot=False)
     dg, (models, th), (p, c), (lrs, scrs, sims) = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,

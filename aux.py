@@ -118,6 +118,7 @@ class HalfMultidimensionalNormal(object):
         self.args = args
         self.kwargs = kwargs
         self.distr = sts.multivariate_normal(*args, **kwargs)
+        self.dim = self.distr.dim
         if set_partition is None:
             out = generate_partition_functions(len(self.distr.mean),
                                                n_funcs=1)
@@ -135,7 +136,7 @@ class HalfMultidimensionalNormal(object):
         m = norm.mean
         s = norm.cov
         return cls(m, s)
-        
+    
     def rvs(self, rvs_shape):
         rvs = self.distr.rvs(rvs_shape)
         while not np.all(self.partition_func(rvs)):
