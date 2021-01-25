@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import functools as ft
 
 import numpy as np
 
@@ -322,20 +323,32 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
-                     layer_type_enc=tfkl.Conv2D, 
-                     layer_type_dec=tfkl.Conv2DTranspose,
+                     layer_types_enc=None, 
+                     layer_types_dec=None,
                      branch_names=('a', 'b'), last_kernel=20,
                      **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
         strides = []
-        for lp in layer_shapes:
-            x = layer_type_enc(*lp, activation=act_func,
-                               **layer_params)(x)
-            strides.append(lp[2])
-
-        x = tfkl.Flatten()(x)
-            
+        ll = len(input_shape)
+        for i, lp in enumerate(layer_shapes):
+            if ll != len(lp):
+                x = tfkl.Flatten()(x)
+            ll = len(lp)
+            if layer_types_enc is None:
+                if len(lp) == 3:
+                    layer_type = tfkl.Conv2D
+                    strides.append(lp[2])
+                elif len(lp) == 1:
+                    layer_type = tfkl.Dense
+                    strides.append(1)
+            else:
+                layer_type = layer_types_enc[i]
+            x = layer_type(*lp, activation=act_func,
+                           **layer_params)(x)
+        if ll == 3:
+            x = tfkl.Flatten()(x)
+                        
         # representation layer
         l2_reg = tfk.regularizers.l2(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
@@ -355,21 +368,31 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
                    int(input_shape[1]/contraction),
                    input_shape[2])
 
-        print(r_shape)
-        z = tfkl.Reshape(target_shape=r_shape)(z)
-                       
-        for lp in layer_shapes[::-1]:
-            z = layer_type_dec(*lp, activation=act_func,
-                               padding='same', **layer_params)(z)
+        ll = 1
+        for i, lp in enumerate(layer_shapes[::-1]):
+            if ll != len(lp):
+                z = tfkl.Dense(np.product(r_shape), activation=None)(z)
+                z = tfkl.Reshape(target_shape=r_shape)(z)
+            ll = len(lp)
+            if layer_types_dec is None:
+                if len(lp) == 3:
+                    layer_type = ft.partial(tfkl.Conv2DTranspose,
+                                            padding='same')
+                elif len(lp) == 1:
+                    layer_type = tfkl.Dense
+            else:
+                layer_type = layer_types_dec[i]
+            z = layer_type(*lp, activation=act_func,
+                               **layer_params)(z)
 
-        z = layer_type_dec(3, 1, strides=1,
-                           activation=None,
-                           padding='same', **layer_params)(z)
+        z = tfkl.Conv2DTranspose(3, 1, strides=1,
+                                 activation=None,
+                                 padding='same', **layer_params)(z)
 
-        autoenc_branch = layer_type_dec(3, 1, strides=1,
-                                        activation=tf.nn.sigmoid,
-                                        name=branch_names[1],
-                                        padding='same', **layer_params)(z)
+        autoenc_branch = tfkl.Conv2DTranspose(3, 1, strides=1,
+                                              activation=tf.nn.sigmoid,
+                                              name=branch_names[1],
+                                              padding='same', **layer_params)(z)
         return inputs, rep, class_branch, autoenc_branch
 
     
