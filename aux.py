@@ -255,24 +255,24 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
     
 def load_generalization_output(folder, manifest='manifest.pkl',
                                dg_type=None, analysis_only=False,
-                               model_type=None, model_type_arr=None):
+                               model_type=None, model_type_arr=None,
+                               key_template='.*_([a-z]+)\.tfmod'):
     fnames = pickle.load(open(os.path.join(folder, manifest), 'rb'))
     fnames_full = list(os.path.join(folder, x) for x in fnames)
-    if len(fnames_full) == 4:
-        if re.match('.*_sc\.tfmod', fnames_full[-1]) is not None:
-            p_file, c_file, ld_file, sc_file = fnames_full
-            analysis_only = True
-        else:
-            dg_file, models_file, p_file, c_file = fnames_full
-            history_file = None
-            ld_file, sc_file = None, None
-    elif len(fnames_full) == 5:
-        dg_file, models_file, history_file, p_file, c_file = fnames_full
-        ld_file, sc_file = None, None
-    else:
-        dg_file, models_file, history_file, p_file, c_file = fnames_full[:-2]
-        ld_file, sc_file = fnames_full[-2:]
-
+    key_str = (re.match(key_template, fn).group(1) for fn in fnames)
+    fnames_dict = dict(zip(key_str, fnames_full))
+    
+    dg_file = fnames_dict.get('dg')
+    models_file = fnames_dict.get('models')
+    history_file = fnames_dict.get('histories')
+    sc_file = fnames_dict.get('sc')
+    ld_file = fnames_dict.get('lr')
+    args_file = fnames_dict.get('args')
+    p_file = fnames_dict.get('p')
+    c_file = fnames_dict.get('c')
+    if models_file is None:
+        analysis_only = True
+        
     if analysis_only:
         dg = None
         models = None
