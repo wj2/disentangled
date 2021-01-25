@@ -22,8 +22,8 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               test_distrib=None, test_func=None,
                               n_train_samples=2*10**4, n_test_samples=10**4,
                               classifier=skc.SVC, kernel='linear', n_iters=10,
-                              balance_test=True, shuffle=False,
-                              use_orthogonal=True, **classifier_params):
+                              shuffle=False, use_orthogonal=True,
+                              **classifier_params):
     if train_func is None:
         if use_orthogonal and hasattr(train_distrib, 'partition'):
             orth_vec = train_distrib.partition
@@ -33,14 +33,13 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                                                   orth_off=orth_off)
         else:
             out = da.generate_partition_functions(gen.input_dim, n_funcs=n_iters)
-        train_func, _, _ = out            
+        train_func, _, _ = out
     if train_distrib is None:
         train_distrib = gen.source_distribution
     if test_distrib is None:
         test_distrib = train_distrib
     if test_func is None:
         test_func = train_func
-
     scores = np.zeros(n_iters)
     chances = np.zeros(n_iters)
     for i in range(n_iters):
@@ -53,22 +52,12 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
 
         test_samples = test_distrib.rvs(n_test_samples)
         test_labels = test_func[i](test_samples)
-        mask = np.logical_not(np.isnan(test_labels))
-        test_samples = test_samples[mask]
-        test_labels = test_labels[mask].astype(int)
         if shuffle:
             snp.random.shuffle(test_labels)
-        type_balance = np.histogram(test_labels.astype(int), bins=2)[0]
-        if balance_test:
-            weights = np.zeros(len(test_labels))
-            weights[test_labels] = 1/type_balance[1]
-            weights[np.logical_not(test_labels)] = 1/type_balance[0]
-        else:
-            weights = None
 
         test_rep = vae.get_representation(gen.generator(test_samples))
-        scores[i] = c.score(test_rep, test_labels, sample_weight=weights)
-        chances[i] = np.max(type_balance/n_test_samples)
+        scores[i] = c.score(test_rep, test_labels)
+        chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 
 def train_multiple_bvae(dg, betas, layer_spec, n_reps=10, batch_size=32,
@@ -207,13 +196,14 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
                      markers=True, line_alpha=.5, use_arc_dim=False,
                      use_circ_dim=False, arc_col=(.8, .8, .8), scale_mag=.5,
-                     fwid=2.5, **pca_args):
+                     fwid=2.5, set_inds=(0, 1), **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
 
     angs = np.linspace(0, 2*np.pi, n)
-    pts = np.stack((np.cos(angs), np.sin(angs),) +
-                   (np.zeros_like(angs),)*(dg.input_dim - 2), axis=1)
+    pts = np.zeros((n, dg.input_dim))
+    pts[:, set_inds[0]] = np.cos(angs)
+    pts[:, set_inds[1]] = np.sin(angs)
     
     if dim_red:
         p = _model_pca(dg, model, n_dim_red=n_dim_red, use_arc_dim=use_arc_dim,
@@ -676,7 +666,7 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
                             use_samples_x=True, models_n_diffs=6,
                             models_n_bounds=(2, 6.5),
                             hide_print=True, est_inp_dim=None,
-                            eval_n_iters=2, use_mp=False,
+                            eval_n_iters=10, use_mp=False,
                             train_test_distrs=None, n_reps=5,
                             model_kinds=model_kinds_default,
                             layer_spec=None, model_n_epochs=60,
@@ -701,6 +691,9 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
         source_distr = dg.source_distribution
 
     # test dimensionality
+
+    pdims = dg.representation_dimensionality()[0]
+    print('participation ratio', np.sum(pdims)**2/np.sum(pdims**2))
     if plot:
         plot_representation_dimensionality(dg, source_distr=source_distr)
 
@@ -766,6 +759,8 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
                                              n_iters=eval_n_iters,
                                              n_train_samples=n_train_samples,
                                              n_test_samples=n_test_samples)
+        print('corr', p)
+        print('chance', c)
     else:
         p, c = p_c
 
@@ -776,6 +771,7 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
     if lts_scores is None:
         lts_scores = find_linear_mappings(dg, models, half=True,
                                           n_samps=n_test_samples)
+        print(np.mean(lts_scores[1]))
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 
@@ -788,11 +784,13 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True) 
-    n_parts, _, _, _, p, _, _, sc = data
+    n_parts, _, _, _, p, c, _, sc = data
     print(info)
-    plot_recon_gen_summary_data((p, sc), n_parts, ylims=((0, 1), (.5, 1)),
-                                labels=('gen cont', 'gen part'), info=info,
-                                log_x=log_x)
+    p = p[..., 1]
+    panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
+    plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),
+                                labels=('gen classifier', 'gen regression'),
+                                info=info, log_x=log_x, panel_vals=panel_vals)
 
 def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 ylims=None, labels=None, x_ax=1, panel_ax=0,
