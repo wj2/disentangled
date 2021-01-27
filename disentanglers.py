@@ -286,7 +286,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
 
     def _compile(self, *args, categ_loss=tf.keras.losses.binary_crossentropy,
                  autoenc_loss=tf.losses.MeanSquaredError(), standard_loss=False,
-                 loss_ratio=5, **kwargs):
+                 loss_ratio=10, **kwargs):
         if not standard_loss:
             categ_loss = _binary_crossentropy_nan,
         loss_dict = {self.branch_names[0]:categ_loss,
