@@ -3,6 +3,7 @@ import scipy.stats as sts
 import pickle
 import os
 import itertools as it
+import tensorflow as tf
 
 import sklearn.decomposition as skd
 import sklearn.svm as skc
@@ -22,7 +23,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               test_distrib=None, test_func=None,
                               n_train_samples=2*10**4, n_test_samples=10**4,
                               classifier=skc.SVC, kernel='linear', n_iters=10,
-                              shuffle=False, use_orthogonal=True,
+                              shuffle=False, use_orthogonal=True, 
                               **classifier_params):
     if train_func is None:
         if use_orthogonal and hasattr(train_distrib, 'partition'):
@@ -60,7 +61,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 
-def train_multiple_bvae(dg, betas, layer_spec, n_reps=10, batch_size=32,
+def train_multiple_bvae(dg_use, betas, layer_spec, n_reps=10, batch_size=32,
                         n_train_samps=10**6, epochs=5, hide_print=False,
                         input_dim=None):
     training_history = np.zeros((len(betas), n_reps), dtype=object)
@@ -69,8 +70,8 @@ def train_multiple_bvae(dg, betas, layer_spec, n_reps=10, batch_size=32,
         input_dim = dg.input_dim
     for i, beta in enumerate(betas):
         for j in range(n_reps):
-            inp_set, train_set = dg.sample_reps(sample_size=n_train_samps)
-            inp_eval_set, eval_set = dg.sample_reps()
+            inp_set, train_set = dg_use.sample_reps(sample_size=n_train_samps)
+            inp_eval_set, eval_set = dg_use.sample_reps()
             bvae = d.BetaVAE(dg.output_dim, layer_spec, input_dim, beta=beta)
             if hide_print:
                 with u.HiddenPrints():
@@ -97,41 +98,48 @@ def train_multiple_models_dims(input_dims, *args, n_train_samps=10**5,
         ths.append(th)
     return np.array(models), np.array(ths)
 
-def evaluate_multiple_models_dims(dg, models, *args, **kwargs):
+def evaluate_multiple_models_dims(dg_use, models, *args, **kwargs):
     ps, cs = [], []
     for m in models:
-        p, c = evaluate_multiple_models(dg, m, *args, **kwargs)
+        p, c = evaluate_multiple_models(dg_use, m, *args, **kwargs)
         ps.append(p)
         cs.append(c)
     return np.array(ps), np.array(cs)
 
-def train_multiple_models(dg, model_kinds, layer_spec, n_reps=10, batch_size=32,
+def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size=32,
                           n_train_samps=10**6, epochs=5, hide_print=False,
-                          input_dim=None, use_mp=False, **kwargs):
+                          input_dim=None, use_mp=False, standard_loss=False,
+                          val_set=True, **kwargs):
     training_history = np.zeros((len(model_kinds), n_reps), dtype=object)
     models = np.zeros_like(training_history, dtype=object)
     if input_dim is None:
-        input_dim = dg.input_dim
+        input_dim = dg_use.input_dim
     for i, mk in enumerate(model_kinds):
         for j in range(n_reps):
-            train_set = dg.sample_reps(sample_size=n_train_samps)
-            eval_set = dg.sample_reps()
-            m = mk(dg.output_dim, layer_spec, input_dim, **kwargs)
+            tf.keras.backend.clear_session()
+            train_set = dg_use.sample_reps(sample_size=n_train_samps)
+            if val_set:
+                eval_set = dg_use.sample_reps(sample_size=n_train_samps)
+            else:
+                eval_set = None
+            m = mk(dg_use.output_dim, layer_spec, input_dim, **kwargs)
             if hide_print:
                 with u.HiddenPrints():
                     th = m.fit_sets(train_set, eval_set=eval_set, epochs=epochs,
                                     batch_size=batch_size,
+                                    standard_loss=standard_loss,
                                     use_multiprocessing=use_mp)
             else:
                 th = m.fit_sets(train_set, eval_set=eval_set, epochs=epochs,
-                                batch_size=batch_size,
-                                use_multiprocessing=use_mp)
+                                    batch_size=batch_size,
+                                    standard_loss=standard_loss,
+                                    use_multiprocessing=use_mp)
             training_history[i, j] = th
             models[i, j] = m
     return models, training_history
 
 
-def evaluate_multiple_models(dg, models, train_func, test_distributions,
+def evaluate_multiple_models(dg_use, models, train_func, test_distributions,
                              train_distributions=None, **classifier_args):
     performance = np.zeros(models.shape + (len(test_distributions),))
     chance = np.zeros_like(performance)
@@ -142,7 +150,7 @@ def evaluate_multiple_models(dg, models, train_func, test_distributions,
             bvae = models[i, j]
             for k, td in enumerate(test_distributions):
                 train_d_k = train_distributions[k]
-                out = classifier_generalization(dg, bvae, train_func,
+                out = classifier_generalization(dg_use, bvae, train_func,
                                                 test_distrib=td,
                                                 train_distrib=train_d_k,
                                                 **classifier_args)
@@ -150,12 +158,12 @@ def evaluate_multiple_models(dg, models, train_func, test_distributions,
                 chance[i, j, k]= out[1]
     return performance, chance
 
-def train_and_evaluate_models(dg, betas, layer_spec, train_func,
+def train_and_evaluate_models(dg_use, betas, layer_spec, train_func,
                               test_distributions, n_reps=10, hide_print=False,
                               n_train_samps=10**6, epochs=5, input_dim=None,
                               models=None, batch_size=32, **classifier_args):
     if models is None:
-        models, th = train_multiple_bvae(dg, betas, layer_spec, n_reps=n_reps,
+        models, th = train_multiple_bvae(dg_use, betas, layer_spec, n_reps=n_reps,
                                          n_train_samps=n_train_samps,
                                          batch_size=batch_size, epochs=epochs,
                                          hide_print=hide_print,
@@ -163,24 +171,24 @@ def train_and_evaluate_models(dg, betas, layer_spec, train_func,
         out2 = (models, th)
     else:
         out2 = (models, None)
-    out = evaluate_multiple_models(dg, models, train_func, test_distributions,
+    out = evaluate_multiple_models(dg_use, models, train_func, test_distributions,
                                    **classifier_args)
     return out, out2 
 
-def _model_pca(dg, model, n_dim_red=10**4, use_arc_dim=False,
+def _model_pca(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
                use_circ_dim=False, **pca_args):
     if use_arc_dim:
-        distrib_pts = np.zeros((n_dim_red, dg.input_dim))
-        x0_pts = np.linspace(0, dg.source_distribution.cov[0, 0], n_dim_red)
-        x1_pts = np.linspace(0, dg.source_distribution.cov[1, 1], n_dim_red)
+        distrib_pts = np.zeros((n_dim_red, dg_use.input_dim))
+        x0_pts = np.linspace(0, dg_use.source_distribution.cov[0, 0], n_dim_red)
+        x1_pts = np.linspace(0, dg_use.source_distribution.cov[1, 1], n_dim_red)
         distrib_pts[:, 0] = x0_pts
         distrib_pts[:, 1] = x1_pts
     elif use_circ_dim:
-        r = np.sqrt(dg.source_distribution.cov[0, 0])
-        distrib_pts = _get_circle_pts(n_dim_red, dg.input_dim, r=r)
+        r = np.sqrt(dg_use.source_distribution.cov[0, 0])
+        distrib_pts = _get_circle_pts(n_dim_red, dg_use.input_dim, r=r)
     else:
-        distrib_pts = dg.source_distribution.rvs(n_dim_red)
-    distrib_reps = dg.get_representation(distrib_pts)
+        distrib_pts = dg_use.source_distribution.rvs(n_dim_red)
+    distrib_reps = dg_use.get_representation(distrib_pts)
     mod_distrib_reps = model.get_representation(distrib_reps)
     p = skd.PCA(**pca_args)
     p.fit(mod_distrib_reps)
@@ -192,7 +200,7 @@ def _get_circle_pts(n, inp_dim, r=1):
                    (np.zeros_like(angs),)*(inp_dim - 2), axis=1)
     return r*pts
 
-def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
+def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
                      markers=True, line_alpha=.5, use_arc_dim=False,
                      use_circ_dim=False, arc_col=(.8, .8, .8), scale_mag=.5,
@@ -201,12 +209,12 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
 
     angs = np.linspace(0, 2*np.pi, n)
-    pts = np.zeros((n, dg.input_dim))
+    pts = np.zeros((n, dg_use.input_dim))
     pts[:, set_inds[0]] = np.cos(angs)
     pts[:, set_inds[1]] = np.sin(angs)
     
     if dim_red:
-        p = _model_pca(dg, model, n_dim_red=n_dim_red, use_arc_dim=use_arc_dim,
+        p = _model_pca(dg_use, model, n_dim_red=n_dim_red, use_arc_dim=use_arc_dim,
                        use_circ_dim=use_circ_dim, **pca_args)
         
     if n_arcs > 0:
@@ -215,7 +223,7 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
         y = np.expand_dims(np.linspace(0, 1, n), 1)
         for sp in sub_pts:
             sp = np.expand_dims(sp, 0)
-            s_reps = dg.generator(sp*y)
+            s_reps = dg_use.generator(sp*y)
             mod_reps = model.get_representation(s_reps)
             if dim_red:
                 mod_reps = p.transform(mod_reps)
@@ -226,7 +234,7 @@ def plot_diagnostics(dg, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                         color=l[0].get_color())
 
     for r in rs:
-        s_reps = dg.generator(r*pts)
+        s_reps = dg_use.generator(r*pts)
         mod_reps = model.get_representation(s_reps)
         if dim_red:
             mod_reps = p.transform(mod_reps)
@@ -252,14 +260,14 @@ def plot_partitions(pf_planes, ax, dim_red=None, scale=1):
         ax.plot(*neg_pfp, color=l[0].get_color())
     return ax
 
-def get_model_dimensionality(dg, models, cutoff=.95, **pca_args):
-    evr, _ = dg.representation_dimensionality(n_components=cutoff)
+def get_model_dimensionality(dg_use, models, cutoff=.95, **pca_args):
+    evr, _ = dg_use.representation_dimensionality(n_components=cutoff)
     inp_dim = len(evr)
     model_dims = np.zeros_like(models, dtype=int)
     for i, m_i in enumerate(models):
         for j, m_ij in enumerate(m_i):
             for k, m_ijk in enumerate(m_ij):
-                p = _model_pca(dg, m_ijk, n_components=cutoff, **pca_args)
+                p = _model_pca(dg_use, m_ijk, n_components=cutoff, **pca_args)
                 model_dims[i, j, k] = p.n_components_
     return model_dims, inp_dim
 
@@ -267,7 +275,7 @@ def get_model_dimensionality(dg, models, cutoff=.95, **pca_args):
 model_kinds_default = (dd.SupervisedDisentangler, dd.StandardAE)
 dg_kind_default = dg.FunctionalDataGenerator
 
-def test_generalization(dg=None, models_ths=None, train_models_blind=False,
+def test_generalization(dg_use=None, models_ths=None, train_models_blind=False,
                         p_c=None, dg_kind=dg_kind_default,
                         hide_print=True, est_inp_dim=None,
                         use_mp=False, n_reps=5, n_train_diffs=6,
@@ -284,18 +292,18 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
 
     source_var = 1
 
-    if dg is None:
-        dg = dg_kind(inp_dim, layers, out_dim, 
+    if dg_use is None:
+        dg_use = dg_kind(inp_dim, layers, out_dim, 
                      l2_weight=reg_weight, noise=noise)
 
         source_distr = sts.multivariate_normal(np.zeros(inp_dim), source_var)
-        dg.fit(source_distribution=source_distr, epochs=epochs,
+        dg_use.fit(source_distribution=source_distr, epochs=epochs,
                use_multiprocessing=use_mp)
     else:
-        source_distr = dg.source_distribution
+        source_distr = dg_use.source_distribution
 
     # test dimensionality
-    rv, vecs = dg.representation_dimensionality(source_distribution=source_distr)
+    rv, vecs = dg_use.representation_dimensionality(source_distribution=source_distr)
     f, ax = plt.subplots(1, 1)
     ax.plot(rv)
 
@@ -318,7 +326,7 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     log_x = True
     
     if models_ths is None:
-        models, th = train_multiple_models_dims(input_dims, dg, model_kinds,
+        models, th = train_multiple_models_dims(input_dims, dg_use, model_kinds,
                                                 layer_spec, n_reps=n_reps, 
                                                 batch_size=batch_size,
                                                 epochs=epochs,
@@ -347,7 +355,7 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
         legend_patches.append(lpatch)
     ax.legend(handles=legend_patches)
         
-    dims, dg_dim = get_model_dimensionality(dg, models)
+    dims, dg_dim = get_model_dimensionality(dg_use, models)
     
     f, ax = plt.subplots(1, 1)
     
@@ -361,10 +369,10 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     input_dim = None
 
     try:
-        train_d2 = dg.source_distribution.make_partition()
+        train_d2 = dg_use.source_distribution.make_partition()
     except AttributeError:
         train_d2 = da.HalfMultidimensionalNormal.partition(
-            dg.source_distribution)
+            dg_use.source_distribution)
     test_d2 = train_d2.flip()
 
     train_ds = (None, train_d2)
@@ -372,7 +380,7 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     n_iters = 2
 
     if p_c is None:
-        p, c = evaluate_multiple_models_dims(dg, models, tf, tds,
+        p, c = evaluate_multiple_models_dims(dg_use, models, tf, tds,
                                              train_distributions=train_ds,
                                              n_iters=n_iters)
     else:
@@ -422,23 +430,23 @@ def test_generalization(dg=None, models_ths=None, train_models_blind=False,
     for i in range(n_ds):
         for j in range(n_mks):
             mod = models[i, j, rep_ind]
-            plot_diagnostics(dg, mod, rs, n_arcs, ax=axs[i, j],
+            plot_diagnostics(dg_use, mod, rs, n_arcs, ax=axs[i, j],
                              dim_red=dim_red)
 
-    return dg, (models, th), (p, c)
+    return dg_use, (models, th), (p, c)
 
-def plot_representation_dimensionality(dg, source_distr=None, ax=None):
+def plot_representation_dimensionality(dg_use, source_distr=None, ax=None):
     if ax is None:
         f, ax = plt.subplots(1, 1)
-    rv, vecs = dg.representation_dimensionality(source_distribution=source_distr)
+    rv, vecs = dg_use.representation_dimensionality(source_distribution=source_distr)
     ax.plot(rv)
     return ax
 
-def plot_model_dimensionality(dg, models, use_x, ax=None, log_x=True):
+def plot_model_dimensionality(dg_use, models, use_x, ax=None, log_x=True):
     if ax is None:
         f, ax = plt.subplots(1, 1)
 
-    dims, dg_dim = get_model_dimensionality(dg, models)
+    dims, dg_dim = get_model_dimensionality(dg_use, models)
     ax.hlines(dg_dim, use_x[0], use_x[-1])
     for i in range(dims.shape[1]):
         gpl.plot_trace_werr(use_x, dims[:, i].T, ax=ax, log_x=log_x)
@@ -500,7 +508,7 @@ def plot_generalization_performance(use_x, p, plot_wid=3, ref_model=0,
                                     linestyle=line_style)
     return f
 
-def plot_model_manifolds(dg, models, rs=(.1, .2, .5), n_arcs=1, rep_ind=0,
+def plot_model_manifolds(dg_use, models, rs=(.1, .2, .5), n_arcs=1, rep_ind=0,
                          dim_red=True, psize=4):
     n_ds, n_mks = models.shape[:2]
     f, axs = plt.subplots(n_ds, n_mks, squeeze=False,
@@ -508,7 +516,7 @@ def plot_model_manifolds(dg, models, rs=(.1, .2, .5), n_arcs=1, rep_ind=0,
     for i in range(n_ds):
         for j in range(n_mks):
             mod = models[i, j, rep_ind]
-            plot_diagnostics(dg, mod, rs, n_arcs, ax=axs[i, j],
+            plot_diagnostics(dg_use, mod, rs, n_arcs, ax=axs[i, j],
                                 dim_red=dim_red)
     return f
 
@@ -584,7 +592,7 @@ def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False,
                 ax.plot(use_x, scores[:, j, k], 'o', color=col)
     return ax
 
-def find_linear_mappings(dg, model_arr, n_samps=10**4, half_ns=100, half=True,
+def find_linear_mappings(dg_use, model_arr, n_samps=10**4, half_ns=100, half=True,
                          **kwargs):
     inds = it.product(*(range(x) for x in model_arr.shape))
     if half:
@@ -595,7 +603,7 @@ def find_linear_mappings(dg, model_arr, n_samps=10**4, half_ns=100, half=True,
     sims = np.zeros_like(scores, dtype=object)
     lintrans = np.zeros(model_arr.shape + (2,), dtype=object)
     for ind in inds:
-        lr, sc, sim = find_linear_mapping(dg, model_arr[ind], n_samps=n_samps,
+        lr, sc, sim = find_linear_mapping(dg_use, model_arr[ind], n_samps=n_samps,
                                           **kwargs)
         scores[ind] = sc
         lintrans[ind] = lr
@@ -615,7 +623,7 @@ def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
         lr, score, sim = find_linear_mapping_single(*args, half=half, **kwargs)
     return lr, score, sims
 
-def find_linear_mapping_single(dg, model, n_samps=10**4, half=True,
+def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
                                test_labels=None, feat_mask=None, **kwargs):
@@ -627,21 +635,21 @@ def find_linear_mapping_single(dg, model, n_samps=10**4, half=True,
     else:
         if half:
             try:
-                src = dg.source_distribution.make_partition()
+                src = dg_use.source_distribution.make_partition()
             except AttributeError:
                 src = da.HalfMultidimensionalNormal.partition(
-                    dg.source_distribution)
+                    dg_use.source_distribution)
             stim = src.rvs(n_samps)
         else:
-            stim = dg.source_distribution.rvs(n_samps)
+            stim = dg_use.source_distribution.rvs(n_samps)
 
-        enc_pts = model.get_representation(dg.generator(stim))
+        enc_pts = model.get_representation(dg_use.generator(stim))
         if half:
             flipped = src.flip()
             test_stim = flipped.rvs(n_samps)
         else:
-            test_stim = dg.source_distribution.rvs(n_samps)
-        test_enc_pts = model.get_representation(dg.generator(test_stim))
+            test_stim = dg_use.source_distribution.rvs(n_samps)
+        test_enc_pts = model.get_representation(dg_use.generator(test_stim))
     if feat_mask is None:
         feat_mask = np.ones(stim.shape[1], dtype=bool)
     lr = sklm.Ridge(**kwargs)
@@ -657,7 +665,7 @@ def find_linear_mapping_single(dg, model, n_samps=10**4, half=True,
         sim = None
     return (lr, lr2), score, sim
 
-def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
+def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             train_models_blind=False, inp_dim=2,
                             p_c=None, dg_kind=dg_kind_default,
                             dg_args=None, dg_kwargs=None, dg_source_var=1,
@@ -681,26 +689,26 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
         reg_weight = (0, .1)
         dg_kwargs = {'noise':noise, 'l2_weight':reg_weight}
     
-    if dg is None:
-        dg = dg_kind(*dg_args, **dg_kwargs)
+    if dg_use is None:
+        dg_use = dg_kind(*dg_args, **dg_kwargs)
 
         source_distr = sts.multivariate_normal(np.zeros(inp_dim), dg_source_var)
-        dg.fit(source_distribution=source_distr, epochs=dg_train_epochs,
+        dg_use.fit(source_distribution=source_distr, epochs=dg_train_epochs,
                use_multiprocessing=use_mp)
     else:
-        source_distr = dg.source_distribution
+        source_distr = dg_use.source_distribution
 
     # test dimensionality
 
-    pdims = dg.representation_dimensionality()[0]
+    pdims = dg_use.representation_dimensionality()[0]
     print('participation ratio', np.sum(pdims)**2/np.sum(pdims**2))
     if plot:
-        plot_representation_dimensionality(dg, source_distr=source_distr)
+        plot_representation_dimensionality(dg_use, source_distr=source_distr)
 
     if train_models_blind:
         train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), dg_source_var)
         test_d2 = train_d2.flip()
-        dg.source_distribution = train_d2
+        dg_use.source_distribution = train_d2
 
     # train models
     if models_args is None:
@@ -709,7 +717,7 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
         input_dims = (est_inp_dim,)*models_n_diffs
         if layer_spec is None:
             layer_spec = ((40,), (40,), (25,), (est_inp_dim,))
-        models_args = (input_dims, dg, model_kinds, layer_spec)
+        models_args = (input_dims, dg_use, model_kinds, layer_spec)
     if models_kwargs is None:
         batch_size = 1000
         epochs = model_n_epochs
@@ -733,14 +741,14 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
     if th is not None and plot:
         plot_training_progress(th, use_x)
     if plot:
-        plot_model_dimensionality(dg, models, use_x, log_x=models_log_x)
+        plot_model_dimensionality(dg_use, models, use_x, log_x=models_log_x)
 
     if train_test_distrs is None:
         try:
-            train_d2 = dg.source_distribution.make_partition()
+            train_d2 = dg_use.source_distribution.make_partition()
         except AttributeError:
             train_d2 = da.HalfMultidimensionalNormal.partition(
-                dg.source_distribution)
+                dg_use.source_distribution)
         train_ds = (None, train_d2)
         test_ds = (None, train_d2.flip())
     else:
@@ -754,7 +762,7 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
         n_test_samples = 10**4
         
     if p_c is None:
-        p, c = evaluate_multiple_models_dims(dg, models, None, test_ds,
+        p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
                                              train_distributions=train_ds,
                                              n_iters=eval_n_iters,
                                              n_train_samples=n_train_samples,
@@ -766,16 +774,16 @@ def test_generalization_new(dg=None, models_ths=None, lts_scores=None,
 
     if plot:
         plot_generalization_performance(use_x, p, log_x=models_log_x)
-        plot_model_manifolds(dg, models)
+        plot_model_manifolds(dg_use, models)
 
     if lts_scores is None:
-        lts_scores = find_linear_mappings(dg, models, half=True,
+        lts_scores = find_linear_mappings(dg_use, models, half=True,
                                           n_samps=n_test_samples)
         print(np.mean(lts_scores[1]))
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 
-    return dg, (models, th), (p, c), lts_scores
+    return dg_use, (models, th), (p, c), lts_scores
 
 def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,

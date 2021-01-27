@@ -196,14 +196,17 @@ class ChairGenerator(DataGenerator):
 
     def __init__(self, folder, norm_params=True, img_size=(128, 128),
                  include_position=False, position_distr=None, max_move=4,
-                 **kwargs):
+                 max_load=np.inf, **kwargs):
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
-                                    **kwargs)
+                                    max_load=max_load, **kwargs)
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), 1)
         self.position_distr = position_distr
         self.data_table = data
-        self.img_params = ['rotation', 'pitch']
+        if max_load == 1:
+            self.img_params = []
+        else:
+            self.img_params = ['rotation', 'pitch']
         self.n_img_params = len(self.img_params)
         self.img_out_label = ['images'][0]
         self.source_distribution = ChairSourceDistrib(
@@ -242,9 +245,6 @@ class ChairGenerator(DataGenerator):
             mask = np.product(img_params == xi_img,
                               axis=1, dtype=bool)
             s = np.array(self.data_table[self.img_out_label])[mask]
-            if s.shape[0] == 0:
-                print(x, s.shape)
-                print(s)
             out_ind = np.random.choice(range(s.shape[0]))
             samp = s[out_ind]
             if self.position_distr is not None:

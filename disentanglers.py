@@ -50,8 +50,8 @@ class SupervisedDisentangler(da.TFModel):
         return enc
 
     def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
-                 loss=tf.losses.MeanSquaredError()):
-        self.model.compile(optimizer, loss)
+                 loss=tf.losses.MeanSquaredError(), loss_weights=None):
+        self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
     def fit_sets(self, train_set, eval_set=None, **kwargs):
@@ -150,8 +150,8 @@ class FlexibleDisentangler(da.TFModel):
         return enc
 
     def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
-                 loss=tf.losses.MeanSquaredError()):
-        self.model.compile(optimizer, loss)
+                 loss=tf.losses.MeanSquaredError(), loss_weights=None):
+        self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
     def fit_sets(self, train_set, eval_set=None, **kwargs):
@@ -198,14 +198,20 @@ def pad_zeros(x, dim):
     x_new = np.concatenate((x, add), axis=1)
     return x_new
 
-
 def _mse_nanloss(label, prediction):
     nan_mask = tf.math.logical_not(tf.math.is_nan(label))
     label = tf.boolean_mask(label, nan_mask)
     prediction = tf.boolean_mask(prediction, nan_mask)
     mult = tf.square(prediction - label)
-    mse_nanloss = tf.reduce_sum(mult)
+    mse_nanloss = tf.reduce_mean(mult)
     return mse_nanloss
+
+def _binary_crossentropy_nan(label, prediction):
+    nan_mask = tf.math.logical_not(tf.math.is_nan(label))
+    label = tf.boolean_mask(label, nan_mask)
+    prediction = tf.boolean_mask(prediction, nan_mask)
+    bcel = tf.keras.losses.binary_crossentropy(label, prediction)
+    return bcel
 
 class FlexibleDisentanglerAE(FlexibleDisentangler):
 
@@ -278,20 +284,26 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                     name=branch_names[1], **layer_params)(z)
         return inputs, rep, class_branch, autoenc_branch
 
-    def _compile(self, *args, loss=_mse_nanloss, **kwargs):
-        loss_dict = {self.branch_names[0]:loss,
-                     self.branch_names[1]:loss}
+    def _compile(self, *args, categ_loss=tf.keras.losses.binary_crossentropy,
+                 autoenc_loss=tf.losses.MeanSquaredError(), standard_loss=False,
+                 loss_ratio=5, **kwargs):
+        if not standard_loss:
+            categ_loss = _binary_crossentropy_nan,
+        loss_dict = {self.branch_names[0]:categ_loss,
+                     self.branch_names[1]:autoenc_loss}
+        loss_weights = {self.branch_names[0]:1, self.branch_names[1]:loss_ratio}
         if self.n_partitions == 0:
             loss_dict[self.branch_names[0]] = lambda x, y: 0.
-        super()._compile(*args, loss=loss_dict, **kwargs)
+        super()._compile(*args, loss=loss_dict, loss_weights=loss_weights,
+                         **kwargs)
     
     def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
             data_generator=None, batch_size=32, standard_loss=False,
             **kwargs):
         if standard_loss:
-            comp_kwargs = {'loss':tf.losses.MeanSquaredError()}
+            comp_kwargs = {'standard_loss':True}
         else:
-            comp_kwargs = {}
+            comp_kwargs = {'standard_loss':False}
         if not self.compiled:
             self._compile(**comp_kwargs)
 
@@ -451,8 +463,8 @@ class StandardAE(da.TFModel):
         return dec
     
     def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
-                 loss=tf.losses.MeanSquaredError()):
-        self.model.compile(optimizer, loss)
+                 loss=tf.losses.MeanSquaredError(), loss_weights=None):
+        self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
     def fit_sets(self, train_set, eval_set=None, **kwargs):
@@ -588,8 +600,8 @@ class BetaVAE(da.TFModel):
         return dec
 
     def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
-                 loss=da.negloglik):
-        self.vae.compile(optimizer, loss)
+                 loss=da.negloglik, loss_weights=None):
+        self.vae.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
     def fit_sets(self, train_set, eval_set=None, **kwargs):
