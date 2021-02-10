@@ -96,7 +96,7 @@ if __name__ == '__main__':
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
-    out = dc.test_generalization_new(dg=dg_use, est_inp_dim=est_inp_dim,
+    out = dc.test_generalization_new(dg_use=dg_use, est_inp_dim=est_inp_dim,
                                      inp_dim=true_inp_dim,
                                      hide_print=hide_print,
                                      dg_train_epochs=dg_train_epochs,
