@@ -49,8 +49,10 @@ class SupervisedDisentangler(da.TFModel):
         enc = tfk.Sequential(layer_list)
         return enc
 
-    def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
+    def _compile(self, optimizer=None,
                  loss=tf.losses.MeanSquaredError(), loss_weights=None):
+        if optimizer is None:
+            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
         self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
@@ -458,8 +460,11 @@ class StandardAE(da.TFModel):
         dec = tfk.Sequential(layer_list)
         return dec
     
-    def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
+    def _compile(self, optimizer=None,
                  loss=tf.losses.MeanSquaredError(), loss_weights=None):
+        if optimizer is None:
+            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
+
         self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
@@ -595,8 +600,10 @@ class BetaVAE(da.TFModel):
         dec = tfk.Sequential(layer_list)
         return dec
 
-    def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
+    def _compile(self, optimizer=None,
                  loss=da.negloglik, loss_weights=None):
+        if optimizer is None:
+            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
         self.vae.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
