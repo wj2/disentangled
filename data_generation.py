@@ -200,7 +200,7 @@ class ChairGenerator(DataGenerator):
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
                                     max_load=max_load, **kwargs)
         if include_position and position_distr is None:
-            position_distr = sts.multivariate_normal((0, 0), max_move**2)
+            position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
         self.position_distr = position_distr
         self.data_table = data
         if max_load == 1:
