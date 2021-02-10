@@ -126,8 +126,10 @@ class VariationalDataGenerator(DataGenerator):
         degen = tfk.Sequential(layer_list)
         return degen
     
-    def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
+    def _compile(self, optimizer=None,
                  loss=da.negloglik):
+        if optimizer is None:
+            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
         self.model.compile(optimizer, loss)
         self.compiled = True
 
@@ -370,8 +372,10 @@ class FunctionalDataGenerator(DataGenerator):
         dummy = FunctionalDataGenerator(0, (10,), 0)
         return cls._load_model(dummy, path)
     
-    def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
+    def _compile(self, optimizer=None,
                  loss=tf.losses.MeanSquaredError()):
+        if optimizer is None:
+            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
         self.model.compile(optimizer, loss)
         self.compiled = True
         
