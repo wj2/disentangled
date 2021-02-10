@@ -149,8 +149,10 @@ class FlexibleDisentangler(da.TFModel):
         enc = tfk.Sequential(layer_list)
         return enc
 
-    def _compile(self, optimizer=tf.optimizers.Adam(learning_rate=1e-3),
+    def _compile(self, optimizer=None,
                  loss=tf.losses.MeanSquaredError(), loss_weights=None):
+        if optimizer is None:
+            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
         self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
@@ -334,10 +336,10 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
         return cls._load_model(dummy, path)
 
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
-                     n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
+                     n_partitions, act_func=tf.nn.relu, regularizer_weight=1,
                      layer_types_enc=None, 
                      layer_types_dec=None,
-                     branch_names=('a', 'b'), last_kernel=20,
+                     branch_names=('a', 'b'),
                      **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
@@ -345,11 +347,12 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
         ll = len(input_shape)
         for i, lp in enumerate(layer_shapes):
             if ll != len(lp):
+                transition_shape = x.shape[1:]
                 x = tfkl.Flatten()(x)
             ll = len(lp)
             if layer_types_enc is None:
                 if len(lp) == 3:
-                    layer_type = tfkl.Conv2D
+                    layer_type = ft.partial(tfkl.Conv2D, padding='same')
                     strides.append(lp[2])
                 elif len(lp) == 1:
                     layer_type = tfkl.Dense
@@ -372,19 +375,12 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
                                   name=branch_names[0])(rep)
 
         # decoder branch
-        contraction = np.product(strides)
-        n_units_from_latent = int(np.product(input_shape)/(contraction**2))
-        z = tfkl.Dense(units=n_units_from_latent,
-                       activation=act_func, **layer_params)(rep)
-        r_shape = (int(input_shape[0]/contraction),
-                   int(input_shape[1]/contraction),
-                   input_shape[2])
-
+        z = rep
         ll = 1
         for i, lp in enumerate(layer_shapes[::-1]):
             if ll != len(lp):
-                z = tfkl.Dense(np.product(r_shape), activation=None)(z)
-                z = tfkl.Reshape(target_shape=r_shape)(z)
+                z = tfkl.Dense(np.product(transition_shape), activation=None)(z)
+                z = tfkl.Reshape(target_shape=transition_shape)(z)
             ll = len(lp)
             if layer_types_dec is None:
                 if len(lp) == 3:
