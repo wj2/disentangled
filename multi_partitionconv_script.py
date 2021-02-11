@@ -101,7 +101,7 @@ if __name__ == '__main__':
     else:
         offset_distr = sts.norm(0, np.sqrt(args.offset_distr_var))
 
-    layer_spec = ((64, 3, 1), (64, 3, 2), (32, 3, 2), (32, 3, 2))
+    layer_spec = ((20, 3, 1), (8, 3, 2), (2*est_inp_dim,), (est_inp_dim,))
         
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
@@ -115,7 +115,7 @@ if __name__ == '__main__':
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
-    out = dc.test_generalization_new(dg=dg, est_inp_dim=est_inp_dim,
+    out = dc.test_generalization_new(dg_use=dg, est_inp_dim=est_inp_dim,
                                      inp_dim=true_inp_dim, 
                                      hide_print=hide_print,
                                      dg_train_epochs=dg_train_epochs,
