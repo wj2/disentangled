@@ -719,7 +719,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             layer_spec = ((40,), (40,), (25,), (est_inp_dim,))
         models_args = (input_dims, dg_use, model_kinds, layer_spec)
     if models_kwargs is None:
-        batch_size = 1000
+        batch_size = 50
         epochs = model_n_epochs
         train_samples = np.logspace(models_n_bounds[0], models_n_bounds[1],
                                     models_n_diffs, dtype=int)
