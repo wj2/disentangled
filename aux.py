@@ -81,7 +81,7 @@ def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
         orth_vecs = u.generate_orthonormal_basis(dim)
         seq_inds = np.arange(n_funcs, dtype=int) % dim
         plane_vec = orth_vecs[:, seq_inds].T
-    if orth_vec is not None:
+    elif orth_vec is not None:
         plane_vec = u.generate_orthonormal_vectors(orth_vec, n_funcs)
     else:
         direction = np.random.randn(n_funcs, dim)
@@ -149,7 +149,7 @@ class HalfMultidimensionalNormal(object):
         set_part = lambda x: np.logical_not(self.partition_func(x))
         new = HalfMultidimensionalNormal(*self.args, set_partition=set_part,
                                          **self.kwargs)
-        new.partition = self.partition
+        new.partition = -self.partition
         new.offset = self.offset
         return new
 

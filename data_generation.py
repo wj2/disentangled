@@ -274,7 +274,7 @@ class ChairGenerator(DataGenerator):
 class RFDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=.01,
-                 distrib_variance=1, setup_distribution=None):
+                 distrib_variance=1, setup_distribution=None, total_out=False):
         if source_distribution is None:
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)
@@ -283,6 +283,8 @@ class RFDataGenerator(DataGenerator):
 
         sd_list = [sts.norm(m, np.sqrt(setup_distribution.cov[i, i]))
                    for i, m in enumerate(setup_distribution.mean)]
+        if total_out:
+            out_dim = int(np.ceil(out_dim**(1/inp_dim)))
         out = self.make_generator(out_dim, sd_list,
                                   noise=noise)
         self.generator, self.rf_cents, self.rf_wids = out
