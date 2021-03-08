@@ -65,7 +65,7 @@ class SupervisedDisentangler(da.TFModel):
         return self.fit(train_x, train_y, eval_x=eval_x, eval_y=eval_y, **kwargs)
 
     def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
-            data_generator=None, batch_size=32, **kwargs):
+            data_generator=None, batch_size=32, standard_loss=True, **kwargs):
         if not self.compiled:
             self._compile()
 
@@ -477,7 +477,8 @@ class StandardAE(da.TFModel):
         return self.fit(train_x, eval_x=eval_x, **kwargs)
         
     def fit(self, train_x, eval_x=None, epochs=15,
-            data_generator=None, batch_size=32, **kwargs):
+            data_generator=None, batch_size=32, standard_loss=True,
+            **kwargs):
         if not self.compiled:
             self._compile()
             
