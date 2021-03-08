@@ -681,12 +681,12 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             plot=True, gpu_samples=False):
     # train data generator
     if dg_args is None:
-        out_dim = 30
+        out_dim = 50
         layers =  (20, 50, 50, 50, 30)
         dg_args = (inp_dim, layers, out_dim)
     if dg_kwargs is None:
         noise = .1
-        reg_weight = (0, .1)
+        reg_weight = (0, .15)
         dg_kwargs = {'noise':noise, 'l2_weight':reg_weight}
     
     if dg_use is None:
@@ -718,6 +718,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         if layer_spec is None:
             layer_spec = ((40,), (40,), (25,), (est_inp_dim,))
         models_args = (input_dims, dg_use, model_kinds, layer_spec)
+    print(layer_spec)
     if models_kwargs is None:
         batch_size = 50
         epochs = model_n_epochs
