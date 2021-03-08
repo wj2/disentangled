@@ -44,6 +44,16 @@ def create_parser():
                         help='use only mutually orthogonal partition functions '
                         '(if the number of partitions exceeds the number of '
                         'dimensions, they will just be resampled')
+    parser.add_argument('--offset_distr_var', default=0, type=float,
+                        help='variance of the binary partition offset '
+                        'distribution (will be Gaussian, default 0)')
+    parser.add_argument('--show_prints', default=False,
+                        action='store_true',
+                        help='print training information for disentangler '
+                        'models')
+    parser.add_argument('--contextual_partitions', default=False,
+                        action='store_true',
+                        help='use contextual partitions')
     return parser
 
 if __name__ == '__main__':
@@ -69,17 +79,26 @@ if __name__ == '__main__':
     else:
         dg_use = None
 
+    if args.offset_distr_var == 0:
+        offset_distr = None
+    else:
+        offset_distr = sts.norm(0, np.sqrt(args.offset_distr_var))
+
+    hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
+    contextual_partitions = args.contextual_partitions
     model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
                                   true_inp_dim=true_inp_dim,
                                   n_partitions=p,
-                                  orthog_partitions=orthog_partitions)
+                                  contextual_partitions=contextual_partitions,
+                                  orthog_partitions=orthog_partitions,
+                                  offset_distr=offset_distr)
                        for p in partitions)
-
         
     use_mp = not args.no_multiprocessing
-    out = dc.test_generalization_new(dg=dg_use, est_inp_dim=est_inp_dim,
+    out = dc.test_generalization_new(dg_use=dg_use, est_inp_dim=est_inp_dim,
                                      inp_dim=true_inp_dim,
+                                     hide_print=hide_print,
                                      dg_train_epochs=dg_train_epochs,
                                      n_reps=n_reps, model_kinds=model_kinds,
                                      use_mp=use_mp, models_n_diffs=n_train_diffs,
@@ -87,5 +106,5 @@ if __name__ == '__main__':
     dg, (models, th), (p, c), (lrs, scrs, sims) = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
-                                  lrs, (scrs, sims),
+                                  lrs, (scrs, sims), save_args=args,
                                   save_tf_models=save_tf_models)

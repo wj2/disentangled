@@ -39,6 +39,10 @@ def create_parser():
                         help='do not store tensorflow models')
     parser.add_argument('--test', default=False, action='store_true',
                         help='run minimal code to test that this script works')
+    parser.add_argument('--beta_mult', default=1, type=float,
+                        help='multiply submitted beta value by this, '
+                        'useful for running as an array job where betas are '
+                        'constrained to be integers')
     return parser
 
 if __name__ == '__main__':
@@ -64,7 +68,8 @@ if __name__ == '__main__':
         dg_use = None
 
     betas = args.betas
-    model_kinds = list(ft.partial(dd.BetaVAE, beta=b) for b in betas)
+    model_kinds = list(ft.partial(dd.BetaVAE, beta=b*args.beta_mult)
+                       for b in betas)
 
     use_mp = not args.no_multiprocessing
     out = dc.test_generalization_new(dg=dg_use, est_inp_dim=est_inp_dim,

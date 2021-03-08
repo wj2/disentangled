@@ -7,6 +7,8 @@ import scipy.stats as sts
 import numpy as np
 import functools as ft
 import re
+import PIL.Image as pImage
+import pandas as pd
 
 import general.utility as u
 
@@ -62,18 +64,25 @@ class InputGenerator(object):
     
 def _binary_classification(x, plane=None, off=0):
     return np.sum(plane*x, axis=1) - off > 0
-    
+
+def _contextual_binary_classification(x, plane=None, off=0, context=None,
+                                      context_off=0):
+    ret = (np.sum(plane*x, axis=1) - off > 0).astype(float)
+    if context[0] is not None:
+        mask = np.sum(context*x, axis=1) - context_off < 0
+        ret[mask] = np.nan
+    return ret
+
 def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
                                  orth_vec=None, orth_off=None,
-                                 random_orth_vec=False):
-    if random_orth_vec:
-        direction = np.random.randn(1, dim)
-        norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
-        orth_vec = direction/norms
-    if orth_vec is not None:
+                                 orth_basis=False, contextual=False,
+                                 smaller=False, context_offset=False):
+    if orth_basis:
         orth_vecs = u.generate_orthonormal_basis(dim)
         seq_inds = np.arange(n_funcs, dtype=int) % dim
         plane_vec = orth_vecs[:, seq_inds].T
+    elif orth_vec is not None:
+        plane_vec = u.generate_orthonormal_vectors(orth_vec, n_funcs)
     else:
         direction = np.random.randn(n_funcs, dim)
         norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
@@ -84,11 +93,23 @@ def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
         offsets = np.zeros(n_funcs)
     if orth_off is not None:
         offsets = np.ones(n_funcs)*orth_off
+    offsets_context = np.zeros(n_funcs)
+    if contextual:
+        direction_c = np.random.randn(n_funcs, dim)
+        norms_c = np.expand_dims(np.sqrt(np.sum(direction_c**2, axis=1)), 1)
+        plane_vec_context = direction_c/norms_c
+    else:
+        plane_vec_context = (None,)*n_funcs
+    if context_offset:
+        offsets_context = offset_distribution.rvs(n_funcs)
+        
     funcs = np.zeros(n_funcs, dtype=object)
     
     for i in range(n_funcs):
-        funcs[i] = ft.partial(_binary_classification, plane=plane_vec[i:i+1],
-                              off=offsets[i])
+        funcs[i] = ft.partial(_contextual_binary_classification,
+                              plane=plane_vec[i:i+1], off=offsets[i],
+                              context=plane_vec_context[i:i+1],
+                              context_off=offsets_context[i])
     return funcs, plane_vec, offsets
     
 class HalfMultidimensionalNormal(object):
@@ -97,6 +118,7 @@ class HalfMultidimensionalNormal(object):
         self.args = args
         self.kwargs = kwargs
         self.distr = sts.multivariate_normal(*args, **kwargs)
+        self.dim = self.distr.dim
         if set_partition is None:
             out = generate_partition_functions(len(self.distr.mean),
                                                n_funcs=1)
@@ -114,7 +136,7 @@ class HalfMultidimensionalNormal(object):
         m = norm.mean
         s = norm.cov
         return cls(m, s)
-        
+    
     def rvs(self, rvs_shape):
         rvs = self.distr.rvs(rvs_shape)
         while not np.all(self.partition_func(rvs)):
@@ -127,7 +149,7 @@ class HalfMultidimensionalNormal(object):
         set_part = lambda x: np.logical_not(self.partition_func(x))
         new = HalfMultidimensionalNormal(*self.args, set_partition=set_part,
                                          **self.kwargs)
-        new.partition = self.partition
+        new.partition = -self.partition
         new.offset = self.offset
         return new
 
@@ -186,7 +208,8 @@ def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
     return model_arr
 
 def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
-                               seed_str='genout_{}.tfmod', save_tf_models=True):
+                               seed_str='genout_{}.tfmod', save_tf_models=True,
+                               save_args=None):
     os.mkdir(folder)
     path_base = os.path.join(folder, seed_str)
 
@@ -218,33 +241,38 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
         manifest = (dg_file, models_file, history_file)
     else:
         manifest = ()
+    if save_args is not None:
+        args_file = seed_str.format('args')
+        pickle.dump(save_args, open(os.path.join(folder, args_file), 'wb'))
     manifest = manifest + (p_file, c_file)
     if lr is not None:
         manifest = manifest + (lr_file,)
     if sc is not None:
         manifest = manifest + (sc_file,)
+    if save_args is not None:
+        manifest = manifest + (args_file,)
     pickle.dump(manifest, open(os.path.join(folder, 'manifest.pkl'), 'wb'))
     
 def load_generalization_output(folder, manifest='manifest.pkl',
                                dg_type=None, analysis_only=False,
-                               model_type=None, model_type_arr=None):
+                               model_type=None, model_type_arr=None,
+                               key_template='.*_([a-z]+)\.tfmod'):
     fnames = pickle.load(open(os.path.join(folder, manifest), 'rb'))
     fnames_full = list(os.path.join(folder, x) for x in fnames)
-    if len(fnames_full) == 4:
-        if re.match('.*_sc\.tfmod', fnames_full[-1]) is not None:
-            p_file, c_file, ld_file, sc_file = fnames_full
-            analysis_only = True
-        else:
-            dg_file, models_file, p_file, c_file = fnames_full
-            history_file = None
-            ld_file, sc_file = None, None
-    elif len(fnames_full) == 5:
-        dg_file, models_file, history_file, p_file, c_file = fnames_full
-        ld_file, sc_file = None, None
-    else:
-        dg_file, models_file, history_file, p_file, c_file = fnames_full[:-2]
-        ld_file, sc_file = fnames_full[-2:]
-
+    key_str = (re.match(key_template, fn).group(1) for fn in fnames)
+    fnames_dict = dict(zip(key_str, fnames_full))
+    
+    dg_file = fnames_dict.get('dg')
+    models_file = fnames_dict.get('models')
+    history_file = fnames_dict.get('histories')
+    sc_file = fnames_dict.get('sc')
+    ld_file = fnames_dict.get('lr')
+    args_file = fnames_dict.get('args')
+    p_file = fnames_dict.get('p')
+    c_file = fnames_dict.get('c')
+    if models_file is None:
+        analysis_only = True
+        
     if analysis_only:
         dg = None
         models = None
@@ -321,6 +349,10 @@ def load_full_run(folder, run_ind, merge_axis=1,
         out_inds.append(targ_inds[si])
         if i == 0:
             dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all = outs[si]
+            try:
+                sc_all.shape
+            except AttributeError:
+                sc_all, _ = sc_all
         else:
             _, models, th, p, c, ld, sc = outs[si]
             if not analysis_only:
@@ -328,6 +360,10 @@ def load_full_run(folder, run_ind, merge_axis=1,
                                             axis=merge_axis)
                 if th_all is not None:
                     th_all = _concatenate_none((th_all, th), axis=merge_axis)
+            try:
+                sc.shape
+            except AttributeError:
+                sc, _ = sc
             p_all = _concatenate_none((p_all, p), axis=merge_axis)
             ch_all = _concatenate_none((c_all, c), axis=merge_axis)
             ld_all = _concatenate_none((ld_all, ld), axis=merge_axis)
@@ -341,3 +377,53 @@ def _concatenate_none(arrs, axis=0):
     else:
         out = np.concatenate(arrs, axis=axis)
     return out
+
+chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
+def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
+                      img_size=(64, 64), max_load=np.inf, norm_pixels=True,
+                      norm_params=False, grayscale=False):
+    subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
+                                                os.listdir(folder))
+    names = []
+    nums = []
+    pitchs = []
+    rots = []
+    dists = []
+    imgs = []
+    loaded = 0
+    for sfl in subfolders:
+        p = os.path.join(folder, sfl, mid_folder)
+        img_fls = os.listdir(p)
+        for ifl in img_fls:
+            m = re.match(file_template, ifl)
+            if m is not None:
+                names.append(ifl)
+                nums.append(int(m.group(1)))
+                pitchs.append(int(m.group(2)))
+                rots.append(int(m.group(3)))
+                dists.append(int(m.group(4)))
+                img = pImage.open(os.path.join(p, ifl))
+                if grayscale:
+                    img = img.convert('L')
+                img_rs = img.resize(img_size)
+                img_arr = np.asarray(img_rs)
+                if grayscale:
+                    img_arr = np.expand_dims(img_arr, -1)
+                if norm_pixels:
+                    img_arr = img_arr/255
+                imgs.append(img_arr)
+                img.close()
+                
+                loaded = loaded + 1
+            if loaded >= max_load:
+                break
+        if loaded >= max_load:
+            break
+    if norm_params:
+        pitchs = u.demean_unit_std(np.array(pitchs))
+        rots = u.demean_unit_std(np.array(rots))
+        dists = u.demean_unit_std(np.array(dists))
+    d = {'names':names, 'img_nums':nums, 'pitch':pitchs, 'rotation':rots,
+         'distances':dists, 'images':imgs}
+    data = pd.DataFrame(data=d)
+    return data
