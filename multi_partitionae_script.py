@@ -54,6 +54,11 @@ def create_parser():
     parser.add_argument('--contextual_partitions', default=False,
                         action='store_true',
                         help='use contextual partitions')
+    parser.add_argument('--use_rf_dg', default=False,
+                        action='store_true',
+                        help='use an RF-based data generator')
+    parser.add_argument('--dg_dim', default=200, type=int,
+                        help='dimensionality of the data generator')
     return parser
 
 if __name__ == '__main__':
@@ -66,7 +71,7 @@ if __name__ == '__main__':
     if args.test:
         n_reps = 1
         n_train_diffs = 1
-        dg_train_epochs = 1
+        dg_train_epochs = 10
     else:
         n_reps = args.n_reps
         n_train_diffs = args.n_train_diffs
@@ -76,6 +81,8 @@ if __name__ == '__main__':
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
+    elif args.use_rf_dg:
+        dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True)
     else:
         dg_use = None
 
@@ -102,7 +109,8 @@ if __name__ == '__main__':
                                      dg_train_epochs=dg_train_epochs,
                                      n_reps=n_reps, model_kinds=model_kinds,
                                      use_mp=use_mp, models_n_diffs=n_train_diffs,
-                                     models_n_bounds=args.n_train_bounds)
+                                     models_n_bounds=args.n_train_bounds,
+                                     dg_dim=args.dg_dim)
     dg, (models, th), (p, c), (lrs, scrs, sims) = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,

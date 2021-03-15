@@ -652,12 +652,12 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
         test_enc_pts = model.get_representation(dg_use.generator(test_stim))
     if feat_mask is None:
         feat_mask = np.ones(stim.shape[1], dtype=bool)
-    lr = sklm.Ridge(**kwargs)
+    lr = sklm.LinearRegression(**kwargs)
     lr.fit(enc_pts, stim[:, feat_mask])
     score = lr.score(test_enc_pts, test_stim[:, feat_mask])
     params = lr.get_params()
     if get_parallelism:
-        lr2 = sklm.Ridge(**kwargs)
+        lr2 = sklm.LinearRegression(**kwargs)
         lr2.fit(test_enc_pts, test_stim[:, feat_mask])
         sim = u.cosine_similarity(lr.coef_, lr2.coef_)
     else:
@@ -678,15 +678,15 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             train_test_distrs=None, n_reps=5,
                             model_kinds=model_kinds_default,
                             layer_spec=None, model_n_epochs=60,
-                            plot=True, gpu_samples=False):
+                            plot=True, gpu_samples=False, dg_dim=100):
     # train data generator
     if dg_args is None:
-        out_dim = 50
-        layers =  (20, 50, 50, 50, 30)
+        out_dim = dg_dim
+        layers =  (50, 100)
         dg_args = (inp_dim, layers, out_dim)
     if dg_kwargs is None:
         noise = .1
-        reg_weight = (0, .15)
+        reg_weight = (0, .2)
         dg_kwargs = {'noise':noise, 'l2_weight':reg_weight}
     
     if dg_use is None:
@@ -694,7 +694,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
 
         source_distr = sts.multivariate_normal(np.zeros(inp_dim), dg_source_var)
         dg_use.fit(source_distribution=source_distr, epochs=dg_train_epochs,
-               use_multiprocessing=use_mp)
+                   use_multiprocessing=use_mp)
     else:
         source_distr = dg_use.source_distribution
 
@@ -716,12 +716,13 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             est_inp_dim = inp_dim
         input_dims = (est_inp_dim,)*models_n_diffs
         if layer_spec is None:
-            layer_spec = ((40,), (40,), (25,), (est_inp_dim,))
+            layer_spec = ((50,), (50,), (50,))
+            # layer_spec = ()
         models_args = (input_dims, dg_use, model_kinds, layer_spec)
     print(layer_spec)
     if models_kwargs is None:
-        batch_size = 50
-        epochs = model_n_epochs
+        batch_size = 30
+        epochs = 80 # model_n_epochs
         train_samples = np.logspace(models_n_bounds[0], models_n_bounds[1],
                                     models_n_diffs, dtype=int)
         samps_list = True
@@ -768,11 +769,11 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                                              n_iters=eval_n_iters,
                                              n_train_samples=n_train_samples,
                                              n_test_samples=n_test_samples)
-        print('corr', p)
-        print('chance', c)
     else:
         p, c = p_c
 
+    print('p')
+    print(p)
     if plot:
         plot_generalization_performance(use_x, p, log_x=models_log_x)
         plot_model_manifolds(dg_use, models)
@@ -780,7 +781,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     if lts_scores is None:
         lts_scores = find_linear_mappings(dg_use, models, half=True,
                                           n_samps=n_test_samples)
-        print(np.mean(lts_scores[1]))
+    print(np.mean(lts_scores[1]))
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 
@@ -788,7 +789,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
 
 def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
-                           model_type=dd.FlexibleDisentanglerAE,
+                           model_type=dd.FlexibleDisentanglerAE, axs=None,
                            folder='disentangled/simulation_data/partition/'):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
@@ -797,9 +798,13 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     print(info)
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
-    plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),
-                                labels=('gen classifier', 'gen regression'),
-                                info=info, log_x=log_x, panel_vals=panel_vals)
+    out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),
+                                      labels=('gen classifier',
+                                              'gen regression'),
+                                      info=info, log_x=log_x,
+                                      panel_vals=panel_vals,
+                                      axs=axs)
+    return out
 
 def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 ylims=None, labels=None, x_ax=1, panel_ax=0,
@@ -837,3 +842,4 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                              num_dims=nd, xlab=xlab,
                                              label=label,
                                              plot_labels=panel_labels)
+    return axs

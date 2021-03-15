@@ -273,8 +273,9 @@ class ChairGenerator(DataGenerator):
     
 class RFDataGenerator(DataGenerator):
 
-    def __init__(self, inp_dim, out_dim, source_distribution=None, noise=.01,
-                 distrib_variance=1, setup_distribution=None, total_out=False):
+    def __init__(self, inp_dim, out_dim, source_distribution=None, noise=0.001,
+                 distrib_variance=1, setup_distribution=None, total_out=False,
+                 width_scaling=4):
         if source_distribution is None:
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)
@@ -284,9 +285,10 @@ class RFDataGenerator(DataGenerator):
         sd_list = [sts.norm(m, np.sqrt(setup_distribution.cov[i, i]))
                    for i, m in enumerate(setup_distribution.mean)]
         if total_out:
-            out_dim = int(np.ceil(out_dim**(1/inp_dim)))
+            out_dim = int(np.round(.5*out_dim**(1/inp_dim))*2)
+        print(out_dim)
         out = self.make_generator(out_dim, sd_list,
-                                  noise=noise)
+                                  noise=noise, width_scaling=width_scaling)
         self.generator, self.rf_cents, self.rf_wids = out
         self.input_dim = inp_dim
         self.output_dim = len(self.rf_cents)
@@ -294,13 +296,15 @@ class RFDataGenerator(DataGenerator):
         self.source_distribution = source_distribution
 
     def make_generator(self, out_dim, source_distribution, noise=.01,
-                       scale=1, baseline=0):
+                       scale=1, baseline=0, width_scaling=1):
         out = rfm.get_distribution_gaussian_resp_func(out_dim,
                                                       source_distribution,
                                                       scale=scale,
-                                                      baseline=baseline)
+                                                      baseline=baseline,
+                                                      wid_scaling=width_scaling)
         rfs, _, ms, ws = out
-        noise_distr = sts.multivariate_normal(np.zeros(len(ms)), noise)
+        noise_distr = sts.multivariate_normal(np.zeros(len(ms)), noise,
+                                              allow_singular=True)
         gen = lambda x: rfs(x) + noise_distr.rvs(x.shape[0])
         return gen, ms, ws
 
