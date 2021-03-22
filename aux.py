@@ -288,7 +288,10 @@ def load_generalization_output(folder, manifest='manifest.pkl',
     p = pickle.load(open(p_file, 'rb'))
     c = pickle.load(open(c_file, 'rb'))
     if ld_file is not None:
-        ld = pickle.load(open(ld_file, 'rb'))
+        try:
+            ld = pickle.load(open(ld_file, 'rb'))
+        except ModuleNotFoundError:
+            ld = None
     else:
         ld = None
     if sc_file is not None:
