@@ -208,8 +208,8 @@ def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
     return model_arr
 
 def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
-                               seed_str='genout_{}.tfmod', save_tf_models=True,
-                               save_args=None):
+                               gd=None, seed_str='genout_{}.tfmod',
+                               save_tf_models=True, save_args=None):
     os.mkdir(folder)
     path_base = os.path.join(folder, seed_str)
 
@@ -237,6 +237,10 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
         sc_file = seed_str.format('sc')
         pickle.dump(sc, open(os.path.join(folder, sc_file), 'wb'))
 
+    if gd is not None:
+        gd_file = seed_str.format('gd')
+        pickle.dump(sc, open(os.path.join(folder, gd_file), 'wb'))
+
     if save_tf_models:
         manifest = (dg_file, models_file, history_file)
     else:
@@ -249,6 +253,8 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
         manifest = manifest + (lr_file,)
     if sc is not None:
         manifest = manifest + (sc_file,)
+    if gd is not None:
+        manifest = manifest + (gd_file,)
     if save_args is not None:
         manifest = manifest + (args_file,)
     pickle.dump(manifest, open(os.path.join(folder, 'manifest.pkl'), 'wb'))

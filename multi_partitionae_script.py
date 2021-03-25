@@ -111,8 +111,8 @@ if __name__ == '__main__':
                                      use_mp=use_mp, models_n_diffs=n_train_diffs,
                                      models_n_bounds=args.n_train_bounds,
                                      dg_dim=args.dg_dim)
-    dg, (models, th), (p, c), (lrs, scrs, sims) = out
+    dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
-                                  lrs, (scrs, sims), save_args=args,
+                                  lrs, (scrs, sims), gd, save_args=args,
                                   save_tf_models=save_tf_models)

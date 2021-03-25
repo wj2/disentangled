@@ -678,7 +678,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             train_test_distrs=None, n_reps=5,
                             model_kinds=model_kinds_default,
                             layer_spec=None, model_n_epochs=60,
-                            plot=True, gpu_samples=False, dg_dim=100):
+                            plot=True, gpu_samples=False, dg_dim=100,
+                            generate_data=True, n_save_samps=10**4):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -785,7 +786,24 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 
-    return dg_use, (models, th), (p, c), lts_scores
+    generate_data = True
+    if generate_data:
+        latent_samps, samps = dg_use.sample_reps(sample_size=n_save_samps)
+        reps = np.zeros(models.shape
+                        + (n_save_samps, models[0, 0, 0].encoded_size))
+        ind_combs = list(list(range(d)) for d in models.shape)
+        print(ind_combs)
+        for ic in it.product(*ind_combs):
+            print(ic)
+            print(samps.shape)
+            print(models[ic].get_representation(samps).shape)
+            reps[ic] = models[ic].get_representation(samps)
+        print(reps.shape)
+        gd = latent_samps, samps, reps
+    else:
+        gd = None
+
+    return dg_use, (models, th), (p, c), lts_scores, gd
 
 def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
@@ -810,7 +828,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 ylims=None, labels=None, x_ax=1, panel_ax=0,
                                 fwid=3, info=None, log_x=True, label='',
                                 panel_labels='train egs = {}',
-                                xlab='partitions', axs=None):
+                                xlab='partitions', axs=None, ct=np.nanmedian):
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -835,7 +853,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
         else:
             qp = np.swapaxes(qp, x_ax, 1)
             qp = np.swapaxes(qp, panel_ax, 0)
-        axs_i = plot_recon_accuracies_ntrain(qp, central_tendency=np.nanmedian,
+        axs_i = plot_recon_accuracies_ntrain(qp, central_tendency=ct,
                                              axs=axs[:, i], xs=x_vals,
                                              log_x=log_x, n_plots=panel_vals,
                                              ylabel=labels[i], ylim=ylims[i],
