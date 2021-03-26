@@ -61,6 +61,38 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 
+def lr_pts_dist(stim, reps, targ_dist, neighbor_rad, eps=.01, **kwargs):
+    train_ind = np.random.choice(stim.shape[0])
+    train_cent = stim[train_ind]
+    dists = u.euclidean_distance(train_cent, stim)
+    test_candidates = np.abs(dists - targ_dist) < eps
+    test_ind = np.random.choice(np.sum(test_candidates))
+    test_cent = stim[test_candidates][test_ind]
+    return lr_gen_neighbors(stim, reps, train_cent, test_cent,
+                            neighbor_rad, **kwargs)
+
+def lr_gen_neighbors(stim, reps, train_pt, test_pt, radius,
+                     lr=sklm.LinearRegression, min_set_pts=100, **kwargs):
+    lri = lr(**kwargs)
+    train_dists = u.euclidean_distance(train_pt, stim)
+    test_dists = u.euclidean_distance(test_pt, stim)
+    train_test_dist = u.euclidean_distance(train_pt, test_pt)
+    if train_test_dist < radius:
+        print('the training and test points are closer than the radius so '
+              'the training and test sets will not be disjoint')
+    train_mask = train_dists < radius
+    test_mask = test_dists < radius
+    if np.sum(train_mask) < min_set_pts or np.sum(test_mask) < min_set_pts:
+        sc = np.nan
+    else:
+        stim_train = stim[train_mask]
+        reps_train = reps[train_mask]
+        lri.fit(reps_train, stim_train)
+        stim_test = stim[test_mask]
+        reps_test = reps[test_mask]
+        sc = lri.score(reps_test, stim_test)
+    return sc    
+
 def train_multiple_bvae(dg_use, betas, layer_spec, n_reps=10, batch_size=32,
                         n_train_samps=10**6, epochs=5, hide_print=False,
                         input_dim=None):
@@ -786,24 +818,40 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 
-    generate_data = True
     if generate_data:
         latent_samps, samps = dg_use.sample_reps(sample_size=n_save_samps)
         reps = np.zeros(models.shape
                         + (n_save_samps, models[0, 0, 0].encoded_size))
         ind_combs = list(list(range(d)) for d in models.shape)
-        print(ind_combs)
         for ic in it.product(*ind_combs):
-            print(ic)
-            print(samps.shape)
-            print(models[ic].get_representation(samps).shape)
             reps[ic] = models[ic].get_representation(samps)
-        print(reps.shape)
         gd = latent_samps, samps, reps
     else:
         gd = None
 
     return dg_use, (models, th), (p, c), lts_scores, gd
+
+def compute_distgen(l_samps, r_samps, dists, rads, n_reps=10, **kwargs):
+    perf = np.zeros((len(dists), len(rads), n_reps))
+    for (d_i, r_i, n_i) in u.make_array_ind_iterator(perf.shape):
+        p = lr_pts_dist(l_samps, r_samps, dists[d_i], rads[r_i], **kwargs)
+        perf[d_i, r_i, n_i] = p
+    return perf
+
+def compute_distgen_fromrun(dists, rads, run_ind, f_pattern, n_reps=10,
+                            folder='disentangled/simulation_data/partition/',
+                            **kwargs):
+    data, info = da.load_full_run(folder, run_ind, file_template=f_pattern,
+                                  analysis_only=True)
+    n_parts, _, _, _, _, _, _, _, samps = data
+    latent_samps, dg_samps, rep_samps = samps
+    if latent_samps is None:
+        print('this run has no stored samples, exiting')
+        perf = np.nan
+    else:
+        perf = compute_distgen(latent_samps, rep_samps, dists, rads,
+                               n_reps=n_reps, **kwargs)
+    return perf
 
 def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
@@ -812,7 +860,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True) 
-    n_parts, _, _, _, p, c, _, sc = data
+    n_parts, _, _, _, p, c, _, sc, _ = data
     print(info)
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
