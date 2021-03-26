@@ -239,7 +239,7 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
 
     if gd is not None:
         gd_file = seed_str.format('gd')
-        pickle.dump(sc, open(os.path.join(folder, gd_file), 'wb'))
+        pickle.dump(gd, open(os.path.join(folder, gd_file), 'wb'))
 
     if save_tf_models:
         manifest = (dg_file, models_file, history_file)
@@ -276,6 +276,7 @@ def load_generalization_output(folder, manifest='manifest.pkl',
     args_file = fnames_dict.get('args')
     p_file = fnames_dict.get('p')
     c_file = fnames_dict.get('c')
+    gd_file = fnames_dict.get('gd')
     if models_file is None:
         analysis_only = True
         
@@ -304,8 +305,14 @@ def load_generalization_output(folder, manifest='manifest.pkl',
         sc = pickle.load(open(sc_file, 'rb'))
     else:
         sc = None
-
-    return dg, models, th, p, c, ld, sc
+    if gd_file is not None:
+        print(gd_file)
+        gd = pickle.load(open(gd_file, 'rb'))
+        print(len(gd))
+    else:
+        gd = None
+        
+    return dg, models, th, p, c, ld, sc, gd
 
 def _interpret_foldername(fl, td_pattern='-td([0-9]+)-',
                           ld_pattern='-ld([0-9]+)-',
@@ -357,13 +364,27 @@ def load_full_run(folder, run_ind, merge_axis=1,
     for i, si in enumerate(sort_inds):
         out_inds.append(targ_inds[si])
         if i == 0:
-            dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all = outs[si]
+            dg_all, models_all, th_all, p_all = outs[si][:4]
+            c_all, ld_all, sc_all, gd_all = outs[si][4:]
+            print(gd_all[0].shape)
+            print(gd_all[1].shape)
+            print(len(gd_all))
+            if gd_all is None:
+                ls_all = None
+                dgs_all = None
+                rs_all = None
+            else:
+                ls_all, dgs_all, rs_all = gd_all
             try:
                 sc_all.shape
             except AttributeError:
                 sc_all, _ = sc_all
         else:
-            _, models, th, p, c, ld, sc = outs[si]
+            _, models, th, p, c, ld, sc, gd = outs[si]
+            if gd is None:
+                ls, dgs, rs = None, None, None
+            else:
+                ls, dgs, rs = gd
             if not analysis_only:
                 models_all = _concatenate_none((models_all, models),
                                             axis=merge_axis)
@@ -377,7 +398,12 @@ def load_full_run(folder, run_ind, merge_axis=1,
             ch_all = _concatenate_none((c_all, c), axis=merge_axis)
             ld_all = _concatenate_none((ld_all, ld), axis=merge_axis)
             sc_all = _concatenate_none((sc_all, sc), axis=merge_axis)
-    data = out_inds, dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all
+            ls_all = _concatenate_none((ls_all, ls), axis=merge_axis)
+            dgs_all = _concatenate_none((dgs_all, dgs), axis=merge_axis)
+            rs_all = _concatenate_none((rs_all, rs), axis=merge_axis)
+            
+    data = (out_inds, dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all,
+            (ls_all, dgs_all, rs_all))
     return data, info
 
 def _concatenate_none(arrs, axis=0):
