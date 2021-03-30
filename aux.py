@@ -262,7 +262,8 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
 def load_generalization_output(folder, manifest='manifest.pkl',
                                dg_type=None, analysis_only=False,
                                model_type=None, model_type_arr=None,
-                               key_template='.*_([a-z]+)\.tfmod'):
+                               key_template='.*_([a-z]+)\.tfmod',
+                               skip_gd=True):
     fnames = pickle.load(open(os.path.join(folder, manifest), 'rb'))
     fnames_full = list(os.path.join(folder, x) for x in fnames)
     key_str = (re.match(key_template, fn).group(1) for fn in fnames)
@@ -305,14 +306,16 @@ def load_generalization_output(folder, manifest='manifest.pkl',
         sc = pickle.load(open(sc_file, 'rb'))
     else:
         sc = None
-    if gd_file is not None:
-        print(gd_file)
+    if gd_file is not None and not skip_gd:
         gd = pickle.load(open(gd_file, 'rb'))
-        print(len(gd))
     else:
         gd = None
+    if args_file is not None:
+        args = pickle.load(open(args_file, 'rb'))
+    else:
+        args = None
         
-    return dg, models, th, p, c, ld, sc, gd
+    return dg, models, th, p, c, ld, sc, gd, args
 
 def _interpret_foldername(fl, td_pattern='-td([0-9]+)-',
                           ld_pattern='-ld([0-9]+)-',
@@ -361,30 +364,34 @@ def load_full_run(folder, run_ind, merge_axis=1,
         raise IOError('no files found')
     sort_inds = np.argsort(targ_inds)
     out_inds = []
+    args_all = []
     for i, si in enumerate(sort_inds):
         out_inds.append(targ_inds[si])
         if i == 0:
             dg_all, models_all, th_all, p_all = outs[si][:4]
-            c_all, ld_all, sc_all, gd_all = outs[si][4:]
-            print(gd_all[0].shape)
-            print(gd_all[1].shape)
-            print(len(gd_all))
+            c_all, ld_all, sc_all, gd_all, args = outs[si][4:]
+            args_all.append(vars(args))
             if gd_all is None:
                 ls_all = None
                 dgs_all = None
                 rs_all = None
             else:
                 ls_all, dgs_all, rs_all = gd_all
+                ls_all = np.expand_dims(ls_all, merge_axis)
+                dgs_all = np.expand_dims(dgs_all, merge_axis)
             try:
                 sc_all.shape
             except AttributeError:
                 sc_all, _ = sc_all
         else:
-            _, models, th, p, c, ld, sc, gd = outs[si]
+            _, models, th, p, c, ld, sc, gd, args = outs[si]
+            args_all.append(vars(args))
             if gd is None:
                 ls, dgs, rs = None, None, None
             else:
                 ls, dgs, rs = gd
+                ls = np.expand_dims(ls, merge_axis)
+                dgs = np.expand_dims(dgs, merge_axis)
             if not analysis_only:
                 models_all = _concatenate_none((models_all, models),
                                             axis=merge_axis)
@@ -404,6 +411,7 @@ def load_full_run(folder, run_ind, merge_axis=1,
             
     data = (out_inds, dg_all, models_all, th_all, p_all, c_all, ld_all, sc_all,
             (ls_all, dgs_all, rs_all))
+    info['args'] = args_all
     return data, info
 
 def _concatenate_none(arrs, axis=0):

@@ -61,23 +61,28 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 
-def lr_pts_dist(stim, reps, targ_dist, neighbor_rad, eps=.01, **kwargs):
+def lr_pts_dist(stim, reps, targ_dist, neighbor_rad, eps=.05, **kwargs):
     train_ind = np.random.choice(stim.shape[0])
     train_cent = stim[train_ind]
     dists = u.euclidean_distance(train_cent, stim)
     test_candidates = np.abs(dists - targ_dist) < eps
-    test_ind = np.random.choice(np.sum(test_candidates))
-    test_cent = stim[test_candidates][test_ind]
-    return lr_gen_neighbors(stim, reps, train_cent, test_cent,
-                            neighbor_rad, **kwargs)
+    if np.sum(test_candidates) > 0:
+        test_ind = np.random.choice(np.sum(test_candidates))
+        test_cent = stim[test_candidates][test_ind]
+        out = lr_gen_neighbors(stim, reps, train_cent, test_cent,
+                               neighbor_rad, **kwargs)
+    else:
+        out = np.nan
+    return out
 
 def lr_gen_neighbors(stim, reps, train_pt, test_pt, radius,
-                     lr=sklm.LinearRegression, min_set_pts=100, **kwargs):
+                     lr=sklm.LinearRegression, min_set_pts=100,
+                     print_disjoint=False, **kwargs):
     lri = lr(**kwargs)
     train_dists = u.euclidean_distance(train_pt, stim)
     test_dists = u.euclidean_distance(test_pt, stim)
     train_test_dist = u.euclidean_distance(train_pt, test_pt)
-    if train_test_dist < radius:
+    if print_disjoint and train_test_dist < radius:
         print('the training and test points are closer than the radius so '
               'the training and test sets will not be disjoint')
     train_mask = train_dists < radius
@@ -711,7 +716,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             model_kinds=model_kinds_default,
                             layer_spec=None, model_n_epochs=60,
                             plot=True, gpu_samples=False, dg_dim=100,
-                            generate_data=True, n_save_samps=10**4):
+                            generate_data=True, n_save_samps=10**4,
+                            model_batch_size=30):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -754,7 +760,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         models_args = (input_dims, dg_use, model_kinds, layer_spec)
     print(layer_spec)
     if models_kwargs is None:
-        batch_size = 30
+        batch_size = model_batch_size
         epochs = 80 # model_n_epochs
         train_samples = np.logspace(models_n_bounds[0], models_n_bounds[1],
                                     models_n_diffs, dtype=int)
@@ -842,26 +848,73 @@ def compute_distgen_fromrun(dists, rads, run_ind, f_pattern, n_reps=10,
                             folder='disentangled/simulation_data/partition/',
                             **kwargs):
     data, info = da.load_full_run(folder, run_ind, file_template=f_pattern,
-                                  analysis_only=True)
+                                  analysis_only=True, skip_gd=False)
     n_parts, _, _, _, _, _, _, _, samps = data
+    arg_dict = info['args'][0]
+    n_trains = np.logspace(arg_dict['n_train_bounds'][0],
+                           arg_dict['n_train_bounds'][1],
+                           arg_dict['n_train_diffs'])
     latent_samps, dg_samps, rep_samps = samps
     if latent_samps is None:
         print('this run has no stored samples, exiting')
         perf = np.nan
     else:
-        perf = compute_distgen(latent_samps, rep_samps, dists, rads,
-                               n_reps=n_reps, **kwargs)
-    return perf
+        perf_all = np.zeros(rep_samps.shape[:3] + (len(dists), len(rads),
+                                                   n_reps))
+        for ic in u.make_array_ind_iterator(perf_all.shape[:3]):
+            perf = compute_distgen(latent_samps[:, ic[1]], rep_samps[ic],
+                                   dists, rads, n_reps=n_reps, **kwargs)
+            perf_all[ic] = perf
+    inds = (n_trains, n_parts, np.arange(perf_all.shape[2]))
+    return inds, perf_all
+
+def plot_distgen_index(perfs, plot_labels, x_labels, p_ind, axs=None, fwid=3,
+                       ref_ind=0, ref_ax=0):
+    if axs is None:
+        figsize = (fwid, fwid*len(plot_labels))
+        f, axs = plt.subplots(len(plot_labels), 1, figsize=figsize)
+    for i, pl in enumerate(plot_labels):
+        ax = axs[i]
+        pi = 1 - perfs[i, :, :, p_ind[0], p_ind[1]]
+        p_ref = 1 - perfs[i, ref_ind, :, p_ind[0], p_ind[1]]
+        p_index = (pi - p_ref)/(pi + p_ref)
+        l = gpl.plot_trace_werr(x_labels, np.nanmean(p_index, axis=-1).T,
+                                ax=ax)
+        col = l[0].get_color()
+        for j in range(pi.shape[1]):
+            l = gpl.plot_trace_werr(x_labels, np.squeeze(p_index[:, j].T),
+                                    ax=ax, color=col, line_alpha=.1)
+        ax.set_ylim([-1, 1])
+        gpl.add_hlines(0, ax)
+
+def plot_distgen(perfs, plot_labels, x_labels, p_ind, axs=None, fwid=3,
+                 log_y=True):
+    if axs is None:
+        figsize = (fwid, fwid*len(plot_labels))
+        f, axs = plt.subplots(len(plot_labels), 1, figsize=figsize)
+    for i, pl in enumerate(plot_labels):
+        ax = axs[i]
+        pi = 1 - perfs[i, :, :, p_ind[0], p_ind[1]]
+        l = gpl.plot_trace_werr(x_labels, np.nanmean(pi, axis=-1).T,
+                                ax=ax, log_y=log_y)
+        col = l[0].get_color()
+        for j in range(pi.shape[1]):
+            l = gpl.plot_trace_werr(x_labels, np.squeeze(pi[:, j].T), ax=ax,
+                                    color=col, line_alpha=.1)
+        if not log_y:
+            ax.set_ylim([-1, 1])    
 
 def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
                            model_type=dd.FlexibleDisentanglerAE, axs=None,
-                           folder='disentangled/simulation_data/partition/'):
+                           folder='disentangled/simulation_data/partition/',
+                           **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
-                                  file_template=f_pattern, analysis_only=True) 
+                                  file_template=f_pattern, analysis_only=True,
+                                  **kwargs) 
     n_parts, _, _, _, p, c, _, sc, _ = data
-    print(info)
+    print(info['args'][0]['use_rf_dg'])
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
     out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),

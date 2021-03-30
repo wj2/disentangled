@@ -59,6 +59,8 @@ def create_parser():
                         help='use an RF-based data generator')
     parser.add_argument('--dg_dim', default=200, type=int,
                         help='dimensionality of the data generator')
+    parser.add_argument('--batch_size', default=30, type=int,
+                        help='batch size to use for training model')
     return parser
 
 if __name__ == '__main__':
@@ -110,7 +112,8 @@ if __name__ == '__main__':
                                      n_reps=n_reps, model_kinds=model_kinds,
                                      use_mp=use_mp, models_n_diffs=n_train_diffs,
                                      models_n_bounds=args.n_train_bounds,
-                                     dg_dim=args.dg_dim)
+                                     dg_dim=args.dg_dim,
+                                     model_batch_size=args.batch_size)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
