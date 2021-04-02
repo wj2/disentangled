@@ -61,6 +61,14 @@ def create_parser():
                         help='dimensionality of the data generator')
     parser.add_argument('--batch_size', default=30, type=int,
                         help='batch size to use for training model')
+    parser.add_argument('--loss_ratio', default=10, type=float,
+                        help='the ratio between autoencoder loss/classifier '
+                        'loss')
+    parser.add_argument('--no_autoencoder', default=False, action='store_true',
+                        help='construct models with no autoencoder component')
+    parser.add_argument('--dropout', default=0, type=float,
+                        help='amount of dropout to include during model '
+                        'training')
     return parser
 
 if __name__ == '__main__':
@@ -101,7 +109,10 @@ if __name__ == '__main__':
                                   n_partitions=p,
                                   contextual_partitions=contextual_partitions,
                                   orthog_partitions=orthog_partitions,
-                                  offset_distr=offset_distr)
+                                  offset_distr=offset_distr,
+                                  loss_ratio=args.loss_ratio,
+                                  no_autoenc=args.no_autoencoder,
+                                  dropout_rate=args.dropout)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing

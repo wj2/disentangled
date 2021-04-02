@@ -224,6 +224,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  act_func=tf.nn.relu, orthog_partitions=False,
                  branch_names=('class_branch', 'autoenc_branch'),
                  offset_distr=None, contextual_partitions=False,
+                 no_autoenc=False, loss_ratio=10, dropout_rate=0,
                  **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
@@ -232,6 +233,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                 n_partitions, act_func=act_func,
                                 regularizer_weight=regularizer_weight,
                                 branch_names=branch_names,
+                                dropout_rate=dropout_rate,
                                 **layer_params)
         inputs, rep, class_branch, autoenc_branch = out
 
@@ -250,6 +252,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.input_shape = input_shape
         self.encoded_size = encoded_size
         self.compiled = False
+        self.no_autoencoder = no_autoenc
+        self.loss_ratio = loss_ratio
 
     def save(self, path):
         tf_entries = ('model', 'rep_model')
@@ -263,12 +267,15 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
                      layer_type=tfkl.Dense, branch_names=('a', 'b'),
-                     **layer_params):
+                     dropout_rate=0, **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
         for lp in layer_shapes:
             x = layer_type(*lp, activation=act_func, **layer_params)(x)
 
+        if dropout_rate > 0:
+            x = tfkl.Dropout(dropout_rate)(x)
+        
         # representation layer
         l2_reg = tfk.regularizers.l2(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
@@ -290,12 +297,18 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
 
     def _compile(self, *args, categ_loss=tf.keras.losses.binary_crossentropy,
                  autoenc_loss=tf.losses.mse, standard_loss=False,
-                 loss_ratio=10, **kwargs):
+                 loss_ratio=None, **kwargs):
         if not standard_loss:
             categ_loss = _binary_crossentropy_nan,
         loss_dict = {self.branch_names[0]:categ_loss,
                      self.branch_names[1]:autoenc_loss}
-        loss_weights = {self.branch_names[0]:1, self.branch_names[1]:loss_ratio}
+        if loss_ratio is None:
+            loss_ratio = self.loss_ratio
+        if self.no_autoencoder:
+            loss_weights = {self.branch_names[0]:1, self.branch_names[1]:0}
+        else:
+            loss_weights = {self.branch_names[0]:1,
+                            self.branch_names[1]:loss_ratio}
         if self.n_partitions == 0:
             loss_dict[self.branch_names[0]] = lambda x, y: 0.
         super()._compile(*args, loss=loss_dict, loss_weights=loss_weights,

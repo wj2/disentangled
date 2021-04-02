@@ -61,22 +61,28 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 
-def lr_pts_dist(stim, reps, targ_dist, neighbor_rad, eps=.05, **kwargs):
-    train_ind = np.random.choice(stim.shape[0])
-    train_cent = stim[train_ind]
-    dists = u.euclidean_distance(train_cent, stim)
-    test_candidates = np.abs(dists - targ_dist) < eps
-    if np.sum(test_candidates) > 0:
-        test_ind = np.random.choice(np.sum(test_candidates))
-        test_cent = stim[test_candidates][test_ind]
-        out = lr_gen_neighbors(stim, reps, train_cent, test_cent,
-                               neighbor_rad, **kwargs)
+def lr_pts_dist(stim, reps, targ_dist, neighbor_rad, eps=.05, same_prob=True,
+                **kwargs):
+    if same_prob:
+        stim_dim = stim.shape[1]
+        train_cent = (targ_dist/2)*u.make_unit_vector(np.random.randn(stim_dim))
+        test_cent = -train_cent
     else:
-        out = np.nan
+        train_ind = np.random.choice(stim.shape[0])
+        train_cent = stim[train_ind]
+        dists = u.euclidean_distance(train_cent, stim)
+        test_candidates = np.abs(dists - targ_dist) < eps
+        if np.sum(test_candidates) > 0:
+            test_ind = np.random.choice(np.sum(test_candidates))
+            test_cent = stim[test_candidates][test_ind]
+        else:
+            test_cent = np.nan
+    out = lr_gen_neighbors(stim, reps, train_cent, test_cent,
+                           neighbor_rad, **kwargs)
     return out
 
 def lr_gen_neighbors(stim, reps, train_pt, test_pt, radius,
-                     lr=sklm.LinearRegression, min_set_pts=100,
+                     lr=sklm.LinearRegression, min_set_pts=50,
                      print_disjoint=False, **kwargs):
     lri = lr(**kwargs)
     train_dists = u.euclidean_distance(train_pt, stim)
@@ -88,6 +94,7 @@ def lr_gen_neighbors(stim, reps, train_pt, test_pt, radius,
     train_mask = train_dists < radius
     test_mask = test_dists < radius
     if np.sum(train_mask) < min_set_pts or np.sum(test_mask) < min_set_pts:
+        print('no pts', np.sum(train_mask), np.sum(test_mask))
         sc = np.nan
     else:
         stim_train = stim[train_mask]
