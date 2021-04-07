@@ -352,7 +352,7 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=1,
-                     layer_types_enc=None, 
+                     layer_types_enc=None, dropout_rate=0,
                      layer_types_dec=None,
                      branch_names=('a', 'b'),
                      **layer_params):
@@ -378,6 +378,9 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
                            **layer_params)(x)
         if ll == 3:
             x = tfkl.Flatten()(x)
+            
+        if dropout_rate > 0:
+            x = tfkl.Dropout(dropout_rate)(x)
                         
         # representation layer
         l2_reg = tfk.regularizers.l2(regularizer_weight)
