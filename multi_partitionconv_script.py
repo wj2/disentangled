@@ -64,8 +64,18 @@ def create_parser():
     parser.add_argument('--contextual_partitions', default=False,
                         action='store_true',
                         help='use contextual partitions')
-    parser.add_argument('--model_epochs', default=60,
-                        type=int, help='number of epochs to train model for')
+    parser.add_argument('--batch_size', default=30, type=int,
+                        help='batch size to use for training model')
+    parser.add_argument('--loss_ratio', default=10, type=float,
+                        help='the ratio between autoencoder loss/classifier '
+                        'loss')
+    parser.add_argument('--no_autoencoder', default=False, action='store_true',
+                        help='construct models with no autoencoder component')
+    parser.add_argument('--dropout', default=0, type=float,
+                        help='amount of dropout to include during model '
+                        'training')
+    parser.add_argument('--model_epochs', default=60, type=int,
+                        help='the number of epochs to train each model for')
     return parser
 
 if __name__ == '__main__':
@@ -111,7 +121,10 @@ if __name__ == '__main__':
                                   n_partitions=p,
                                   contextual_partitions=contextual_partitions,
                                   orthog_partitions=orthog_partitions,
-                                  offset_distr=offset_distr)
+                                  offset_distr=offset_distr,
+                                  dropout_rate=args.dropout,
+                                  loss_ratio=args.loss_ratio,
+                                  no_autoenc=args.no_autoencoder)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
@@ -123,6 +136,7 @@ if __name__ == '__main__':
                                      use_mp=use_mp, models_n_diffs=n_train_diffs,
                                      models_n_bounds=args.n_train_bounds,
                                      layer_spec=layer_spec,
+                                     model_batch_size=args.batch_size,
                                      model_n_epochs=model_n_epochs,
                                      plot=False, gpu_samples=True)
     dg, (models, th), (p, c), (lrs, scrs, sims) = out
