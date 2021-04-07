@@ -69,6 +69,8 @@ def create_parser():
     parser.add_argument('--dropout', default=0, type=float,
                         help='amount of dropout to include during model '
                         'training')
+    parser.add_argument('--model_epochs', default=60, type=int,
+                        help='the number of epochs to train each model for')
     return parser
 
 if __name__ == '__main__':
@@ -124,7 +126,8 @@ if __name__ == '__main__':
                                      use_mp=use_mp, models_n_diffs=n_train_diffs,
                                      models_n_bounds=args.n_train_bounds,
                                      dg_dim=args.dg_dim,
-                                     model_batch_size=args.batch_size)
+                                     model_batch_size=args.batch_size,
+                                     model_n_epochs=args.model_epochs)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
