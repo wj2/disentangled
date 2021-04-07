@@ -244,6 +244,44 @@ def _get_circle_pts(n, inp_dim, r=1):
                    (np.zeros_like(angs),)*(inp_dim - 2), axis=1)
     return r*pts
 
+def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
+                             rad_eps=.05, near_eps=.5, ax=None,
+                             subdims=(0, 1), use_lr=False,
+                             half_pts=False, half_ind=-1):
+    if ax is None:
+        f, ax = plt.subplots(1, 1)
+    dim_mask = np.isin(np.array(list(range(ls_pts.shape[1]))),
+                       subdims)
+    if use_lr:
+        lr = sklm.LinearRegression()
+        if half_pts:
+            hp_mask = ls_pts[:, half_ind] < 0
+            rep_pts_m = rep_pts[hp_mask]
+            ls_pts_m = ls_pts[hp_mask]
+        else:
+            rep_pts_m = rep_pts
+            ls_pts_m = ls_pts
+        lr.fit(rep_pts_m, ls_pts_m[:, dim_mask])
+        if half_pts:
+            ls_pts = ls_pts[np.logical_not(hp_mask)]
+            rep_lp = lr.predict(rep_pts[np.logical_not(hp_mask)])
+        else:
+            rep_lp = lr.predict(rep_pts)            
+        pr = u.cosine_similarity(*lr.coef_)
+    else:
+        p = skd.PCA()
+        var_mask = np.all(np.abs(ls_pts[:, np.logical_not(dim_mask)]) < near_eps,
+                          axis=1)
+        p.fit(rep_pts[var_mask])
+        rep_lp = p.transform(rep_pts)
+        evr = p.explained_variance_ratio_
+        pr = np.sum(evr)**2/np.sum(evr**2)
+    for i, r in enumerate(rads):
+        mask = np.abs(u.euclidean_distance(ls_pts[:, dim_mask], 0) - r) < rad_eps
+        rep_pts_plot = rep_lp[mask]
+        ax.plot(rep_pts_plot[:, subdims[0]], rep_pts_plot[:, subdims[1]], 'o')
+    return pr
+
 def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
                      markers=True, line_alpha=.5, use_arc_dim=False,
@@ -768,7 +806,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     print(layer_spec)
     if models_kwargs is None:
         batch_size = model_batch_size
-        epochs = 80 # model_n_epochs
+        epochs = model_n_epochs
         train_samples = np.logspace(models_n_bounds[0], models_n_bounds[1],
                                     models_n_diffs, dtype=int)
         samps_list = True
@@ -915,13 +953,13 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
                            model_type=dd.FlexibleDisentanglerAE, axs=None,
                            folder='disentangled/simulation_data/partition/',
-                           **kwargs):
+                           ret_info=False, **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
                                   **kwargs) 
     n_parts, _, _, _, p, c, _, sc, _ = data
-    print(info['args'][0]['use_rf_dg'])
+    print(info['args'][0])
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
     out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),
@@ -930,7 +968,11 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       info=info, log_x=log_x,
                                       panel_vals=panel_vals,
                                       axs=axs)
-    return out
+    if ret_info:
+        out_all = (out, info)
+    else:
+        out_all = out
+    return out_all
 
 def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 ylims=None, labels=None, x_ax=1, panel_ax=0,
