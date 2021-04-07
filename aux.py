@@ -370,7 +370,10 @@ def load_full_run(folder, run_ind, merge_axis=1,
         if i == 0:
             dg_all, models_all, th_all, p_all = outs[si][:4]
             c_all, ld_all, sc_all, gd_all, args = outs[si][4:]
-            args_all.append(vars(args))
+            if args is not None:
+                args_all.append(vars(args))
+            else:
+                args_all.append(args)
             if gd_all is None:
                 ls_all = None
                 dgs_all = None
@@ -385,7 +388,10 @@ def load_full_run(folder, run_ind, merge_axis=1,
                 sc_all, _ = sc_all
         else:
             _, models, th, p, c, ld, sc, gd, args = outs[si]
-            args_all.append(vars(args))
+            if args is not None:
+                args_all.append(vars(args))
+            else:
+                args_all.append(args)
             if gd is None:
                 ls, dgs, rs = None, None, None
             else:
