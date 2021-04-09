@@ -139,8 +139,8 @@ if __name__ == '__main__':
                                      model_batch_size=args.batch_size,
                                      model_n_epochs=model_n_epochs,
                                      plot=False, gpu_samples=True)
-    dg, (models, th), (p, c), (lrs, scrs, sims) = out
+    dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
-                                  lrs, (scrs, sims), save_args=args,
+                                  lrs, (scrs, sims), gd, save_args=args,
                                   save_tf_models=save_tf_models)
