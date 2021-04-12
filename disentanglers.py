@@ -585,8 +585,8 @@ class BetaVAE(da.TFModel):
             rep_reg = None
             
         # if conv:
-        rep_layer = tfpl.MultivariateNormTriL(encoded_size,
-                                              activity_regularizer=rep_reg)
+        rep_layer = tfpl.MultivariateNormalTriL(encoded_size,
+                                                activity_regularizer=rep_reg)
         # else:
         #     rep_layer = tfpl.IndependentNormal(encoded_size,
         #                                        activity_regularizer=rep_reg)
