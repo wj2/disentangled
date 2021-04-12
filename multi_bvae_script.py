@@ -42,21 +42,10 @@ def create_parser():
                         help='do not store tensorflow models')
     parser.add_argument('--test', default=False, action='store_true',
                         help='run minimal code to test that this script works')
-    parser.add_argument('--use_orthog_partitions', default=False,
-                        action='store_true',
-                        help='use only mutually orthogonal partition functions '
-                        '(if the number of partitions exceeds the number of '
-                        'dimensions, they will just be resampled')
-    parser.add_argument('--offset_distr_var', default=0, type=float,
-                        help='variance of the binary partition offset '
-                        'distribution (will be Gaussian, default 0)')
     parser.add_argument('--show_prints', default=False,
                         action='store_true',
                         help='print training information for disentangler '
                         'models')
-    parser.add_argument('--contextual_partitions', default=False,
-                        action='store_true',
-                        help='use contextual partitions')
     parser.add_argument('--use_rf_dg', default=False,
                         action='store_true',
                         help='use an RF-based data generator')
@@ -64,11 +53,6 @@ def create_parser():
                         help='dimensionality of the data generator')
     parser.add_argument('--batch_size', default=30, type=int,
                         help='batch size to use for training model')
-    parser.add_argument('--loss_ratio', default=10, type=float,
-                        help='the ratio between autoencoder loss/classifier '
-                        'loss')
-    parser.add_argument('--no_autoencoder', default=False, action='store_true',
-                        help='construct models with no autoencoder component')
     parser.add_argument('--dropout', default=0, type=float,
                         help='amount of dropout to include during model '
                         'training')
@@ -80,7 +64,6 @@ if __name__ == '__main__':
     parser = create_parser()
     args = parser.parse_args()
 
-    partitions = args.partitions
     true_inp_dim = args.input_dims
     est_inp_dim = args.latent_dims
     if args.test:
@@ -123,18 +106,4 @@ if __name__ == '__main__':
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
                                   lrs, (scrs, sims), gd, save_args=args,
-                                  save_tf_models=save_tf_models)
-
-
-    use_mp = not args.no_multiprocessing
-    out = dc.test_generalization_new(dg=dg_use, est_inp_dim=est_inp_dim,
-                                     inp_dim=true_inp_dim,
-                                     dg_train_epochs=dg_train_epochs,
-                                     n_reps=n_reps, model_kinds=model_kinds,
-                                     use_mp=use_mp, models_n_diffs=n_train_diffs,
-                                     models_n_bounds=args.n_train_bounds)
-    dg, (models, th), (p, c), (lrs, scrs, sims) = out
-
-    da.save_generalization_output(args.output_folder, dg, models, th, p, c,
-                                  lrs, (scrs, sims),
                                   save_tf_models=save_tf_models)
