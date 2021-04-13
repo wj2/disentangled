@@ -21,7 +21,7 @@ import disentangled.disentanglers as dd
     
 def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               test_distrib=None, test_func=None,
-                              n_train_samples=2*10**4, n_test_samples=10**4,
+                              n_train_samples=5*10**3, n_test_samples=10**3,
                               classifier=skc.SVC, kernel='linear', n_iters=10,
                               shuffle=False, use_orthogonal=True, 
                               **classifier_params):

@@ -516,7 +516,8 @@ class StandardAE(da.TFModel):
 class BetaVAE(da.TFModel):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
-                 act_func=tf.nn.relu, beta=1, **layer_params):
+                 act_func=tf.nn.relu, beta=1, dropout_rate=0,
+                 **layer_params):
         enc, prior = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                        act_func=act_func, beta=beta,
                                        **layer_params)
@@ -567,11 +568,12 @@ class BetaVAE(da.TFModel):
             l_i = layer_type(*lp, activation=act_func, **layer_params)
             layer_list.append(l_i)
 
+        # if conv:
         if conv:
             layer_list.append(tfkl.Flatten())
-            p_size = tfpl.MultivariateNormalTriL.params_size(encoded_size)
-        else:
-            p_size = tfpl.IndependentNormal.params_size(encoded_size)
+        p_size = tfpl.MultivariateNormalTriL.params_size(encoded_size)
+        # else:
+        #     p_size = tfpl.IndependentNormal.params_size(encoded_size)
             
         layer_list.append(tfkl.Dense(p_size, activation=None))
 
@@ -582,12 +584,12 @@ class BetaVAE(da.TFModel):
         else:
             rep_reg = None
             
-        if conv:
-            rep_layer = tfpl.MultivariateNormTriL(encoded_size,
-                                                  activity_regularizer=rep_reg)
-        else:
-            rep_layer = tfpl.IndependentNormal(encoded_size,
-                                               activity_regularizer=rep_reg)
+        # if conv:
+        rep_layer = tfpl.MultivariateNormalTriL(encoded_size,
+                                                activity_regularizer=rep_reg)
+        # else:
+        #     rep_layer = tfpl.IndependentNormal(encoded_size,
+        #                                        activity_regularizer=rep_reg)
         layer_list.append(rep_layer)
 
         enc = tfk.Sequential(layer_list)
@@ -633,7 +635,7 @@ class BetaVAE(da.TFModel):
         return self.fit(train_x, eval_x=eval_x, **kwargs)
         
     def fit(self, train_x, train_y=None, eval_x=None, eval_y=None, epochs=15,
-            data_generator=None, batch_size=32, **kwargs):
+            data_generator=None, batch_size=32, standard_loss=True, **kwargs):
         if not self.compiled:
             self._compile()
 

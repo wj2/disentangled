@@ -15,7 +15,7 @@ def create_parser():
                         help='folder to save the output in')
     parser.add_argument('--img_folder', default='../data/chairs_images/',
                         type=str, help='folder with input images')
-    parser.add_argument('--img_resize', default=(64, 64), nargs=2,
+    parser.add_argument('--img_resize', default=(32, 32), nargs=2,
                         type=tuple, help='size to resize images to')    
     parser.add_argument('--max_imgs', default=np.inf, 
                         type=int, help='number of images to load')    
