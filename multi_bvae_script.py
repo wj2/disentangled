@@ -38,7 +38,7 @@ def create_parser():
                         type=float, help='order of magnitudes for range to '
                         'sample training differences from within (using '
                         'logspace)')
-    parser.add_argument('-m', '--no_models', default=False, action='store_true',
+    parser.add_argument('--no_models', default=False, action='store_true',
                         help='do not store tensorflow models')
     parser.add_argument('--test', default=False, action='store_true',
                         help='run minimal code to test that this script works')
@@ -76,6 +76,7 @@ if __name__ == '__main__':
         dg_train_epochs = 25
 
     save_tf_models = not args.no_models
+    print(save_tf_models)
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
