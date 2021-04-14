@@ -3,11 +3,13 @@ import scipy.stats as sts
 import numpy as np
 import pickle
 import functools as ft
+import tensorflow.keras as tfk
 
 import disentangled.characterization as dc
 import disentangled.aux as da
 import disentangled.disentanglers as dd
 import disentangled.data_generation as dg
+import disentangled.regularizers as dr
 
 def create_parser():
     parser = argparse.ArgumentParser(description='fit several autoencoders')
@@ -71,6 +73,8 @@ def create_parser():
                         'training')
     parser.add_argument('--model_epochs', default=60, type=int,
                         help='the number of epochs to train each model for')
+    parser.add_argument('--l2pr_weights', default=None, nargs=2, type=float,
+                        help='the weights for L2-PR regularization')
     return parser
 
 if __name__ == '__main__':
@@ -103,6 +107,13 @@ if __name__ == '__main__':
     else:
         offset_distr = sts.norm(0, np.sqrt(args.offset_distr_var))
 
+    if args.l2pr_weights is not None:
+        reg = dr.L2PRRegularizer
+        reg_weight = args.l2pr_weights
+    else:
+        reg = tfk.regularizers.l2
+        reg_weight = 0
+
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
@@ -114,7 +125,9 @@ if __name__ == '__main__':
                                   offset_distr=offset_distr,
                                   loss_ratio=args.loss_ratio,
                                   no_autoenc=args.no_autoencoder,
-                                  dropout_rate=args.dropout)
+                                  dropout_rate=args.dropout,
+                                  regularizer_type=reg,
+                                  regularizer_weight=reg_weight)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing

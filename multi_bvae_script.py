@@ -91,7 +91,8 @@ if __name__ == '__main__':
     model_kinds = list(ft.partial(dd.BetaVAE, beta=b*args.beta_mult,
                                   dropout_rate=args.dropout)
                        for b in betas)
-
+    print(save_tf_models)
+    
     use_mp = not args.no_multiprocessing
     out = dc.test_generalization_new(dg_use=dg_use, est_inp_dim=est_inp_dim,
                                      inp_dim=true_inp_dim,
@@ -104,7 +105,7 @@ if __name__ == '__main__':
                                      model_batch_size=args.batch_size,
                                      model_n_epochs=args.model_epochs)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
-
+    
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
                                   lrs, (scrs, sims), gd, save_args=args,
                                   save_tf_models=save_tf_models)
