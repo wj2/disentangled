@@ -17,3 +17,17 @@ class VarianceRegularizer(tf.keras.regularizers.Regularizer):
         l2_r = tf.math.reduce_sum(tf.math.square(x))
         var_r = tf.math.reduce_variance(tf.math.reduce_mean(x**2, axis=0))
         return self.l2_weight*l2_r + self.var_weight*var_r
+
+class L2PRRegularizer(tf.keras.regularizers.Regularizer):
+
+    def __init__(self, weights=(.1, .1), **kwargs):
+        self.weights = float(weights)
+
+    def get_config(self):
+        return {'weights':self.weights}
+
+    def __call__(self, x):
+        ev, _ = tf.linalg.eigh(tf.tensordot(tf.transpose(x), x, axes=1))
+        pr = (np.sum(ev)**2)/np.sum(ev**2)
+        l2 = tf.math.reduce_sum(tf.math.square(x))
+        return l2*self.weights[0] + pr*self.weights[1]
