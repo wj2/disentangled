@@ -9,7 +9,7 @@ import disentangled.characterization as dc
 import disentangled.aux as da
 import disentangled.disentanglers as dd
 import disentangled.data_generation as dg
-import disentangled.regularizers as dr
+import disentangled.regularizer as dr
 
 def create_parser():
     parser = argparse.ArgumentParser(description='fit several autoencoders')
