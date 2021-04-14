@@ -225,6 +225,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  branch_names=('class_branch', 'autoenc_branch'),
                  offset_distr=None, contextual_partitions=False,
                  no_autoenc=False, loss_ratio=10, dropout_rate=0,
+                 regularizer_type=tfk.regularizers.l2,
                  **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
@@ -234,6 +235,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                 regularizer_weight=regularizer_weight,
                                 branch_names=branch_names,
                                 dropout_rate=dropout_rate,
+                                regularizer_type=regularizer_type,
                                 **layer_params)
         inputs, rep, class_branch, autoenc_branch = out
 
@@ -267,6 +269,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
                      layer_type=tfkl.Dense, branch_names=('a', 'b'),
+                     regularizer_type=tfk.regularizers.l2,
                      dropout_rate=0, **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
@@ -277,9 +280,9 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             x = tfkl.Dropout(dropout_rate)(x)
         
         # representation layer
-        l2_reg = tfk.regularizers.l2(regularizer_weight)
+        act_reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
-                         activity_regularizer=l2_reg)(x)
+                         activity_regularizer=act_reg)(x)
 
         # partition branch
         sig_act = tf.keras.activations.sigmoid
