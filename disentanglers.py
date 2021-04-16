@@ -240,7 +240,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         # inputs, rep, class_branch, autoenc_branch = out
         model, rep_model, autoenc_model, class_model = out
         self.branch_names = branch_names
-        # outputs = [class_branch(rep), autoenc_branch(rep)]
+        # outputs = [class_branch, autoenc_branch]
         # self.model = tfk.Model(inputs=inputs,
         #                        outputs=outputs)
         self.model = model
@@ -293,7 +293,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         sig_act = tf.keras.activations.sigmoid
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
                                   name=branch_names[0])(class_inp)
-        class_model = tfk.Model(inputs=rep_inp, outputs=class_branch)
+        class_model = tfk.Model(inputs=rep_inp, outputs=class_branch,
+                                name=branch_names[0])
 
         # decoder branch
         z = rep_inp
@@ -302,7 +303,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
 
         autoenc_branch = layer_type(input_shape, activation=act_func,
                                     name=branch_names[1], **layer_params)(z)
-        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch)
+        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch,
+                                  name=branch_names[1])
 
         outs = [class_model(rep), autoenc_model(rep)]
         full_model = tfk.Model(inputs=inputs, outputs=outs)
