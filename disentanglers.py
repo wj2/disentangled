@@ -304,7 +304,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                     name=branch_names[1], **layer_params)(z)
         autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch)
 
-        outs = [class_model(rep_model), autoenc_model(rep_model)]
+        outs = [class_model(rep), autoenc_model(rep)]
         full_model = tfk.Model(inputs=inputs, outputs=outs)
         
         return full_model, rep_model, autoenc_model, class_model
