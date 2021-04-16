@@ -877,6 +877,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         ind_combs = list(list(range(d)) for d in models.shape)
         for ic in it.product(*ind_combs):
             reps[ic] = models[ic].get_representation(samps)
+            print('mse', models[ic].get_reconstruction_mse(samps))
         gd = latent_samps, samps, reps
     else:
         gd = None
