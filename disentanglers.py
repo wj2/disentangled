@@ -256,6 +256,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.compiled = False
         self.no_autoencoder = no_autoenc
         self.loss_ratio = loss_ratio
+        self.recon_model = tfk.Model(inputs=rep, outputs=autoenc_branch)
 
     def save(self, path):
         tf_entries = ('model', 'rep_model')
@@ -347,7 +348,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         return out
 
     def get_reconstruction(self, reps):
-        recon = self.model(reps)
+        recon = self.recon_model(reps)
         return recon
 
     def get_reconstruction_mse(self, samples):
