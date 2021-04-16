@@ -296,9 +296,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         class_model = tfk.Model(inputs=rep_inp, outputs=class_branch)
 
         # decoder branch
-        z = rep
-        auto_inp = tfk.Input(shape=encoded_size)
-        z = auto_inp
+        z = rep_inp
         for lp in layer_shapes[::-1]:
             z = tfkl.Dense(*lp, activation=act_func, **layer_params)(z)
 
