@@ -237,12 +237,13 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                 dropout_rate=dropout_rate,
                                 regularizer_type=regularizer_type,
                                 **layer_params)
-        inputs, rep, class_branch, autoenc_branch = out
-
+        # inputs, rep, class_branch, autoenc_branch = out
+        model, rep_model, autoenc_model, class_model = out
         self.branch_names = branch_names
-        outputs = [class_branch(rep), autoenc_branch(rep)]
-        self.model = tfk.Model(inputs=inputs,
-                               outputs=outputs)
+        # outputs = [class_branch(rep), autoenc_branch(rep)]
+        # self.model = tfk.Model(inputs=inputs,
+        #                        outputs=outputs)
+        self.model = model
         out = da.generate_partition_functions(true_inp_dim,
                                               n_funcs=n_partitions,
                                               orth_basis=orthog_partitions,
@@ -250,13 +251,13 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                               contextual=contextual_partitions)
         self.n_partitions = n_partitions
         self.p_funcs, self.p_vectors, self.p_offsets = out
-        self.rep_model = tfk.Model(inputs=inputs, outputs=rep)
+        self.rep_model = rep_model
         self.input_shape = input_shape
         self.encoded_size = encoded_size
         self.compiled = False
         self.no_autoencoder = no_autoenc
         self.loss_ratio = loss_ratio
-        self.recon_model = tfk.Model(inputs=rep, outputs=autoenc_branch)
+        self.recon_model = autoenc_model
 
     def save(self, path):
         tf_entries = ('model', 'rep_model')
@@ -284,12 +285,14 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         act_reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=act_reg)(x)
+        rep_model = tfk.Model(inputs=inputs, outputs=rep)
 
         # partition branch
-        class_inp = tfk.Input(shape=encoded_size)
+        rep_inp = tfk.Input(shape=encoded_size)
         sig_act = tf.keras.activations.sigmoid
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
                                   name=branch_names[0])(class_inp)
+        class_model = tfk.Model(inputs=rep_inp, outputs=class_branch)
 
         # decoder branch
         z = rep
@@ -300,8 +303,13 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
 
         autoenc_branch = layer_type(input_shape, activation=act_func,
                                     name=branch_names[1], **layer_params)(z)
+        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch)
+
+        outs = [class_model(rep_model), autoenc_model(rep_model)]
+        full_model = tfk.Model(inputs=inputs, outputs=outs)
         
-        return inputs, rep, class_branch, autoenc_branch
+        return full_model, rep_model, autoenc_model, class_model
+    # inputs, rep, class_branch, autoenc_branch
 
     def _compile(self, *args, categ_loss=tf.keras.losses.binary_crossentropy,
                  autoenc_loss=tf.losses.mse, standard_loss=False,
