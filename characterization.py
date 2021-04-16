@@ -960,6 +960,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                   file_template=f_pattern, analysis_only=True,
                                   **kwargs) 
     n_parts, _, _, _, p, c, _, sc, _ = data
+    if 'beta_mult' in info['args'][0].keys():
+        n_parts = np.array(n_parts)*info['args'][0]['beta_mult']
     print(info['args'][0])
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
@@ -996,7 +998,10 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
 
     for i, qp in enumerate(quants_plot):
         if info is not None:
-            nd = info.get('input_dimensions', None)
+            if 'args' in info.keys() and  'betas' in info['args'][0].keys():
+                nd = 1
+            else:
+                nd = info.get('input_dimensions', None)
         else:
             nd = None
         if x_ax == 0 and panel_ax == 1:
