@@ -21,13 +21,14 @@ class VarianceRegularizer(tf.keras.regularizers.Regularizer):
 class L2PRRegularizer(tf.keras.regularizers.Regularizer):
 
     def __init__(self, weights=(.1, .1), **kwargs):
-        self.weights = float(weights)
+        self.weights = (float(weights[0]), float(weights[1]))
 
     def get_config(self):
         return {'weights':self.weights}
 
     def __call__(self, x):
         ev, _ = tf.linalg.eigh(tf.tensordot(tf.transpose(x), x, axes=1))
-        pr = (np.sum(ev)**2)/np.sum(ev**2)
+        pr = tf.math.divide(tf.math.square(tf.math.reduce_sum(ev)),
+                            tf.math.reduce_sum(tf.math.square(ev)))
         l2 = tf.math.reduce_sum(tf.math.square(x))
         return l2*self.weights[0] + pr*self.weights[1]

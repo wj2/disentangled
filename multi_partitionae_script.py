@@ -75,6 +75,8 @@ def create_parser():
                         help='the number of epochs to train each model for')
     parser.add_argument('--l2pr_weights', default=None, nargs=2, type=float,
                         help='the weights for L2-PR regularization')
+    parser.add_argument('--l2pr_weights_mult', default=1, type=float,
+                        help='the weight multiplier for L2-PR regularization')
     return parser
 
 if __name__ == '__main__':
@@ -109,7 +111,7 @@ if __name__ == '__main__':
 
     if args.l2pr_weights is not None:
         reg = dr.L2PRRegularizer
-        reg_weight = args.l2pr_weights
+        reg_weight = np.array(args.l2pr_weights)*args.l2pr_weights_mult
     else:
         reg = tfk.regularizers.l2
         reg_weight = 0
