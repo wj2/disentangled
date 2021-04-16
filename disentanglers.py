@@ -344,7 +344,17 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         out = self.model.fit(x=train_x, y=train_y_dict, epochs=epochs,
                              validation_data=eval_set, batch_size=batch_size,
                              **kwargs)
-        return out   
+        return out
+
+    def get_reconstruction(self, reps):
+        recon = self.model(reps)
+        return recon
+
+    def get_reconstruction_mse(self, samples):
+        reps = self.get_representation(samples)
+        recon = self.get_reconstruction(reps)
+        return np.mean((samples - recon)**2)
+
 
 class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
@@ -516,7 +526,7 @@ class StandardAE(da.TFModel):
         return rep
 
     def get_reconstruction(self, reps):
-        recon = self.model(reps)[1]
+        recon = self.model(reps)
         return recon
 
     def get_reconstruction_mse(self, samples):
