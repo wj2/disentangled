@@ -514,7 +514,15 @@ class StandardAE(da.TFModel):
     def get_representation(self, samples):
         rep = self.encoder(samples)
         return rep
-    
+
+    def get_reconstruction(self, reps):
+        recon = self.model(reps)[1]
+        return recon
+
+    def get_reconstruction_mse(self, samples):
+        reps = self.get_representation(samples)
+        recon = self.get_reconstruction(reps)
+        return np.mean((samples - recon)**2)
     
 class BetaVAE(da.TFModel):
 
@@ -667,9 +675,27 @@ class BetaVAE(da.TFModel):
         outs = self.decoder(samps).mean()
         return outs
 
-    def get_representation(self, samples):
+    def get_representation(self, samples, use_mean=True):
         if self.loaded:
             rep = self.encoder(samples)
         else:
-            rep = self.encoder(samples).sample()
+            if use_mean:
+                rep = self.encoder(samples).mean()
+            else:
+                rep = self.encoder(samples).sample()
         return rep
+
+    def get_reconstruction_mse(self, samples, use_mean=True):
+        reps = self.get_representation(samples, use_mean=use_mean)
+        recon = self.get_reconstruction(reps, use_mean=use_mean)
+        return np.mean((samples - recon)**2)
+    
+    def get_reconstruction(self, reps, use_mean=True):
+        if self.loaded:
+            recon = self.decoder(reps)
+        else:
+            if use_mean:
+                recon = self.decoder(reps).mean()
+            else:
+                recon = self.decoder(reps).sample()
+        return recon
