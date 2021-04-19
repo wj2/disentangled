@@ -550,10 +550,10 @@ class BetaVAE(da.TFModel):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
                  act_func=tf.nn.relu, beta=1, dropout_rate=0,
-                 **layer_params):
+                 full_cov=True, **layer_params):
         enc, prior = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                        act_func=act_func, beta=beta,
-                                       **layer_params)
+                                       full_cov=full_cov, **layer_params)
         self.encoder = enc
         self.prior = prior
         self.beta = beta
@@ -591,7 +591,7 @@ class BetaVAE(da.TFModel):
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      act_func=tf.nn.relu, strides=1,
                      transform_layer=None, layer_type=tfkl.Dense,
-                     conv=False, beta=1, **layer_params):
+                     conv=False, beta=1, full_cov=True, **layer_params):
         layer_list = []
         layer_list.append(tfkl.InputLayer(input_shape=input_shape))
         if transform_layer is not None:
@@ -601,12 +601,12 @@ class BetaVAE(da.TFModel):
             l_i = layer_type(*lp, activation=act_func, **layer_params)
             layer_list.append(l_i)
 
-        # if conv:
         if conv:
             layer_list.append(tfkl.Flatten())
-        p_size = tfpl.MultivariateNormalTriL.params_size(encoded_size)
-        # else:
-        #     p_size = tfpl.IndependentNormal.params_size(encoded_size)
+        if full_cov:
+            p_size = tfpl.MultivariateNormalTriL.params_size(encoded_size)
+        else:
+            p_size = tfpl.IndependentNormal.params_size(encoded_size)
             
         layer_list.append(tfkl.Dense(p_size, activation=None))
 
@@ -617,12 +617,12 @@ class BetaVAE(da.TFModel):
         else:
             rep_reg = None
             
-        # if conv:
-        rep_layer = tfpl.MultivariateNormalTriL(encoded_size,
-                                                activity_regularizer=rep_reg)
-        # else:
-        #     rep_layer = tfpl.IndependentNormal(encoded_size,
-        #                                        activity_regularizer=rep_reg)
+        if full_cov:
+            rep_layer = tfpl.MultivariateNormalTriL(encoded_size,
+                                                    activity_regularizer=rep_reg)
+        else:
+            rep_layer = tfpl.IndependentNormal(encoded_size,
+                                               activity_regularizer=rep_reg)
         layer_list.append(rep_layer)
 
         enc = tfk.Sequential(layer_list)
