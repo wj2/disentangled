@@ -226,7 +226,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  offset_distr=None, contextual_partitions=False,
                  no_autoenc=False, loss_ratio=10, dropout_rate=0,
                  regularizer_type=tfk.regularizers.l2,
-                 noise=0, **layer_params):
+                 noise=0, context_offset=False, **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight

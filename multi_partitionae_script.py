@@ -56,6 +56,9 @@ def create_parser():
     parser.add_argument('--contextual_partitions', default=False,
                         action='store_true',
                         help='use contextual partitions')
+    parser.add_argument('--context_offset', default=False,
+                        action='store_true',
+                        help='use contextual partitions with offsets')
     parser.add_argument('--use_rf_dg', default=False,
                         action='store_true',
                         help='use an RF-based data generator')
@@ -121,7 +124,8 @@ if __name__ == '__main__':
 
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
-    contextual_partitions = args.contextual_partitions
+    contextual_partitions = argsc.ontextual_partitions
+    context_offset = args.context_offset
     model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
                                   true_inp_dim=true_inp_dim,
                                   n_partitions=p,
@@ -133,7 +137,8 @@ if __name__ == '__main__':
                                   dropout_rate=args.dropout,
                                   regularizer_type=reg,
                                   regularizer_weight=reg_weight,
-                                  noise=args.rep_noise)
+                                  noise=args.rep_noise,
+                                  context_offset=context_offset)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
