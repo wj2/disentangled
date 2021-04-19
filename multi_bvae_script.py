@@ -76,7 +76,6 @@ if __name__ == '__main__':
         dg_train_epochs = 25
 
     save_tf_models = not args.no_models
-    print(save_tf_models)
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
@@ -91,7 +90,6 @@ if __name__ == '__main__':
     model_kinds = list(ft.partial(dd.BetaVAE, beta=b*args.beta_mult,
                                   dropout_rate=args.dropout)
                        for b in betas)
-    print(save_tf_models)
     
     use_mp = not args.no_multiprocessing
     out = dc.test_generalization_new(dg_use=dg_use, est_inp_dim=est_inp_dim,

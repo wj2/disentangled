@@ -963,6 +963,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     n_parts, _, _, _, p, c, _, sc, _ = data
     if 'beta_mult' in info['args'][0].keys():
         n_parts = np.array(n_parts)*info['args'][0]['beta_mult']
+    if 'l2pr_weights_mult' in info['args'][0].keys():
+        n_parts = np.array(n_parts)*info['args'][0]['l2pr_weights_mult']*100
     print(info['args'][0])
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)

@@ -77,6 +77,9 @@ def create_parser():
                         help='the weights for L2-PR regularization')
     parser.add_argument('--l2pr_weights_mult', default=1, type=float,
                         help='the weight multiplier for L2-PR regularization')
+    parser.add_argument('--rep_noise', default=0, type=float,
+                        help='std of noise to use in representation layer '
+                        'during training')
     return parser
 
 if __name__ == '__main__':
@@ -129,7 +132,8 @@ if __name__ == '__main__':
                                   no_autoenc=args.no_autoencoder,
                                   dropout_rate=args.dropout,
                                   regularizer_type=reg,
-                                  regularizer_weight=reg_weight)
+                                  regularizer_weight=reg_weight,
+                                  noise=args.rep_noise)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing

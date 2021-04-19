@@ -226,7 +226,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  offset_distr=None, contextual_partitions=False,
                  no_autoenc=False, loss_ratio=10, dropout_rate=0,
                  regularizer_type=tfk.regularizers.l2,
-                 **layer_params):
+                 noise=0, **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
@@ -236,13 +236,9 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                 branch_names=branch_names,
                                 dropout_rate=dropout_rate,
                                 regularizer_type=regularizer_type,
-                                **layer_params)
-        # inputs, rep, class_branch, autoenc_branch = out
+                                noise=noise, **layer_params)
         model, rep_model, autoenc_model, class_model = out
         self.branch_names = branch_names
-        # outputs = [class_branch, autoenc_branch]
-        # self.model = tfk.Model(inputs=inputs,
-        #                        outputs=outputs)
         self.model = model
         out = da.generate_partition_functions(true_inp_dim,
                                               n_funcs=n_partitions,
@@ -272,7 +268,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
                      layer_type=tfkl.Dense, branch_names=('a', 'b'),
                      regularizer_type=tfk.regularizers.l2,
-                     dropout_rate=0, **layer_params):
+                     dropout_rate=0, noise=0, **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
         for lp in layer_shapes:
@@ -285,6 +281,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         act_reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=act_reg)(x)
+        if noise > 0:
+            rep = tfkl.GaussianNoise(noise)(rep)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
 
         # partition branch
