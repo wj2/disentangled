@@ -545,6 +545,20 @@ class StandardAE(da.TFModel):
         reps = self.get_representation(samples)
         recon = self.get_reconstruction(reps)
         return np.mean((samples - recon)**2)
+
+class PretrainedModel(da.TFModel):
+
+    def __init__(self, img_shape, model_path, trainable=False):
+        full_img_shape = img_shape + (3,)
+        layer_list = [tfkl.InputLayer(input_shape=full_img_shape),
+                      tfhub.KerasLayer(model_path, trainable=trainable)]
+        model = tfk.Sequential(layer_list)
+        model.build((None,) + full_img_shape)
+        self.encoder = model
+
+    def get_representation(self, samples):
+        rep = self.encoder(samples)
+        return rep
     
 class BetaVAE(da.TFModel):
 
