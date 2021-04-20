@@ -38,7 +38,7 @@ def create_parser():
                         type=float, help='order of magnitudes for range to '
                         'sample training differences from within (using '
                         'logspace)')
-    parser.add_argument('-m', '--no_models', default=False, action='store_true',
+    parser.add_argument('--no_models', default=False, action='store_true',
                         help='do not store tensorflow models')
     parser.add_argument('--test', default=False, action='store_true',
                         help='run minimal code to test that this script works')
@@ -58,6 +58,8 @@ def create_parser():
                         'training')
     parser.add_argument('--model_epochs', default=60, type=int,
                         help='the number of epochs to train each model for')
+    parser.add_argument('--no_full_cov', default=False, action='store_true',
+                        help='do not fit the full covariance matrix')
     return parser
 
 if __name__ == '__main__':
@@ -88,9 +90,9 @@ if __name__ == '__main__':
         
     betas = args.betas
     model_kinds = list(ft.partial(dd.BetaVAE, beta=b*args.beta_mult,
-                                  dropout_rate=args.dropout)
+                                  dropout_rate=args.dropout,
+                                  full_cov=not args.no_full_cov)
                        for b in betas)
-    print(save_tf_models)
     
     use_mp = not args.no_multiprocessing
     out = dc.test_generalization_new(dg_use=dg_use, est_inp_dim=est_inp_dim,

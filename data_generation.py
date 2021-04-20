@@ -4,8 +4,10 @@ import tensorflow_probability as tfp
 import numpy as np
 import scipy.stats as sts
 import sklearn.decomposition as skd
+import functools as ft
 
 import general.rf_models as rfm
+import general.utility as u
 import disentangled.aux as da
 import disentangled.regularizer as dr
 
@@ -139,7 +141,7 @@ class VariationalDataGenerator(DataGenerator):
 class ChairSourceDistrib(object):
 
     def __init__(self, datalist, set_partition=None, position_distr=None,
-                 use_partition=False):
+                 use_partition=False, partition_vec=None, offset=None):
         self.partition_func = None
         self.data_list = np.array(datalist)
         self.position_distr = position_distr
@@ -147,7 +149,13 @@ class ChairSourceDistrib(object):
         if position_distr is not None:
             self.dim = self.dim + position_distr.dim
         if use_partition:
-            if set_partition is None:
+            if partition_vec is not None:
+                self.partition = u.make_unit_vector(np.array(partition_vec))
+                self.offset = offset
+                set_partition = ft.partial(da._binary_classification,
+                                           plane=self.partition,
+                                           off=self.offset)
+            elif set_partition is None:
                 out = da.generate_partition_functions(self.dim, n_funcs=1)
                 pfs, vecs, offs = out
                 set_partition = pfs[0]
@@ -175,18 +183,22 @@ class ChairSourceDistrib(object):
             out = np.concatenate((out, ps), axis=1)
         return out
 
-    def make_partition(self, set_partition=None):
+    def make_partition(self, set_partition=None, partition_vec=None,
+                       offset=None):
+        if partition_vec is not None and offset is None:
+            offset = 0
         return ChairSourceDistrib(self.data_list,
                                   position_distr=self.position_distr,
                                   set_partition=set_partition,
-                                  use_partition=True)
+                                  use_partition=True, offset=offset,
+                                  partition_vec=partition_vec)
 
     def flip(self):
         if self.partition_func is not None:
             set_part = lambda x: np.logical_not(self.partition_func(x))
             new = ChairSourceDistrib(self.data_list, set_partition=set_part,
                                      position_distr=self.position_distr,
-                                     use_partition=True)
+                                     use_partition=True, offset=self.offset)
             new.partition = -self.partition
             new.offset = self.offset
         else:
@@ -198,9 +210,10 @@ class ChairGenerator(DataGenerator):
 
     def __init__(self, folder, norm_params=True, img_size=(128, 128),
                  include_position=False, position_distr=None, max_move=4,
-                 max_load=np.inf, **kwargs):
+                 max_load=np.inf, filter_edges=None, **kwargs):
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
-                                    max_load=max_load, **kwargs)
+                                    max_load=max_load, filter_edges=filter_edges,
+                                    **kwargs)
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
         self.position_distr = position_distr

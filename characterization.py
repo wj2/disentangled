@@ -58,6 +58,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
 
         test_rep = vae.get_representation(gen.generator(test_samples))
         scores[i] = c.score(test_rep, test_labels)
+        print(scores[i])
         chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 
@@ -877,6 +878,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         ind_combs = list(list(range(d)) for d in models.shape)
         for ic in it.product(*ind_combs):
             reps[ic] = models[ic].get_representation(samps)
+            print('mse', models[ic].get_reconstruction_mse(samps))
         gd = latent_samps, samps, reps
     else:
         gd = None
@@ -960,6 +962,10 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                   file_template=f_pattern, analysis_only=True,
                                   **kwargs) 
     n_parts, _, _, _, p, c, _, sc, _ = data
+    if 'beta_mult' in info['args'][0].keys():
+        n_parts = np.array(n_parts)*info['args'][0]['beta_mult']
+    if 'l2pr_weights_mult' in info['args'][0].keys():
+        n_parts = np.array(n_parts)*info['args'][0]['l2pr_weights_mult']*100
     print(info['args'][0])
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
@@ -996,7 +1002,10 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
 
     for i, qp in enumerate(quants_plot):
         if info is not None:
-            nd = info.get('input_dimensions', None)
+            if 'args' in info.keys() and  'betas' in info['args'][0].keys():
+                nd = 1
+            else:
+                nd = info.get('input_dimensions', None)
         else:
             nd = None
         if x_ax == 0 and panel_ax == 1:

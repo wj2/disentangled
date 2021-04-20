@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import tensorflow_hub as tfhub
 import functools as ft
 
 import numpy as np
@@ -225,7 +226,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  branch_names=('class_branch', 'autoenc_branch'),
                  offset_distr=None, contextual_partitions=False,
                  no_autoenc=False, loss_ratio=10, dropout_rate=0,
-                 **layer_params):
+                 regularizer_type=tfk.regularizers.l2,
+                 noise=0, context_offset=False, **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
@@ -234,13 +236,11 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                 regularizer_weight=regularizer_weight,
                                 branch_names=branch_names,
                                 dropout_rate=dropout_rate,
-                                **layer_params)
-        inputs, rep, class_branch, autoenc_branch = out
-
+                                regularizer_type=regularizer_type,
+                                noise=noise, **layer_params)
+        model, rep_model, autoenc_model, class_model = out
         self.branch_names = branch_names
-        outputs = [class_branch, autoenc_branch]
-        self.model = tfk.Model(inputs=inputs,
-                               outputs=outputs)
+        self.model = model
         out = da.generate_partition_functions(true_inp_dim,
                                               n_funcs=n_partitions,
                                               orth_basis=orthog_partitions,
@@ -248,15 +248,16 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                               contextual=contextual_partitions)
         self.n_partitions = n_partitions
         self.p_funcs, self.p_vectors, self.p_offsets = out
-        self.rep_model = tfk.Model(inputs=inputs, outputs=rep)
+        self.rep_model = rep_model
         self.input_shape = input_shape
         self.encoded_size = encoded_size
         self.compiled = False
         self.no_autoencoder = no_autoenc
         self.loss_ratio = loss_ratio
+        self.recon_model = autoenc_model
 
     def save(self, path):
-        tf_entries = ('model', 'rep_model')
+        tf_entries = ('model', 'rep_model', 'recon_model')
         self._save_wtf(path, tf_entries)
 
     @classmethod
@@ -267,7 +268,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
                      layer_type=tfkl.Dense, branch_names=('a', 'b'),
-                     dropout_rate=0, **layer_params):
+                     regularizer_type=tfk.regularizers.l2,
+                     dropout_rate=0, noise=0, **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
         for lp in layer_shapes:
@@ -277,23 +279,37 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             x = tfkl.Dropout(dropout_rate)(x)
         
         # representation layer
-        l2_reg = tfk.regularizers.l2(regularizer_weight)
+        act_reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
-                         activity_regularizer=l2_reg)(x)
+                         activity_regularizer=act_reg)(x)
+        if noise > 0:
+            rep = tfkl.GaussianNoise(noise)(rep)
+        rep_model = tfk.Model(inputs=inputs, outputs=rep)
 
         # partition branch
+        rep_inp = tfk.Input(shape=encoded_size)
+        class_inp = rep_inp
         sig_act = tf.keras.activations.sigmoid
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
-                                  name=branch_names[0])(rep)
+                                  name=branch_names[0])(class_inp)
+        class_model = tfk.Model(inputs=rep_inp, outputs=class_branch,
+                                name=branch_names[0])
 
         # decoder branch
-        z = rep
+        z = rep_inp
         for lp in layer_shapes[::-1]:
             z = tfkl.Dense(*lp, activation=act_func, **layer_params)(z)
 
         autoenc_branch = layer_type(input_shape, activation=act_func,
                                     name=branch_names[1], **layer_params)(z)
-        return inputs, rep, class_branch, autoenc_branch
+        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch,
+                                  name=branch_names[1])
+
+        outs = [class_model(rep), autoenc_model(rep)]
+        full_model = tfk.Model(inputs=inputs, outputs=outs)
+        
+        return full_model, rep_model, autoenc_model, class_model
+    # inputs, rep, class_branch, autoenc_branch
 
     def _compile(self, *args, categ_loss=tf.keras.losses.binary_crossentropy,
                  autoenc_loss=tf.losses.mse, standard_loss=False,
@@ -341,7 +357,17 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         out = self.model.fit(x=train_x, y=train_y_dict, epochs=epochs,
                              validation_data=eval_set, batch_size=batch_size,
                              **kwargs)
-        return out   
+        return out
+
+    def get_reconstruction(self, reps):
+        recon = self.recon_model(reps)
+        return recon
+
+    def get_reconstruction_mse(self, samples):
+        reps = self.get_representation(samples)
+        recon = self.get_reconstruction(reps)
+        return np.mean((samples - recon)**2)
+
 
 class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
@@ -386,14 +412,19 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
         l2_reg = tfk.regularizers.l2(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=l2_reg)(x)
-
+        rep_model = tfk.Model(inputs=inputs, outputs=rep)
+        rep_inp = tfk.Input(shape=encoded_size)
+        
         # partition branch
+        class_inp = rep_inp
         sig_act = tf.keras.activations.sigmoid
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
-                                  name=branch_names[0])(rep)
+                                  name=branch_names[0])(class_inp)
+        class_model = tfk.Model(inputs=rep_inp, outputs=class_branch,
+                                name=branch_names[0])
 
         # decoder branch
-        z = rep
+        z = rep_inp
         ll = 1
         for i, lp in enumerate(layer_shapes[::-1]):
             if ll != len(lp):
@@ -419,7 +450,12 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
                                               activation=tf.nn.sigmoid,
                                               name=branch_names[1],
                                               padding='same', **layer_params)(z)
-        return inputs, rep, class_branch, autoenc_branch
+        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch,
+                                  name=branch_names[1])
+
+        outs = [class_model(rep), autoenc_model(rep)]
+        full_model = tfk.Model(inputs=inputs, outputs=outs)
+        return full_model, rep_model, autoenc_model, class_model
 
     
 class StandardAE(da.TFModel):
@@ -511,16 +547,38 @@ class StandardAE(da.TFModel):
     def get_representation(self, samples):
         rep = self.encoder(samples)
         return rep
-    
+
+    def get_reconstruction(self, reps):
+        recon = self.model(reps)
+        return recon
+
+    def get_reconstruction_mse(self, samples):
+        reps = self.get_representation(samples)
+        recon = self.get_reconstruction(reps)
+        return np.mean((samples - recon)**2)
+
+class PretrainedModel(da.TFModel):
+
+    def __init__(self, img_shape, model_path, trainable=False):
+        full_img_shape = img_shape + (3,)
+        layer_list = [tfkl.InputLayer(input_shape=full_img_shape),
+                      tfhub.KerasLayer(model_path, trainable=trainable)]
+        model = tfk.Sequential(layer_list)
+        model.build((None,) + full_img_shape)
+        self.encoder = model
+
+    def get_representation(self, samples):
+        rep = self.encoder(samples)
+        return rep
     
 class BetaVAE(da.TFModel):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
                  act_func=tf.nn.relu, beta=1, dropout_rate=0,
-                 **layer_params):
+                 full_cov=True, **layer_params):
         enc, prior = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                        act_func=act_func, beta=beta,
-                                       **layer_params)
+                                       full_cov=full_cov, **layer_params)
         self.encoder = enc
         self.prior = prior
         self.beta = beta
@@ -558,7 +616,7 @@ class BetaVAE(da.TFModel):
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      act_func=tf.nn.relu, strides=1,
                      transform_layer=None, layer_type=tfkl.Dense,
-                     conv=False, beta=1, **layer_params):
+                     conv=False, beta=1, full_cov=True, **layer_params):
         layer_list = []
         layer_list.append(tfkl.InputLayer(input_shape=input_shape))
         if transform_layer is not None:
@@ -568,12 +626,12 @@ class BetaVAE(da.TFModel):
             l_i = layer_type(*lp, activation=act_func, **layer_params)
             layer_list.append(l_i)
 
-        # if conv:
         if conv:
             layer_list.append(tfkl.Flatten())
-        p_size = tfpl.MultivariateNormalTriL.params_size(encoded_size)
-        # else:
-        #     p_size = tfpl.IndependentNormal.params_size(encoded_size)
+        if full_cov:
+            p_size = tfpl.MultivariateNormalTriL.params_size(encoded_size)
+        else:
+            p_size = tfpl.IndependentNormal.params_size(encoded_size)
             
         layer_list.append(tfkl.Dense(p_size, activation=None))
 
@@ -584,12 +642,12 @@ class BetaVAE(da.TFModel):
         else:
             rep_reg = None
             
-        # if conv:
-        rep_layer = tfpl.MultivariateNormalTriL(encoded_size,
-                                                activity_regularizer=rep_reg)
-        # else:
-        #     rep_layer = tfpl.IndependentNormal(encoded_size,
-        #                                        activity_regularizer=rep_reg)
+        if full_cov:
+            rep_layer = tfpl.MultivariateNormalTriL(encoded_size,
+                                                    activity_regularizer=rep_reg)
+        else:
+            rep_layer = tfpl.IndependentNormal(encoded_size,
+                                               activity_regularizer=rep_reg)
         layer_list.append(rep_layer)
 
         enc = tfk.Sequential(layer_list)
@@ -664,9 +722,27 @@ class BetaVAE(da.TFModel):
         outs = self.decoder(samps).mean()
         return outs
 
-    def get_representation(self, samples):
+    def get_representation(self, samples, use_mean=True):
         if self.loaded:
             rep = self.encoder(samples)
         else:
-            rep = self.encoder(samples).sample()
+            if use_mean:
+                rep = self.encoder(samples).mean()
+            else:
+                rep = self.encoder(samples).sample()
         return rep
+
+    def get_reconstruction_mse(self, samples, use_mean=True):
+        reps = self.get_representation(samples, use_mean=use_mean)
+        recon = self.get_reconstruction(reps, use_mean=use_mean)
+        return np.mean((samples - recon)**2)
+    
+    def get_reconstruction(self, reps, use_mean=True):
+        if self.loaded:
+            recon = self.decoder(reps)
+        else:
+            if use_mean:
+                recon = self.decoder(reps).mean()
+            else:
+                recon = self.decoder(reps).sample()
+        return recon

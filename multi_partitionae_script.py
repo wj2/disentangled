@@ -3,11 +3,13 @@ import scipy.stats as sts
 import numpy as np
 import pickle
 import functools as ft
+import tensorflow.keras as tfk
 
 import disentangled.characterization as dc
 import disentangled.aux as da
 import disentangled.disentanglers as dd
 import disentangled.data_generation as dg
+import disentangled.regularizer as dr
 
 def create_parser():
     parser = argparse.ArgumentParser(description='fit several autoencoders')
@@ -54,6 +56,9 @@ def create_parser():
     parser.add_argument('--contextual_partitions', default=False,
                         action='store_true',
                         help='use contextual partitions')
+    parser.add_argument('--context_offset', default=False,
+                        action='store_true',
+                        help='use contextual partitions with offsets')
     parser.add_argument('--use_rf_dg', default=False,
                         action='store_true',
                         help='use an RF-based data generator')
@@ -71,6 +76,13 @@ def create_parser():
                         'training')
     parser.add_argument('--model_epochs', default=60, type=int,
                         help='the number of epochs to train each model for')
+    parser.add_argument('--l2pr_weights', default=None, nargs=2, type=float,
+                        help='the weights for L2-PR regularization')
+    parser.add_argument('--l2pr_weights_mult', default=1, type=float,
+                        help='the weight multiplier for L2-PR regularization')
+    parser.add_argument('--rep_noise', default=0, type=float,
+                        help='std of noise to use in representation layer '
+                        'during training')
     return parser
 
 if __name__ == '__main__':
@@ -103,9 +115,17 @@ if __name__ == '__main__':
     else:
         offset_distr = sts.norm(0, np.sqrt(args.offset_distr_var))
 
+    if args.l2pr_weights is not None:
+        reg = dr.L2PRRegularizer
+        reg_weight = np.array(args.l2pr_weights)*args.l2pr_weights_mult
+    else:
+        reg = tfk.regularizers.l2
+        reg_weight = 0
+
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
+    context_offset = args.context_offset
     model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
                                   true_inp_dim=true_inp_dim,
                                   n_partitions=p,
@@ -114,7 +134,11 @@ if __name__ == '__main__':
                                   offset_distr=offset_distr,
                                   loss_ratio=args.loss_ratio,
                                   no_autoenc=args.no_autoencoder,
-                                  dropout_rate=args.dropout)
+                                  dropout_rate=args.dropout,
+                                  regularizer_type=reg,
+                                  regularizer_weight=reg_weight,
+                                  noise=args.rep_noise,
+                                  context_offset=context_offset)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
