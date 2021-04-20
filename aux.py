@@ -429,7 +429,8 @@ def _concatenate_none(arrs, axis=0):
 chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                       img_size=(64, 64), max_load=np.inf, norm_pixels=True,
-                      norm_params=False, grayscale=False):
+                      norm_params=False, grayscale=False, filter_edges=None,
+                      edge_keys=('rotation',)):
     subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
                                                 os.listdir(folder))
     names = []
@@ -474,4 +475,15 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
     d = {'names':names, 'img_nums':nums, 'pitch':pitchs, 'rotation':rots,
          'distances':dists, 'images':imgs}
     data = pd.DataFrame(data=d)
+    if filter_edges is not None:
+        mask = np.zeros(len(pitchs), dtype=bool)
+        for fk in edge_keys:
+            min_fk = np.min(d[fk])
+            max_fk = np.max(d[fk])
+            extent = max_fk - min_fk
+            sub = filter_edges*extent/2
+            mask_fk = np.logical_or(d[fk] < min_fk + sub,
+                                    d[fk] > max_fk - sub)
+            mask = np.logical_or(mask, mask_fk)
+        data = data[np.logical_not(mask)]
     return data

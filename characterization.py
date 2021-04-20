@@ -58,6 +58,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
 
         test_rep = vae.get_representation(gen.generator(test_samples))
         scores[i] = c.score(test_rep, test_labels)
+        print(scores[i])
         chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 

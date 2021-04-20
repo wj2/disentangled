@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import tensorflow_hub as tfhub
 import functools as ft
 
 import numpy as np
@@ -256,7 +257,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.recon_model = autoenc_model
 
     def save(self, path):
-        tf_entries = ('model', 'rep_model')
+        tf_entries = ('model', 'rep_model', 'recon_model')
         self._save_wtf(path, tf_entries)
 
     @classmethod
@@ -411,14 +412,19 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
         l2_reg = tfk.regularizers.l2(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=l2_reg)(x)
-
+        rep_model = tfk.Model(inputs=inputs, outputs=rep)
+        rep_inp = tfk.Input(shape=encoded_size)
+        
         # partition branch
+        class_inp = rep_inp
         sig_act = tf.keras.activations.sigmoid
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
-                                  name=branch_names[0])(rep)
+                                  name=branch_names[0])(class_inp)
+        class_model = tfk.Model(inputs=rep_inp, outputs=class_branch,
+                                name=branch_names[0])
 
         # decoder branch
-        z = rep
+        z = rep_inp
         ll = 1
         for i, lp in enumerate(layer_shapes[::-1]):
             if ll != len(lp):
@@ -444,7 +450,12 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
                                               activation=tf.nn.sigmoid,
                                               name=branch_names[1],
                                               padding='same', **layer_params)(z)
-        return inputs, rep, class_branch, autoenc_branch
+        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch,
+                                  name=branch_names[1])
+
+        outs = [class_model(rep), autoenc_model(rep)]
+        full_model = tfk.Model(inputs=inputs, outputs=outs)
+        return full_model, rep_model, autoenc_model, class_model
 
     
 class StandardAE(da.TFModel):
