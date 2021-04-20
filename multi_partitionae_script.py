@@ -124,7 +124,7 @@ if __name__ == '__main__':
 
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
-    contextual_partitions = argsc.ontextual_partitions
+    contextual_partitions = args.contextual_partitions
     context_offset = args.context_offset
     model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
                                   true_inp_dim=true_inp_dim,
