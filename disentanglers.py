@@ -380,6 +380,8 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=1,
                      layer_types_enc=None, dropout_rate=0,
                      layer_types_dec=None,
+                     regularizer_type=tfk.regularizers.l2,
+                     noise=0, 
                      branch_names=('a', 'b'),
                      **layer_params):
         inputs = tfk.Input(shape=input_shape)
