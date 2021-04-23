@@ -41,10 +41,11 @@ class TFModel(object):
             if use_new_head:
                 _, targ_file = os.path.split(tf_path)
                 tf_path = os.path.join(new_folder, targ_file)
-            m_attr = tf.keras.models.load_model(tf_path)
+            m_attr = tf.keras.models.load_model(tf_path, compile=False)
             setattr(dummy_object, attr, m_attr)
         for attr, value in ndict.items():
             setattr(dummy_object, attr, value)
+        dummy_object._compile()
         return dummy_object
 
 class InputGenerator(object):
@@ -438,6 +439,7 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
     pitchs = []
     rots = []
     dists = []
+    ids = []
     imgs = []
     loaded = 0
     for sfl in subfolders:
@@ -451,6 +453,7 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                 pitchs.append(int(m.group(2)))
                 rots.append(int(m.group(3)))
                 dists.append(int(m.group(4)))
+                ids.append(sfl)
                 img = pImage.open(os.path.join(p, ifl))
                 if grayscale:
                     img = img.convert('L')
@@ -472,8 +475,8 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
         pitchs = u.demean_unit_std(np.array(pitchs))
         rots = u.demean_unit_std(np.array(rots))
         dists = u.demean_unit_std(np.array(dists))
-    d = {'names':names, 'img_nums':nums, 'pitch':pitchs, 'rotation':rots,
-         'distances':dists, 'images':imgs}
+    d = {'names':names, 'chair_id':ids, 'img_nums':nums, 'pitch':pitchs,
+         'rotation':rots, 'distances':dists, 'images':imgs}
     data = pd.DataFrame(data=d)
     if filter_edges is not None:
         mask = np.zeros(len(pitchs), dtype=bool)
