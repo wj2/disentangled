@@ -138,6 +138,28 @@ class VariationalDataGenerator(DataGenerator):
     def get_representation(self, x):
         return self.generator(x).mean()
 
+class MultivariateUniform(object):
+
+    def __init__(self, n_dims, bounds):
+        bounds = np.array(bounds)
+        if len(bounds.shape) == 1:
+            bounds = np.expand_dims(bounds, 0)
+        if bounds.shape[0] == 1:
+            bounds = np.repeat(bounds, n_dims, axis=0)
+        if bounds.shape[0] != n_dims:
+            raise IOError('too many or too few bounds provided')
+        self.n_dims = n_dims
+        self.dim = n_dims
+        self.bounds = bounds
+        self.distr = sts.uniform(0, 1)
+        self.mags = np.expand_dims(self.bounds[:, 1] - self.bounds[:, 0], 0)
+
+    def rvs(self, size=None):
+        if size is None:
+            size = 1
+        samps = self.distr.rvs((size, self.n_dims))
+        return samps*self.mags + self.bounds[:, 0:1]        
+    
 class ChairSourceDistrib(object):
 
     def __init__(self, datalist, set_partition=None, position_distr=None,

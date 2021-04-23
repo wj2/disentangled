@@ -155,7 +155,7 @@ class FlexibleDisentangler(da.TFModel):
     def _compile(self, optimizer=None,
                  loss=tf.losses.MeanSquaredError(), loss_weights=None):
         if optimizer is None:
-            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
+            optimizer = tf.optimizers.Adam(learning_rate=1e-4)
         self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
@@ -312,13 +312,18 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         return full_model, rep_model, autoenc_model, class_model
     # inputs, rep, class_branch, autoenc_branch
 
-    def _compile(self, *args, categ_loss=tf.keras.losses.binary_crossentropy,
-                 autoenc_loss=tf.losses.mse, standard_loss=True,
+    def _compile(self, *args, categ_loss=None,
+                 autoenc_loss=None, standard_loss=True,
                  loss_ratio=None, **kwargs):
+        if categ_loss is None:
+            categ_loss = tfk.losses.BinaryCrossentropy()
+        if autoenc_loss is None:
+            autoenc_loss = tfk.losses.MeanSquaredError()
         if not standard_loss or self.contextual_partitions:
             categ_loss = _binary_crossentropy_nan,
         loss_dict = {self.branch_names[0]:categ_loss,
                      self.branch_names[1]:autoenc_loss}
+        print(loss_dict)
         if loss_ratio is None:
             loss_ratio = self.loss_ratio
         if self.no_autoencoder:
