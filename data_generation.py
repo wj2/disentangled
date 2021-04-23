@@ -158,7 +158,7 @@ class MultivariateUniform(object):
         if size is None:
             size = 1
         samps = self.distr.rvs((size, self.n_dims))
-        return samps*self.mags + self.bounds[:, 0:1]        
+        return samps*self.mags + self.bounds[:, 0:1].T
     
 class ChairSourceDistrib(object):
 
