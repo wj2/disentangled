@@ -154,7 +154,9 @@ def evaluate_multiple_models_dims(dg_use, models, *args, **kwargs):
 def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size=32,
                           n_train_samps=10**6, epochs=5, hide_print=False,
                           input_dim=None, use_mp=False, standard_loss=False,
-                          val_set=True, **kwargs):
+                          val_set=True, save_and_discard=False,
+                          save_templ='m_{}-{}.tfmod',
+                          **kwargs):
     training_history = np.zeros((len(model_kinds), n_reps), dtype=object)
     models = np.zeros_like(training_history, dtype=object)
     if input_dim is None:
@@ -179,8 +181,11 @@ def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size
                                     batch_size=batch_size,
                                     standard_loss=standard_loss,
                                     use_multiprocessing=use_mp)
-            training_history[i, j] = th
-            models[i, j] = m
+            if save_and_discard:
+                m.save(save_templ.format(i, j))
+            else:
+                training_history[i, j] = th
+                models[i, j] = m
     return models, training_history
 
 
