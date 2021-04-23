@@ -246,6 +246,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                               orth_basis=orthog_partitions,
                                               offset_distribution=offset_distr,
                                               contextual=contextual_partitions)
+        self.contextual_partitions = contextual_partitions
         self.n_partitions = n_partitions
         self.p_funcs, self.p_vectors, self.p_offsets = out
         self.rep_model = rep_model
@@ -312,9 +313,9 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
     # inputs, rep, class_branch, autoenc_branch
 
     def _compile(self, *args, categ_loss=tf.keras.losses.binary_crossentropy,
-                 autoenc_loss=tf.losses.mse, standard_loss=False,
+                 autoenc_loss=tf.losses.mse, standard_loss=True,
                  loss_ratio=None, **kwargs):
-        if not standard_loss:
+        if not standard_loss or self.contextual_partitions:
             categ_loss = _binary_crossentropy_nan,
         loss_dict = {self.branch_names[0]:categ_loss,
                      self.branch_names[1]:autoenc_loss}
@@ -333,7 +334,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
     def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
             data_generator=None, batch_size=32, standard_loss=False,
             **kwargs):
-        if standard_loss:
+        if standard_loss or self.contextual_partitions:
             comp_kwargs = {'standard_loss':True}
         else:
             comp_kwargs = {'standard_loss':False}
@@ -373,7 +374,8 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
     @classmethod
     def load(cls, path):
-        dummy = FlexibleDisentanglerAEConv(0, ((10,),), 0, 5)
+        dummy_layers = ((10, 10, 3), (10,))
+        dummy = FlexibleDisentanglerAEConv((32, 32, 3), dummy_layers, 10, 5)
         return cls._load_model(dummy, path)
 
     def make_encoder(self, input_shape, layer_shapes, encoded_size,

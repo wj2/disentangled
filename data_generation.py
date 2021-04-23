@@ -216,6 +216,7 @@ class ChairGenerator(DataGenerator):
                                     **kwargs)
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
+        self.include_position = include_position
         self.position_distr = position_distr
         self.data_table = data
         if max_load == 1:
@@ -237,7 +238,7 @@ class ChairGenerator(DataGenerator):
 
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()
-
+    
     def generator(self, x):
         return self.get_representation(x)
 
@@ -248,17 +249,43 @@ class ChairGenerator(DataGenerator):
         shifts = np.round(img_dim*coords/2).astype(int)
         s_img = np.roll(img, shifts, axis=(0,1))
         return s_img
+
+    def ppf(self, perc, dim):
+        if dim < self.n_img_params:
+            vals = self.data_table[self.img_params[dim]]
+            p_val = np.percentile(vals, perc*100, interpolation='nearest')
+        else:
+            p_val = sts.norm(0, .5*self.max_move).ppf(perc)
+            if p_val > self.max_move:
+                p_val = self.max_move
+            elif p_val < -self.max_move:
+                p_val = -self.max_move
+        return p_val
+
+    def get_center(self):
+        p_meds = np.percentile(self.data_table[self.img_params], .5, axis=0,
+                               interpolation='nearest')
+        if self.include_position:
+            m_meds = self.position_distr.mean
+            p_meds = np.concatenate((p_meds, m_meds))
+        return p_meds        
     
-    def get_representation(self, x, flat=False):
+    def get_representation(self, x, flat=False, same_img=False):
         x = np.array(x)
         if len(x.shape) == 1:
             x = np.expand_dims(x, 0)
         out = np.zeros(x.shape[0], dtype=object)
         img_params = np.array(self.data_table[self.img_params])
+        if same_img:
+            img_ids = self.data_table['chair_id']
+            chosen_id = np.random.choice(img_ids, 1)[0]
+            id_mask = img_ids == chosen_id
         for i, xi in enumerate(x):
             xi_img = xi[:self.n_img_params]
             mask = np.product(img_params == xi_img,
                               axis=1, dtype=bool)
+            if same_img:
+                mask = mask*id_mask
             s = np.array(self.data_table[self.img_out_label])[mask]
             out_ind = np.random.choice(range(s.shape[0]))
             samp = s[out_ind]
