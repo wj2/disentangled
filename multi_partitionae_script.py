@@ -3,6 +3,7 @@ import scipy.stats as sts
 import numpy as np
 import pickle
 import functools as ft
+import tensorflow as tf
 import tensorflow.keras as tfk
 
 import disentangled.characterization as dc
@@ -83,6 +84,8 @@ def create_parser():
     parser.add_argument('--rep_noise', default=0, type=float,
                         help='std of noise to use in representation layer '
                         'during training')
+    parser.add_argument('--use_tanh', default=False, action='store_true',
+                        help='use tanh instead of relu transfer function')
     return parser
 
 if __name__ == '__main__':
@@ -121,7 +124,12 @@ if __name__ == '__main__':
     else:
         reg = tfk.regularizers.l2
         reg_weight = 0
-
+        
+    if args.use_tanh:
+        act_func = tf.nn.tanh
+    else:
+        act_func = tf.nn.relu
+        
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
@@ -138,7 +146,8 @@ if __name__ == '__main__':
                                   regularizer_type=reg,
                                   regularizer_weight=reg_weight,
                                   noise=args.rep_noise,
-                                  context_offset=context_offset)
+                                  context_offset=context_offset,
+                                  act_func=act_func)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
