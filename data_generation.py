@@ -4,8 +4,10 @@ import tensorflow_probability as tfp
 import numpy as np
 import scipy.stats as sts
 import sklearn.decomposition as skd
+import functools as ft
 
 import general.rf_models as rfm
+import general.utility as u
 import disentangled.aux as da
 import disentangled.regularizer as dr
 
@@ -136,10 +138,32 @@ class VariationalDataGenerator(DataGenerator):
     def get_representation(self, x):
         return self.generator(x).mean()
 
+class MultivariateUniform(object):
+
+    def __init__(self, n_dims, bounds):
+        bounds = np.array(bounds)
+        if len(bounds.shape) == 1:
+            bounds = np.expand_dims(bounds, 0)
+        if bounds.shape[0] == 1:
+            bounds = np.repeat(bounds, n_dims, axis=0)
+        if bounds.shape[0] != n_dims:
+            raise IOError('too many or too few bounds provided')
+        self.n_dims = n_dims
+        self.dim = n_dims
+        self.bounds = bounds
+        self.distr = sts.uniform(0, 1)
+        self.mags = np.expand_dims(self.bounds[:, 1] - self.bounds[:, 0], 0)
+
+    def rvs(self, size=None):
+        if size is None:
+            size = 1
+        samps = self.distr.rvs((size, self.n_dims))
+        return samps*self.mags + self.bounds[:, 0:1].T
+    
 class ChairSourceDistrib(object):
 
     def __init__(self, datalist, set_partition=None, position_distr=None,
-                 use_partition=False):
+                 use_partition=False, partition_vec=None, offset=None):
         self.partition_func = None
         self.data_list = np.array(datalist)
         self.position_distr = position_distr
@@ -147,7 +171,13 @@ class ChairSourceDistrib(object):
         if position_distr is not None:
             self.dim = self.dim + position_distr.dim
         if use_partition:
-            if set_partition is None:
+            if partition_vec is not None:
+                self.partition = u.make_unit_vector(np.array(partition_vec))
+                self.offset = offset
+                set_partition = ft.partial(da._binary_classification,
+                                           plane=self.partition,
+                                           off=self.offset)
+            elif set_partition is None:
                 out = da.generate_partition_functions(self.dim, n_funcs=1)
                 pfs, vecs, offs = out
                 set_partition = pfs[0]
@@ -175,18 +205,22 @@ class ChairSourceDistrib(object):
             out = np.concatenate((out, ps), axis=1)
         return out
 
-    def make_partition(self, set_partition=None):
+    def make_partition(self, set_partition=None, partition_vec=None,
+                       offset=None):
+        if partition_vec is not None and offset is None:
+            offset = 0
         return ChairSourceDistrib(self.data_list,
                                   position_distr=self.position_distr,
                                   set_partition=set_partition,
-                                  use_partition=True)
+                                  use_partition=True, offset=offset,
+                                  partition_vec=partition_vec)
 
     def flip(self):
         if self.partition_func is not None:
             set_part = lambda x: np.logical_not(self.partition_func(x))
             new = ChairSourceDistrib(self.data_list, set_partition=set_part,
                                      position_distr=self.position_distr,
-                                     use_partition=True)
+                                     use_partition=True, offset=self.offset)
             new.partition = -self.partition
             new.offset = self.offset
         else:
@@ -198,11 +232,13 @@ class ChairGenerator(DataGenerator):
 
     def __init__(self, folder, norm_params=True, img_size=(128, 128),
                  include_position=False, position_distr=None, max_move=4,
-                 max_load=np.inf, **kwargs):
+                 max_load=np.inf, filter_edges=None, **kwargs):
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
-                                    max_load=max_load, **kwargs)
+                                    max_load=max_load, filter_edges=filter_edges,
+                                    **kwargs)
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
+        self.include_position = include_position
         self.position_distr = position_distr
         self.data_table = data
         if max_load == 1:
@@ -224,7 +260,7 @@ class ChairGenerator(DataGenerator):
 
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()
-
+    
     def generator(self, x):
         return self.get_representation(x)
 
@@ -235,17 +271,43 @@ class ChairGenerator(DataGenerator):
         shifts = np.round(img_dim*coords/2).astype(int)
         s_img = np.roll(img, shifts, axis=(0,1))
         return s_img
+
+    def ppf(self, perc, dim):
+        if dim < self.n_img_params:
+            vals = self.data_table[self.img_params[dim]]
+            p_val = np.percentile(vals, perc*100, interpolation='nearest')
+        else:
+            p_val = sts.norm(0, .5*self.max_move).ppf(perc)
+            if p_val > self.max_move:
+                p_val = self.max_move
+            elif p_val < -self.max_move:
+                p_val = -self.max_move
+        return p_val
+
+    def get_center(self):
+        p_meds = np.percentile(self.data_table[self.img_params], .5, axis=0,
+                               interpolation='nearest')
+        if self.include_position:
+            m_meds = self.position_distr.mean
+            p_meds = np.concatenate((p_meds, m_meds))
+        return p_meds        
     
-    def get_representation(self, x, flat=False):
+    def get_representation(self, x, flat=False, same_img=False):
         x = np.array(x)
         if len(x.shape) == 1:
             x = np.expand_dims(x, 0)
         out = np.zeros(x.shape[0], dtype=object)
         img_params = np.array(self.data_table[self.img_params])
+        if same_img:
+            img_ids = self.data_table['chair_id']
+            chosen_id = np.random.choice(img_ids, 1)[0]
+            id_mask = img_ids == chosen_id
         for i, xi in enumerate(x):
             xi_img = xi[:self.n_img_params]
             mask = np.product(img_params == xi_img,
                               axis=1, dtype=bool)
+            if same_img:
+                mask = mask*id_mask
             s = np.array(self.data_table[self.img_out_label])[mask]
             out_ind = np.random.choice(range(s.shape[0]))
             samp = s[out_ind]

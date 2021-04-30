@@ -111,7 +111,7 @@ if __name__ == '__main__':
     else:
         offset_distr = sts.norm(0, np.sqrt(args.offset_distr_var))
 
-    layer_spec = ((20, 3, 1), (8, 3, 2), (2*est_inp_dim,), (est_inp_dim,))
+    layer_spec = ((20, 3, 1), (8, 3, 2), (est_inp_dim,), (est_inp_dim,))
         
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions

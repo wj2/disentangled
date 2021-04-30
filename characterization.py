@@ -58,6 +58,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
 
         test_rep = vae.get_representation(gen.generator(test_samples))
         scores[i] = c.score(test_rep, test_labels)
+        print(scores[i])
         chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 
@@ -152,8 +153,10 @@ def evaluate_multiple_models_dims(dg_use, models, *args, **kwargs):
 
 def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size=32,
                           n_train_samps=10**6, epochs=5, hide_print=False,
-                          input_dim=None, use_mp=False, standard_loss=False,
-                          val_set=True, **kwargs):
+                          input_dim=None, use_mp=False, standard_loss=True,
+                          val_set=True, save_and_discard=False,
+                          save_templ='m_{}-{}.tfmod',
+                          **kwargs):
     training_history = np.zeros((len(model_kinds), n_reps), dtype=object)
     models = np.zeros_like(training_history, dtype=object)
     if input_dim is None:
@@ -178,8 +181,11 @@ def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size
                                     batch_size=batch_size,
                                     standard_loss=standard_loss,
                                     use_multiprocessing=use_mp)
-            training_history[i, j] = th
-            models[i, j] = m
+            if save_and_discard:
+                m.save(save_templ.format(i, j))
+            else:
+                training_history[i, j] = th
+                models[i, j] = m
     return models, training_history
 
 
@@ -1020,3 +1026,49 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                              label=label,
                                              plot_labels=panel_labels)
     return axs
+
+def _create_samps(vals, dim, others):
+    out = np.zeros((len(vals), len(others) + 1))
+    for i, v in enumerate(vals):
+        out[i, :dim] = others[:dim]
+        out[i, dim] = v
+        out[i, dim+1:] = others[dim:]
+    return out
+
+def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
+                        other_vals=None, eps=.1, eps_d=.2,
+                        n_dense_pts=10, full_perturb=1):
+    if other_vals is None:
+        other_vals = list(gen.get_center())
+        other_vals.pop(trav_dim)
+    dense_samp = np.linspace(.5 - eps_d, .5 + eps_d, n_dense_pts)
+    dense_pts = list(gen.ppf(ds, trav_dim) for ds in dense_samp)
+    dense_xs = _create_samps(dense_pts, trav_dim, other_vals)
+    dense_imgs = gen.get_representation(dense_xs, same_img=True)
+    dense_latents = autoenc.get_representation(dense_imgs)
+    lr = sklm.LinearRegression()
+    lr.fit(dense_latents, dense_pts)
+    lr_val = lr.score(dense_latents, dense_pts)
+    dists = np.dot(dense_latents, lr.coef_)
+    ldists = np.diff(dists)
+    ptdists = np.diff(dense_pts)
+    conv = np.mean(ldists/ptdists)
+    perts = np.linspace(-full_perturb, full_perturb, n_pts)
+    center_rep = dense_latents[int(n_dense_pts/2)]
+    lr_norm = u.make_unit_vector(lr.coef_)
+    dev = np.expand_dims(perts, 0)*np.expand_dims(lr_norm, 1)
+    pert_reps = (np.expand_dims(center_rep, 1)
+                 + dev)
+    print(np.dot(pert_reps.T, lr.coef_))
+    pert_recons = autoenc.get_reconstruction(pert_reps.T)
+    return pert_recons, dense_imgs, lr_val
+
+def plot_img_series(imgs, fwid=4, axs=None):
+    fwid = 4
+    fsize = (fwid*imgs.shape[0], fwid)
+    if axs is None: 
+        f, axs = plt.subplots(1, imgs.shape[0], figsize=fsize)
+    for i in range(imgs.shape[0]):
+        axs[i].imshow(imgs[i])
+        gpl.add_hlines(imgs.shape[1]/2, axs[i])
+        gpl.add_vlines(imgs.shape[2]/2, axs[i])

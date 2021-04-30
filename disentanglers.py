@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import tensorflow_hub as tfhub
 import functools as ft
 
 import numpy as np
@@ -154,7 +155,7 @@ class FlexibleDisentangler(da.TFModel):
     def _compile(self, optimizer=None,
                  loss=tf.losses.MeanSquaredError(), loss_weights=None):
         if optimizer is None:
-            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
+            optimizer = tf.optimizers.Adam(learning_rate=1e-4)
         self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
@@ -245,6 +246,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                               orth_basis=orthog_partitions,
                                               offset_distribution=offset_distr,
                                               contextual=contextual_partitions)
+        self.contextual_partitions = contextual_partitions
         self.n_partitions = n_partitions
         self.p_funcs, self.p_vectors, self.p_offsets = out
         self.rep_model = rep_model
@@ -256,7 +258,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.recon_model = autoenc_model
 
     def save(self, path):
-        tf_entries = ('model', 'rep_model')
+        tf_entries = ('model', 'rep_model', 'recon_model')
         self._save_wtf(path, tf_entries)
 
     @classmethod
@@ -310,13 +312,18 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         return full_model, rep_model, autoenc_model, class_model
     # inputs, rep, class_branch, autoenc_branch
 
-    def _compile(self, *args, categ_loss=tf.keras.losses.binary_crossentropy,
-                 autoenc_loss=tf.losses.mse, standard_loss=False,
+    def _compile(self, *args, categ_loss=None,
+                 autoenc_loss=None, standard_loss=True,
                  loss_ratio=None, **kwargs):
-        if not standard_loss:
+        if categ_loss is None:
+            categ_loss = tfk.losses.BinaryCrossentropy()
+        if autoenc_loss is None:
+            autoenc_loss = tfk.losses.MeanSquaredError()
+        if not standard_loss or self.contextual_partitions:
             categ_loss = _binary_crossentropy_nan,
         loss_dict = {self.branch_names[0]:categ_loss,
                      self.branch_names[1]:autoenc_loss}
+        print(loss_dict)
         if loss_ratio is None:
             loss_ratio = self.loss_ratio
         if self.no_autoencoder:
@@ -332,7 +339,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
     def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
             data_generator=None, batch_size=32, standard_loss=False,
             **kwargs):
-        if standard_loss:
+        if standard_loss or self.contextual_partitions:
             comp_kwargs = {'standard_loss':True}
         else:
             comp_kwargs = {'standard_loss':False}
@@ -372,13 +379,16 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
     @classmethod
     def load(cls, path):
-        dummy = FlexibleDisentanglerAEConv(0, ((10,),), 0, 5)
+        dummy_layers = ((10, 10, 3), (10,))
+        dummy = FlexibleDisentanglerAEConv((32, 32, 3), dummy_layers, 10, 5)
         return cls._load_model(dummy, path)
 
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=1,
                      layer_types_enc=None, dropout_rate=0,
                      layer_types_dec=None,
+                     regularizer_type=tfk.regularizers.l2,
+                     noise=0, 
                      branch_names=('a', 'b'),
                      **layer_params):
         inputs = tfk.Input(shape=input_shape)
@@ -411,14 +421,19 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
         l2_reg = tfk.regularizers.l2(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=l2_reg)(x)
-
+        rep_model = tfk.Model(inputs=inputs, outputs=rep)
+        rep_inp = tfk.Input(shape=encoded_size)
+        
         # partition branch
+        class_inp = rep_inp
         sig_act = tf.keras.activations.sigmoid
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
-                                  name=branch_names[0])(rep)
+                                  name=branch_names[0])(class_inp)
+        class_model = tfk.Model(inputs=rep_inp, outputs=class_branch,
+                                name=branch_names[0])
 
         # decoder branch
-        z = rep
+        z = rep_inp
         ll = 1
         for i, lp in enumerate(layer_shapes[::-1]):
             if ll != len(lp):
@@ -444,7 +459,12 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
                                               activation=tf.nn.sigmoid,
                                               name=branch_names[1],
                                               padding='same', **layer_params)(z)
-        return inputs, rep, class_branch, autoenc_branch
+        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch,
+                                  name=branch_names[1])
+
+        outs = [class_model(rep), autoenc_model(rep)]
+        full_model = tfk.Model(inputs=inputs, outputs=outs)
+        return full_model, rep_model, autoenc_model, class_model
 
     
 class StandardAE(da.TFModel):
@@ -545,6 +565,20 @@ class StandardAE(da.TFModel):
         reps = self.get_representation(samples)
         recon = self.get_reconstruction(reps)
         return np.mean((samples - recon)**2)
+
+class PretrainedModel(da.TFModel):
+
+    def __init__(self, img_shape, model_path, trainable=False):
+        full_img_shape = img_shape + (3,)
+        layer_list = [tfkl.InputLayer(input_shape=full_img_shape),
+                      tfhub.KerasLayer(model_path, trainable=trainable)]
+        model = tfk.Sequential(layer_list)
+        model.build((None,) + full_img_shape)
+        self.encoder = model
+
+    def get_representation(self, samples):
+        rep = self.encoder(samples)
+        return rep
     
 class BetaVAE(da.TFModel):
 
