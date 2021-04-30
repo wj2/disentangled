@@ -323,7 +323,6 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             categ_loss = _binary_crossentropy_nan,
         loss_dict = {self.branch_names[0]:categ_loss,
                      self.branch_names[1]:autoenc_loss}
-        print(loss_dict)
         if loss_ratio is None:
             loss_ratio = self.loss_ratio
         if self.no_autoencoder:
