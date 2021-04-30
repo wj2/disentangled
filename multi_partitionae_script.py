@@ -84,6 +84,8 @@ def create_parser():
     parser.add_argument('--rep_noise', default=0, type=float,
                         help='std of noise to use in representation layer '
                         'during training')
+    parser.add_argument('--no_data', default=False, action='store_true',
+                        help='do not save representation samples')
     parser.add_argument('--use_tanh', default=False, action='store_true',
                         help='use tanh instead of relu transfer function')
     return parser
@@ -160,7 +162,8 @@ if __name__ == '__main__':
                                      models_n_bounds=args.n_train_bounds,
                                      dg_dim=args.dg_dim,
                                      model_batch_size=args.batch_size,
-                                     model_n_epochs=args.model_epochs)
+                                     model_n_epochs=args.model_epochs,
+                                     generate_data=not args.no_data)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
