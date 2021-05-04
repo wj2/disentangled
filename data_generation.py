@@ -5,6 +5,7 @@ import numpy as np
 import scipy.stats as sts
 import sklearn.decomposition as skd
 import functools as ft
+import matplotlib.pyplot as plt
 
 import general.rf_models as rfm
 import general.utility as u
@@ -377,6 +378,17 @@ class RFDataGenerator(DataGenerator):
         self.compiled = True
         self.source_distribution = source_distribution
 
+    def plot_rfs(self, ax=None):
+        if ax is None:
+            f, ax = plt.subplots(1, 1)
+        cps = da.get_circle_pts(100, 2)
+        for i, rfc in enumerate(self.rf_cents):
+            l = ax.plot(rfc[0], rfc[1], 'o')
+            rfw = np.sqrt(self.rf_wids[i])
+            ax.plot(cps[:, 0]*rfw[0] + rfc[0],
+                    cps[:, 1]*rfw[1] + rfc[1],
+                    color=l[0].get_color())
+        
     def make_generator(self, out_dim, source_distribution, noise=.01,
                        scale=1, baseline=0, width_scaling=1, input_noise_var=0):
         out = rfm.get_distribution_gaussian_resp_func(out_dim,
