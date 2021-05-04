@@ -218,6 +218,27 @@ def _binary_crossentropy_nan(label, prediction):
     bcel = tf.keras.losses.binary_crossentropy(label, prediction)
     return bcel
 
+class IdentityModel(da.TFModel):
+
+    def __init__(self):
+        self.p_vectors = []
+        self.p_offsets = []
+        
+    def get_representation(self, x):
+        return x
+
+class SingleLayer(da.TFModel):
+
+    def __init__(self, input_dim, output_dim):
+        self.p_vectors = []
+        self.p_offsets = []
+        x = tfkl.Input(input_dim)
+        rep = tfkl.Dense(output_dim)(x)
+        self.generator = tfk.Model(inputs=x, outputs=rep)
+        
+    def get_representation(self, x):
+        return self.generator(x)
+    
 class FlexibleDisentanglerAE(FlexibleDisentangler):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
@@ -286,9 +307,9 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         if noise > 0:
             rep = tfkl.GaussianNoise(noise)(rep)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
-
-        # partition branch
         rep_inp = tfk.Input(shape=encoded_size)
+        
+        # partition branch
         class_inp = rep_inp
         sig_act = tf.keras.activations.sigmoid
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
@@ -310,7 +331,6 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         full_model = tfk.Model(inputs=inputs, outputs=outs)
         
         return full_model, rep_model, autoenc_model, class_model
-    # inputs, rep, class_branch, autoenc_branch
 
     def _compile(self, *args, categ_loss=None,
                  autoenc_loss=None, standard_loss=True,
