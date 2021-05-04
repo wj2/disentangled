@@ -427,6 +427,12 @@ def _concatenate_none(arrs, axis=0):
         out = np.concatenate(arrs, axis=axis)
     return out
 
+def get_circle_pts(n, inp_dim, r=1):
+    angs = np.linspace(0, 2*np.pi, n)
+    pts = np.stack((np.cos(angs), np.sin(angs),) +
+                   (np.zeros_like(angs),)*(inp_dim - 2), axis=1)
+    return r*pts
+
 chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                       img_size=(64, 64), max_load=np.inf, norm_pixels=True,

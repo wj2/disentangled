@@ -240,7 +240,7 @@ def _model_pca(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
         distrib_pts[:, set_inds[1]] = x1_pts
     elif use_circ_dim:
         r = np.sqrt(dg_use.source_distribution.cov[0, 0])
-        distrib_pts = _get_circle_pts(n_dim_red, dg_use.input_dim, r=r)
+        distrib_pts = da.get_circle_pts(n_dim_red, dg_use.input_dim, r=r)
     else:
         distrib_pts = dg_use.source_distribution.rvs(n_dim_red)
     distrib_reps = dg_use.get_representation(distrib_pts)
@@ -248,12 +248,6 @@ def _model_pca(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
     p = skd.PCA(**pca_args)
     p.fit(mod_distrib_reps)
     return p
-
-def _get_circle_pts(n, inp_dim, r=1):
-    angs = np.linspace(0, 2*np.pi, n)
-    pts = np.stack((np.cos(angs), np.sin(angs),) +
-                   (np.zeros_like(angs),)*(inp_dim - 2), axis=1)
-    return r*pts
 
 def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
                              rad_eps=.05, near_eps=.5, ax=None,
@@ -1276,7 +1270,7 @@ def _create_samps(vals, dim, others):
     return out
 
 def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
-                        other_vals=None, eps_d=.1,
+                        other_vals=None, eps_d=.1, reps=20,
                         n_dense_pts=10, full_perturb=1):
     if other_vals is None:
         other_vals = list(gen.get_center())
@@ -1284,11 +1278,19 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     dense_samp = np.linspace(.5 - eps_d, .5 + eps_d, n_dense_pts)
     dense_pts = list(gen.ppf(ds, trav_dim) for ds in dense_samp)
     dense_xs = _create_samps(dense_pts, trav_dim, other_vals)
-    dense_imgs = gen.get_representation(dense_xs, same_img=True)
-    dense_latents = autoenc.get_representation(dense_imgs)
+    dense_pts_all = dense_pts*reps
+    dense_latents_all = []
+    for i in range(reps):
+        dense_imgs = gen.get_representation(dense_xs, same_img=True)
+        dense_latents = autoenc.get_representation(dense_imgs)
+        dense_latents_all.append(dense_latents)
+    dense_latents_all = np.concatenate(dense_latents_all, axis=0)
+    dense_recons = autoenc.get_reconstruction(dense_latents)
     lr = sklm.LinearRegression()
-    lr.fit(dense_latents, dense_pts)
+    lr.fit(dense_latents_all, dense_pts_all)
+    print(dense_latents_all.shape)
     lr_val = lr.score(dense_latents, dense_pts)
+    print(lr_val)
     dists = np.dot(dense_latents, lr.coef_)
     ldists = np.diff(dists)
     ptdists = np.diff(dense_pts)
@@ -1299,9 +1301,9 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     dev = np.expand_dims(perts, 0)*np.expand_dims(lr_norm, 1)
     pert_reps = (np.expand_dims(center_rep, 1)
                  + dev)
-    print(np.dot(pert_reps.T, lr.coef_))
+    print(lr.predict(pert_reps.T))
     pert_recons = autoenc.get_reconstruction(pert_reps.T)
-    return pert_recons, dense_imgs, lr_val
+    return pert_recons, dense_imgs, dense_latents, dense_recons, lr
 
 def plot_img_series(imgs, fwid=4, axs=None):
     fwid = 4
