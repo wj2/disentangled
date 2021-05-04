@@ -437,9 +437,9 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
             x = tfkl.Dropout(dropout_rate)(x)
                         
         # representation layer
-        l2_reg = tfk.regularizers.l2(regularizer_weight)
+        reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
-                         activity_regularizer=l2_reg)(x)
+                         activity_regularizer=reg)(x)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
         rep_inp = tfk.Input(shape=encoded_size)
         
