@@ -427,11 +427,17 @@ def _concatenate_none(arrs, axis=0):
         out = np.concatenate(arrs, axis=axis)
     return out
 
+def get_circle_pts(n, inp_dim, r=1):
+    angs = np.linspace(0, 2*np.pi, n)
+    pts = np.stack((np.cos(angs), np.sin(angs),) +
+                   (np.zeros_like(angs),)*(inp_dim - 2), axis=1)
+    return r*pts
+
 chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                       img_size=(64, 64), max_load=np.inf, norm_pixels=True,
                       norm_params=False, grayscale=False, filter_edges=None,
-                      edge_keys=('rotation',)):
+                      edge_keys=('rotation',), read_specific_chairs=None):
     subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
                                                 os.listdir(folder))
     names = []
@@ -443,32 +449,34 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
     imgs = []
     loaded = 0
     for sfl in subfolders:
-        p = os.path.join(folder, sfl, mid_folder)
-        img_fls = os.listdir(p)
-        for ifl in img_fls:
-            m = re.match(file_template, ifl)
-            if m is not None:
-                names.append(ifl)
-                nums.append(int(m.group(1)))
-                pitchs.append(int(m.group(2)))
-                rots.append(int(m.group(3)))
-                dists.append(int(m.group(4)))
-                ids.append(sfl)
-                img = pImage.open(os.path.join(p, ifl))
-                if grayscale:
-                    img = img.convert('L')
-                img_rs = img.resize(img_size)
-                img_arr = np.asarray(img_rs)
-                if grayscale:
-                    img_arr = np.expand_dims(img_arr, -1)
-                if norm_pixels:
-                    img_arr = img_arr/255
-                imgs.append(img_arr)
-                img.close()
-                
-                loaded = loaded + 1
-            if loaded >= max_load:
-                break
+        if ((read_specific_chairs is not None and sfl in read_specific_chairs)
+            or read_specific_chairs is None):
+            p = os.path.join(folder, sfl, mid_folder)
+            img_fls = os.listdir(p)
+            for ifl in img_fls:
+                m = re.match(file_template, ifl)
+                if m is not None:
+                    names.append(ifl)
+                    nums.append(int(m.group(1)))
+                    pitchs.append(int(m.group(2)))
+                    rots.append(int(m.group(3)))
+                    dists.append(int(m.group(4)))
+                    ids.append(sfl)
+                    img = pImage.open(os.path.join(p, ifl))
+                    if grayscale:
+                        img = img.convert('L')
+                    img_rs = img.resize(img_size)
+                    img_arr = np.asarray(img_rs)
+                    if grayscale:
+                        img_arr = np.expand_dims(img_arr, -1)
+                    if norm_pixels:
+                        img_arr = img_arr/255
+                    imgs.append(img_arr)
+                    img.close()
+                    
+                    loaded = loaded + 1
+                if loaded >= max_load:
+                    break
         if loaded >= max_load:
             break
     if norm_params:

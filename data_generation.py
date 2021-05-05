@@ -5,6 +5,7 @@ import numpy as np
 import scipy.stats as sts
 import sklearn.decomposition as skd
 import functools as ft
+import matplotlib.pyplot as plt
 
 import general.rf_models as rfm
 import general.utility as u
@@ -42,6 +43,7 @@ class DataGenerator(da.TFModel):
         return out
 
     def representation_dimensionality(self, source_distribution=None,
+                                      participation_ratio=False,
                                       sample_size=10**4, **pca_args):
         if source_distribution is None and self.source_distribution is not None:
             source_distribution = self.source_distribution
@@ -52,7 +54,11 @@ class DataGenerator(da.TFModel):
         rep = self.get_representation(samples)
         p = skd.PCA(**pca_args)
         p.fit(rep)
-        out = (p.explained_variance_ratio_, p.components_)
+        if participation_ratio:
+            pd = p.explained_variance_ratio_
+            out = np.sum(pd)**2/np.sum(pd**2)
+        else:
+            out = (p.explained_variance_ratio_, p.components_)
         return out
 
     def sample_reps(self, source_distribution=None, sample_size=10**4):
@@ -153,6 +159,7 @@ class MultivariateUniform(object):
         self.bounds = bounds
         self.distr = sts.uniform(0, 1)
         self.mags = np.expand_dims(self.bounds[:, 1] - self.bounds[:, 0], 0)
+        self.mean = np.mean(bounds, axis=1)
 
     def rvs(self, size=None):
         if size is None:
@@ -285,19 +292,29 @@ class ChairGenerator(DataGenerator):
         return p_val
 
     def get_center(self):
-        p_meds = np.percentile(self.data_table[self.img_params], .5, axis=0,
+        p_meds = np.percentile(self.data_table[self.img_params], 50, axis=0,
                                interpolation='nearest')
         if self.include_position:
             m_meds = self.position_distr.mean
             p_meds = np.concatenate((p_meds, m_meds))
         return p_meds        
     
-    def get_representation(self, x, flat=False, same_img=False):
+    def get_representation(self, x, flat=False, same_img=False, nearest=True):
         x = np.array(x)
         if len(x.shape) == 1:
             x = np.expand_dims(x, 0)
         out = np.zeros(x.shape[0], dtype=object)
         img_params = np.array(self.data_table[self.img_params])
+        if nearest:
+            new_x = np.zeros_like(x, dtype=float)
+            x_uniques = list(np.unique(img_params[:, i])
+                             for i in range(self.n_img_params))
+            for i, xi in enumerate(x):
+                for j, xu in enumerate(x_uniques):
+                    xind = np.argmin(np.abs(xu - xi[j]))
+                    new_x[i, j] = xu[xind]
+            new_x[:, self.n_img_params:] = x[:, self.n_img_params:]
+            x = new_x
         if same_img:
             img_ids = self.data_table['chair_id']
             chosen_id = np.random.choice(img_ids, 1)[0]
@@ -319,7 +336,8 @@ class ChairGenerator(DataGenerator):
         return np.stack(out)
 
     def representation_dimensionality(self, source_distribution=None,
-                                      sample_size=10**1, **pca_args):
+                                      sample_size=10**1, participation_ratio=False,
+                                      **pca_args):
         if source_distribution is None and self.source_distribution is not None:
             source_distribution = self.source_distribution
         elif source_distribution is None:
@@ -329,7 +347,11 @@ class ChairGenerator(DataGenerator):
         rep = self.get_representation(samples, flat=True)
         p = skd.PCA(**pca_args)
         p.fit(rep)
-        out = (p.explained_variance_ratio_, p.components_)
+        if participation_ratio:
+            pd = p.explained_variance_ratio_
+            out = np.sum(pd)**2/np.sum(pd**2)
+        else:
+            out = (p.explained_variance_ratio_, p.components_)
         return out
     
     
@@ -337,7 +359,7 @@ class RFDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=0.001,
                  distrib_variance=1, setup_distribution=None, total_out=False,
-                 width_scaling=4):
+                 width_scaling=4, input_noise=0):
         if source_distribution is None:
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)
@@ -348,17 +370,27 @@ class RFDataGenerator(DataGenerator):
                    for i, m in enumerate(setup_distribution.mean)]
         if total_out:
             out_dim = int(np.round(.5*out_dim**(1/inp_dim))*2)
-        print(out_dim)
-        out = self.make_generator(out_dim, sd_list,
+        self.input_dim = inp_dim
+        out = self.make_generator(out_dim, sd_list, input_noise_var=input_noise,
                                   noise=noise, width_scaling=width_scaling)
         self.generator, self.rf_cents, self.rf_wids = out
-        self.input_dim = inp_dim
         self.output_dim = len(self.rf_cents)
         self.compiled = True
         self.source_distribution = source_distribution
 
+    def plot_rfs(self, ax=None):
+        if ax is None:
+            f, ax = plt.subplots(1, 1)
+        cps = da.get_circle_pts(100, 2)
+        for i, rfc in enumerate(self.rf_cents):
+            l = ax.plot(rfc[0], rfc[1], 'o')
+            rfw = np.sqrt(self.rf_wids[i])
+            ax.plot(cps[:, 0]*rfw[0] + rfc[0],
+                    cps[:, 1]*rfw[1] + rfc[1],
+                    color=l[0].get_color())
+        
     def make_generator(self, out_dim, source_distribution, noise=.01,
-                       scale=1, baseline=0, width_scaling=1):
+                       scale=1, baseline=0, width_scaling=1, input_noise_var=0):
         out = rfm.get_distribution_gaussian_resp_func(out_dim,
                                                       source_distribution,
                                                       scale=scale,
@@ -367,11 +399,24 @@ class RFDataGenerator(DataGenerator):
         rfs, _, ms, ws = out
         noise_distr = sts.multivariate_normal(np.zeros(len(ms)), noise,
                                               allow_singular=True)
-        gen = lambda x: rfs(x) + noise_distr.rvs(x.shape[0])
+        in_distr = sts.multivariate_normal(np.zeros(self.input_dim),
+                                           input_noise_var,
+                                           allow_singular=True)
+        def gen(x, input_noise=True, output_noise=True):
+            if input_noise:
+                in_noise = in_distr.rvs(x.shape[0])
+            else:
+                in_noise = 0
+            if output_noise:
+                out_noise = noise_distr.rvs(x.shape[0])
+            else:
+                out_noise = 0
+            samps = rfs(x + in_noise) + out_noise
+            return samps
         return gen, ms, ws
 
-    def get_representation(self, x):
-        return self.generator(x)
+    def get_representation(self, x, **kwargs):
+        return self.generator(x, **kwargs)
 
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()

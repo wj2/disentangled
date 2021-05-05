@@ -90,6 +90,8 @@ def create_parser():
                         help='use tanh instead of relu transfer function')
     parser.add_argument('--layer_spec', default=None, type=int, nargs='*',
                         help='the layer sizes to use')
+    parser.add_argument('--rf_width', default=4, type=float,
+                        help='scaling of RFs for RF data generator')
     return parser
 
 if __name__ == '__main__':
@@ -113,7 +115,8 @@ if __name__ == '__main__':
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
     elif args.use_rf_dg:
-        dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True)
+        dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True,
+                                    width_scaling=args.rf_width)
     else:
         dg_use = None
 

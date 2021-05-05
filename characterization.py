@@ -58,7 +58,6 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
 
         test_rep = vae.get_representation(gen.generator(test_samples))
         scores[i] = c.score(test_rep, test_labels)
-        print(scores[i])
         chances[i] = .5 
     return np.mean(scores), np.mean(chances)
 
@@ -226,16 +225,22 @@ def train_and_evaluate_models(dg_use, betas, layer_spec, train_func,
     return out, out2 
 
 def _model_pca(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
-               use_circ_dim=False, **pca_args):
+               use_circ_dim=False, supply_range=1, set_inds=(0, 1),
+               start_vals=(0,), **pca_args):
+    if supply_range is None:
+        supply_range = dg_use.source_distribution.cov[0, 0]
+    if len(start_vals) == 0:
+        start_vals = start_vals*dg_use.input_dim
     if use_arc_dim:
         distrib_pts = np.zeros((n_dim_red, dg_use.input_dim))
-        x0_pts = np.linspace(0, dg_use.source_distribution.cov[0, 0], n_dim_red)
-        x1_pts = np.linspace(0, dg_use.source_distribution.cov[1, 1], n_dim_red)
-        distrib_pts[:, 0] = x0_pts
-        distrib_pts[:, 1] = x1_pts
+        distrib_pts[:] = start_vals
+        x0_pts = np.linspace(-supply_range, supply_range, n_dim_red)
+        x1_pts = np.linspace(-supply_range, supply_range, n_dim_red)
+        distrib_pts[:, set_inds[0]] = x0_pts
+        distrib_pts[:, set_inds[1]] = x1_pts
     elif use_circ_dim:
         r = np.sqrt(dg_use.source_distribution.cov[0, 0])
-        distrib_pts = _get_circle_pts(n_dim_red, dg_use.input_dim, r=r)
+        distrib_pts = da.get_circle_pts(n_dim_red, dg_use.input_dim, r=r)
     else:
         distrib_pts = dg_use.source_distribution.rvs(n_dim_red)
     distrib_reps = dg_use.get_representation(distrib_pts)
@@ -243,12 +248,6 @@ def _model_pca(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
     p = skd.PCA(**pca_args)
     p.fit(mod_distrib_reps)
     return p
-
-def _get_circle_pts(n, inp_dim, r=1):
-    angs = np.linspace(0, 2*np.pi, n)
-    pts = np.stack((np.cos(angs), np.sin(angs),) +
-                   (np.zeros_like(angs),)*(inp_dim - 2), axis=1)
-    return r*pts
 
 def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
                              rad_eps=.05, near_eps=.5, ax=None,
@@ -288,55 +287,256 @@ def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
         ax.plot(rep_pts_plot[:, subdims[0]], rep_pts_plot[:, subdims[1]], 'o')
     return pr
 
+def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
+                         source_scale_mag=.2, rep_scale_mag=10,
+                         **kwargs):
+    if axs is None:
+        fsize = (fwid*2, fwid)
+        f, axs = plt.subplots(1, 2, figsize=fsize)
+        out = f, axs
+    else:
+        out = axs
+    plot_diagnostics(*args, plot_partitions=True, plot_source=True,
+                     dim_red=False, ax=axs[0], scale_mag=source_scale_mag,
+                     **kwargs)
+    plot_diagnostics(*args, dim_red=dim_red, ax=axs[1], scale_mag=rep_scale_mag,
+                     compute_pr=True, **kwargs)
+    axs[0].set_title('latent variables')
+    axs[0].set_xlabel('feature 1 (au)')
+    axs[0].set_ylabel('feature 2 (au)')
+    axs[1].set_title('representation')
+    axs[1].set_xlabel('PCA 1 (au)')
+    axs[1].set_ylabel('PCA 2 (au)')
+    return out
+
 def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
-                     markers=True, line_alpha=.5, use_arc_dim=False,
+                     markers=True, line_alpha=1, use_arc_dim=False,
                      use_circ_dim=False, arc_col=(.8, .8, .8), scale_mag=.5,
-                     fwid=2.5, set_inds=(0, 1), **pca_args):
+                     fwid=2.5, set_inds=(0, 1), plot_partitions=False,
+                     plot_source=False, square=True, start_vals=(0,),
+                     supply_range=1, plot_3d=False, dim_red_func=None,
+                     compute_pr=False, **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
 
-    angs = np.linspace(0, 2*np.pi, n)
     pts = np.zeros((n, dg_use.input_dim))
-    pts[:, set_inds[0]] = np.cos(angs)
-    pts[:, set_inds[1]] = np.sin(angs)
+    if len(start_vals) == 1:
+        start_vals = start_vals*dg_use.input_dim
+    pts[:] = start_vals
+    if square:
+        quarter = int(np.floor(n/4))
+        side_pts = np.linspace(-1, 1, quarter)
+        
+        pts[:quarter, set_inds[0]] = side_pts
+        pts[:quarter, set_inds[1]] = 1
+        
+        pts[quarter:2*quarter, set_inds[0]] = 1
+        pts[quarter:2*quarter, set_inds[1]] = -side_pts
+        
+        pts[2*quarter:3*quarter, set_inds[0]] = -side_pts
+        pts[2*quarter:3*quarter, set_inds[1]] = -1
+        
+        pts[3*quarter:4*quarter, set_inds[0]] = -1
+        pts[3*quarter:4*quarter, set_inds[1]] = side_pts
+        pts = pts[:4*quarter]
+    else:
+        angs = np.linspace(0, 2*np.pi, n)
+        pts[:, set_inds[0]] = np.cos(angs)
+        pts[:, set_inds[1]] = np.sin(angs)
     
     if dim_red:
-        p = _model_pca(dg_use, model, n_dim_red=n_dim_red, use_arc_dim=use_arc_dim,
-                       use_circ_dim=use_circ_dim, **pca_args)
+        if dim_red_func is None:
+            p = _model_pca(dg_use, model, n_dim_red=n_dim_red,
+                           use_arc_dim=use_arc_dim, use_circ_dim=use_circ_dim,
+                           set_inds=set_inds, start_vals=start_vals,
+                           supply_range=supply_range, **pca_args)
+            ptrs = p.transform
+            if compute_pr:
+                pd = p.explained_variance_ratio_
+                pr = np.sum(pd)**2/np.sum(pd**2)
+        else:
+            ptrs = dim_red_func
         
     if n_arcs > 0:
         skips = int(np.round(n/n_arcs))
-        sub_pts = rs[-1]*pts[::skips]
-        y = np.expand_dims(np.linspace(0, 1, n), 1)
-        for sp in sub_pts:
+        sub_pts = pts[::skips]
+        plot_pts = np.zeros_like(sub_pts)
+        plot_pts[:, set_inds[0]] = rs[-1]*sub_pts[:, set_inds[0]]
+        plot_pts[:, set_inds[1]] = rs[-1]*sub_pts[:, set_inds[1]]
+        y = np.ones((n, dg_use.input_dim))
+        y[:, set_inds[0]] = np.linspace(0, 1, n)
+        y[:, set_inds[1]] = np.linspace(0, 1, n)
+        for sp in plot_pts:
             sp = np.expand_dims(sp, 0)
             s_reps = dg_use.generator(sp*y)
-            mod_reps = model.get_representation(s_reps)
+            if plot_source:
+                mod_reps = sp*y
+            else:
+                mod_reps = model.get_representation(s_reps)
             if dim_red:
-                mod_reps = p.transform(mod_reps)
-            l = ax.plot(mod_reps[:, 0], mod_reps[:, 1], linestyle=line_style,
+                mod_reps = ptrs(mod_reps)
+            if plot_3d:
+                to_plot = (mod_reps[:, 0], mod_reps[:, 1], mod_reps[:, 2])
+            else:
+                to_plot = (mod_reps[:, 0], mod_reps[:, 1])
+            l = ax.plot(*to_plot, linestyle=line_style,
                         alpha=line_alpha, color=arc_col)
             if markers:
-                ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o', markersize=pt_size,
+                ax.plot(*to_plot, 'o', markersize=pt_size,
                         color=l[0].get_color())
 
     for r in rs:
-        s_reps = dg_use.generator(r*pts)
-        mod_reps = model.get_representation(s_reps)
+        r_arr = np.ones_like(pts)
+        r_arr[:, set_inds[0]] = r
+        r_arr[:, set_inds[1]] = r
+        s_reps = dg_use.generator(r_arr*pts)
+
+        if plot_source:
+            mod_reps = r*pts
+        else:
+            mod_reps = model.get_representation(s_reps)
         if dim_red:
-            mod_reps = p.transform(mod_reps)
-        l = gpl.plot_trace_werr(mod_reps[:, 0], mod_reps[:, 1], ax=ax,
-                                linestyle=line_style, alpha=line_alpha)
+            mod_reps = ptrs(mod_reps)
+        if plot_3d:
+            to_plot = (mod_reps[:, 0], mod_reps[:, 1], mod_reps[:, 2])
+        else:
+            to_plot = (mod_reps[:, 0], mod_reps[:, 1])
+        l = ax.plot(*to_plot,
+                    linestyle=line_style, alpha=line_alpha)
         if markers:
-            ax.plot(mod_reps[:, 0], mod_reps[:, 1], 'o', markersize=pt_size,
+            ax.plot(*to_plot, 'o', markersize=pt_size,
                     color=l[0].get_color())
 
+    if plot_partitions:
+        vs = model.p_vectors
+        os = model.p_offsets
+        for i, v in enumerate(vs):
+            v_unit = u.make_unit_vector(v)
+            v_o = os[i]*v_unit
+            orth_v = u.generate_orthonormal_vectors(v_unit, 1)/(3.5*rs[-1])
+            xs = np.array([-orth_v[0], orth_v[0]]) 
+            ys = np.array([-orth_v[1], orth_v[1]]) 
+            ax.plot(xs + v_o[0], ys + v_o[1], color='r')
 
-    ax.set_aspect('equal')
-    gpl.make_xaxis_scale_bar(ax, scale_mag)
-    gpl.make_yaxis_scale_bar(ax, scale_mag)
-    return ax
+    gpl.clean_plot(ax, 0)
+    if not plot_3d:
+        ax.set_aspect('equal')
+        gpl.make_xaxis_scale_bar(ax, scale_mag)
+        gpl.make_yaxis_scale_bar(ax, scale_mag)
+    if compute_pr:
+        out = ax, pr
+    else:
+        out = ax 
+    return out
+
+def make_classifier_dimred(pcs, pvs, dg_use, model, n_train=500, 
+                           n_reps=1, **params):
+    classers = []
+    norms = []
+    test_results = np.zeros((len(pcs), n_reps))
+    for i, pc in enumerate(pcs):
+        for j in range(n_reps):
+            pv = pvs[i]
+            out = make_classifier(pc, pv, dg_use, model, n_train=n_train,
+                                  **params)
+            classer_i, tin, tout = out
+            test_results[i, j] = tout
+        classers.append(classer_i)
+        norms.append(np.sqrt(np.sum(classer_i.coef_**2)))
+        
+    def transform(x):
+        out = np.zeros((x.shape[0], len(classers)))
+        for i, cl in enumerate(classers):
+            out[:, i] = cl.decision_function(x)/norms[i]
+        return out
+
+    return transform, test_results
+
+def _get_classifier_reps(n_samps, td, pc, dg_use, model):
+    samps = td.rvs(n_samps)
+    cats = np.dot(samps, pc) > 0
+    imgs = dg_use.get_representation(samps)
+    reps = model.get_representation(imgs)
+    return samps, cats, imgs, reps
+
+def make_all_classifiers(dg_use, model, n_reps=1, **params):
+    n_dims = dg_use.input_dim
+    class_partitions = np.identity(n_dims)
+    train_partitions = np.identity(n_dims)
+    dec_matrix = np.zeros((n_dims, n_dims, n_reps))
+    for i, cp in enumerate(class_partitions):
+        for j, tp in enumerate(train_partitions):
+            for k in range(n_reps):
+                if i == j:
+                    out = make_classifier(cp, None, dg_use, model, test=True,
+                                          **params)
+                else:
+                    out = make_classifier(cp, tp, dg_use, model, test=True,
+                                          **params)
+                dec_matrix[i, j, k] = out[1]
+    return dec_matrix 
+
+_default_labels = ('rotation', 'pitch', 'x-pos', 'y-pos')
+def plot_feature_ccgp(dec_mat, ax_labels=_default_labels,
+                      axs=None, fwid=2, **kwargs):
+    if axs is None:
+        f, axs = plt.subplots(1, 3, figsize=(3*fwid, fwid))
+    no_abstract = np.identity(dec_mat.shape[0])
+    all_abstract = np.ones(dec_mat.shape[:2])
+    actual = np.mean(dec_mat, axis=2)
+    axvals = np.arange(dec_mat.shape[0])
+    gpl.pcolormesh(axvals, axvals[::-1], no_abstract, vmin=.5, vmax=1, ax=axs[0],
+                   **kwargs)
+    gpl.pcolormesh(axvals, axvals[::-1], all_abstract,vmin=.5, vmax=1,  ax=axs[1],
+                   **kwargs)
+    img = gpl.pcolormesh(axvals, axvals[::-1], actual, vmin=.5, vmax=1,
+                         ax=axs[2], **kwargs)
+    axs[0].set_ylabel('decoded')
+    axs[1].set_xlabel('partitioned')
+    axs[0].set_title('not abstract')
+    axs[1].set_title('fully abstract')
+    axs[2].set_title('actual')
+    for ax in axs:
+        ax.set_ylabel('decoded')
+        ax.set_xlabel('partitioned')
+        ax.set_xticks(axvals)
+        ax.set_yticks(axvals)
+        ax.set_xticklabels(ax_labels, rotation=90)
+        ax.set_yticklabels(ax_labels[::-1])
+        ax.set_aspect('equal')
+    cb = f.colorbar(img, ax=axs, orientation='vertical')
+    cb.set_ticks([.5, 1])
+    cb.set_label('decoding performance')
+    return f, axs    
+
+def make_classifier(pc, pv, dg_use, model, n_train=500, test=False,
+                    **params):
+    if pv is not None:
+        td = dg_use.source_distribution.make_partition(partition_vec=pv)
+        flip = True
+    else:
+        td = dg_use.source_distribution
+        n_train = 2*n_train
+        flip = False
+
+    out = _get_classifier_reps(n_train, td, pc, dg_use, model)
+    train_samps, train_cats, train_imgs, train_reps = out
+
+    classer = skc.SVC(kernel='linear', **params)
+    classer.fit(train_reps, train_cats)
+
+    if test:
+        if flip:
+            test = td.flip()
+        else:
+            test = td
+        out = _get_classifier_reps(n_train, test, pc, dg_use, model)
+        test_samps, test_cats, test_imgs, test_reps = out
+        test_out = classer.score(test_reps, test_cats)
+    else:
+        test_out = None
+    return classer, test_out
 
 def plot_partitions(pf_planes, ax, dim_red=None, scale=1):
     for pfp in pf_planes:
@@ -629,34 +829,48 @@ def plot_recon_gen_corr(scores, gens, color_ax=None, ax=None):
 def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
                                  plot_labels='train egs = {}', n_plots=None,
                                  ylabel='', ylim=None, num_dims=None,
-                                 xlab='partitions', **kwargs):
+                                 xlab='partitions', collapse_plots=False,
+                                 **kwargs):
     if len(scores.shape) == 4:
         scores = np.mean(scores, axis=3)
     n_ds, n_mks, n_reps = scores.shape
-        
     if axs is None:
         f, axs = plt.subplots(n_ds, 1, sharey=True,
                               figsize=(fwid, n_ds*fwid))
     for i, sc in enumerate(scores):
-        plot_recon_accuracy_partition(sc, ax=axs[i], mks=xs, **kwargs)
-        axs[i].set_ylabel(ylabel)
-        if n_plots is not None and len(plot_labels) > 0:
-            axs[i].set_title(plot_labels.format(n_plots[i]))
+        title = plot_labels.format(n_plots[i])
+        if collapse_plots:
+            plot_ind = 0
+            legend = title
+            kwargs['label'] = legend
+        else:
+            plot_ind = i
+        plot_recon_accuracy_partition(sc, ax=axs[plot_ind], mks=xs,
+                                      **kwargs)
+        axs[plot_ind].set_ylabel(ylabel)
+        if n_plots is not None and len(plot_labels) > 0 and not collapse_plots:
+            axs[plot_ind].set_title(title)
         if ylim is not None:
-            axs[i].set_ylim(ylim)
+            axs[plot_ind].set_ylim(ylim)
         if num_dims is not None:
-            gpl.add_vlines(num_dims, axs[i])
-    axs[i].set_xlabel(xlab)
+            gpl.add_vlines(num_dims, axs[plot_ind])
+    axs[plot_ind].set_xlabel(xlab)
     return axs        
 
 def plot_recon_accuracy_partition(scores, mks=None, ax=None, indiv_pts=True,
-                                  log_x=False, **kwargs):
+                                  log_x=False, errorbar=False, **kwargs):
     if ax is None:
         f, ax = plt.subplots(1, 1)
     n_mks, n_reps = scores.shape
     if mks is None:
         mks = np.arange(n_mks)
-    l = gpl.plot_trace_werr(mks, scores.T, ax=ax, log_x=log_x, **kwargs)
+    if errorbar:
+        l = gpl.plot_trace_werr(mks, scores.T, ax=ax, log_x=log_x, **kwargs)
+    else:
+        l = ax.plot(mks, np.nanmedian(scores.T, axis=0),
+                    label=kwargs['label'])
+        gpl.clean_plot(ax, 0)
+        ax.legend(frameon=False)
     if indiv_pts:
         col = l[0].get_color()
         for k in range(n_reps):
@@ -872,6 +1086,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     if lts_scores is None:
         lts_scores = find_linear_mappings(dg_use, models, half=True,
                                           n_samps=n_test_samples)
+    print(lts_scores[1])
     print(np.mean(lts_scores[1]))
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
@@ -961,7 +1176,9 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
                            model_type=dd.FlexibleDisentanglerAE, axs=None,
                            folder='disentangled/simulation_data/partition/',
-                           ret_info=False, **kwargs):
+                           ret_info=False, collapse_plots=False,  pv_mask=None,
+                           xlab='partitions', ret_fig=False, legend='',
+                           **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
@@ -969,17 +1186,24 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     n_parts, _, _, _, p, c, _, sc, _ = data
     if 'beta_mult' in info['args'][0].keys():
         n_parts = np.array(n_parts)*info['args'][0]['beta_mult']
-    if 'l2pr_weights_mult' in info['args'][0].keys():
+    if ('l2pr_weights_mult' in info['args'][0].keys()
+        and info['args'][0]['l2pr_weights'] is not None):
         n_parts = np.array(n_parts)*info['args'][0]['l2pr_weights_mult']*100
     print(info['args'][0])
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
+    if pv_mask is not None:
+        panel_vals = panel_vals[pv_mask]
+        p = p[pv_mask]
+        sc = sc[pv_mask]
     out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),
                                       labels=('gen classifier',
                                               'gen regression'),
                                       info=info, log_x=log_x,
-                                      panel_vals=panel_vals,
-                                      axs=axs)
+                                      panel_vals=panel_vals, xlab=xlab,
+                                      axs=axs, collapse_plots=collapse_plots,
+                                      ret_fig=ret_fig, label=legend,
+                                      fwid=fwid)
     if ret_info:
         out_all = (out, info)
     else:
@@ -990,7 +1214,8 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 ylims=None, labels=None, x_ax=1, panel_ax=0,
                                 fwid=3, info=None, log_x=True, label='',
                                 panel_labels='train egs = {}',
-                                xlab='partitions', axs=None, ct=np.nanmedian):
+                                xlab='partitions', axs=None, ct=np.nanmedian,
+                                collapse_plots=False, ret_fig=False):
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -1003,7 +1228,12 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
 
     fsize = (n_plots*fwid, fwid*n_panels)
     if axs is None:
-        f, axs = plt.subplots(n_panels, n_plots, figsize=fsize, squeeze=False)
+        if collapse_plots:
+            f, axs = plt.subplots(1, n_plots, figsize=(n_plots*fwid, fwid),
+                                  squeeze=False)
+        else:
+            f, axs = plt.subplots(n_panels, n_plots, figsize=fsize,
+                                  squeeze=False)
 
     for i, qp in enumerate(quants_plot):
         if info is not None:
@@ -1024,8 +1254,13 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                              ylabel=labels[i], ylim=ylims[i],
                                              num_dims=nd, xlab=xlab,
                                              label=label,
+                                             collapse_plots=collapse_plots,
                                              plot_labels=panel_labels)
-    return axs
+    if ret_fig:
+        out = f, axs
+    else:
+        out = axs
+    return out
 
 def _create_samps(vals, dim, others):
     out = np.zeros((len(vals), len(others) + 1))
@@ -1036,7 +1271,7 @@ def _create_samps(vals, dim, others):
     return out
 
 def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
-                        other_vals=None, eps=.1, eps_d=.2,
+                        other_vals=None, eps_d=.1, reps=20,
                         n_dense_pts=10, full_perturb=1):
     if other_vals is None:
         other_vals = list(gen.get_center())
@@ -1044,11 +1279,19 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     dense_samp = np.linspace(.5 - eps_d, .5 + eps_d, n_dense_pts)
     dense_pts = list(gen.ppf(ds, trav_dim) for ds in dense_samp)
     dense_xs = _create_samps(dense_pts, trav_dim, other_vals)
-    dense_imgs = gen.get_representation(dense_xs, same_img=True)
-    dense_latents = autoenc.get_representation(dense_imgs)
+    dense_pts_all = dense_pts*reps
+    dense_latents_all = []
+    for i in range(reps):
+        dense_imgs = gen.get_representation(dense_xs, same_img=True)
+        dense_latents = autoenc.get_representation(dense_imgs)
+        dense_latents_all.append(dense_latents)
+    dense_latents_all = np.concatenate(dense_latents_all, axis=0)
+    dense_recons = autoenc.get_reconstruction(dense_latents)
     lr = sklm.LinearRegression()
-    lr.fit(dense_latents, dense_pts)
+    lr.fit(dense_latents_all, dense_pts_all)
+    print(dense_latents_all.shape)
     lr_val = lr.score(dense_latents, dense_pts)
+    print(lr_val)
     dists = np.dot(dense_latents, lr.coef_)
     ldists = np.diff(dists)
     ptdists = np.diff(dense_pts)
@@ -1059,9 +1302,9 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     dev = np.expand_dims(perts, 0)*np.expand_dims(lr_norm, 1)
     pert_reps = (np.expand_dims(center_rep, 1)
                  + dev)
-    print(np.dot(pert_reps.T, lr.coef_))
+    print(lr.predict(pert_reps.T))
     pert_recons = autoenc.get_reconstruction(pert_reps.T)
-    return pert_recons, dense_imgs, lr_val
+    return pert_recons, dense_imgs, dense_latents, dense_recons, lr
 
 def plot_img_series(imgs, fwid=4, axs=None):
     fwid = 4
