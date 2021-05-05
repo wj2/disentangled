@@ -1086,6 +1086,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     if lts_scores is None:
         lts_scores = find_linear_mappings(dg_use, models, half=True,
                                           n_samps=n_test_samples)
+    print(lts_scores[1])
     print(np.mean(lts_scores[1]))
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
