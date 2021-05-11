@@ -511,6 +511,7 @@ def plot_feature_ccgp(dec_mat, ax_labels=_default_labels,
     return f, axs    
 
 def make_classifier(pc, pv, dg_use, model, n_train=500, test=False,
+                    classifier_model=skc.LinearSVC, max_iter=4000,
                     **params):
     if pv is not None:
         td = dg_use.source_distribution.make_partition(partition_vec=pv)
@@ -523,7 +524,7 @@ def make_classifier(pc, pv, dg_use, model, n_train=500, test=False,
     out = _get_classifier_reps(n_train, td, pc, dg_use, model)
     train_samps, train_cats, train_imgs, train_reps = out
 
-    classer = skc.SVC(kernel='linear', **params)
+    classer = classifier_model(max_iter=max_iter, **params)
     classer.fit(train_reps, train_cats)
 
     if test:
