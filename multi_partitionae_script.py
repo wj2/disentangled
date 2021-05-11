@@ -88,6 +88,8 @@ def create_parser():
                         help='do not save representation samples')
     parser.add_argument('--use_tanh', default=False, action='store_true',
                         help='use tanh instead of relu transfer function')
+    parser.add_argument('--layer_spec', default=None, type=int, nargs='*',
+                        help='the layer sizes to use')
     parser.add_argument('--rf_width', default=4, type=float,
                         help='scaling of RFs for RF data generator')
     return parser
@@ -134,6 +136,11 @@ if __name__ == '__main__':
         act_func = tf.nn.tanh
     else:
         act_func = tf.nn.relu
+
+    if args.layer_spec is None:
+        layer_spec = ((50,), (50,), (50,))
+    else:
+        layer_spec = tuple((i,) for i in args.layer_spec)
         
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
@@ -166,6 +173,7 @@ if __name__ == '__main__':
                                      dg_dim=args.dg_dim,
                                      model_batch_size=args.batch_size,
                                      model_n_epochs=args.model_epochs,
+                                     layer_spec=layer_spec,
                                      generate_data=not args.no_data)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
