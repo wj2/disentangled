@@ -8,6 +8,7 @@ import functools as ft
 import re
 import PIL.Image as pImage
 import pandas as pd
+import h5py
 
 import general.utility as u
 
@@ -432,6 +433,55 @@ def get_circle_pts(n, inp_dim, r=1):
     pts = np.stack((np.cos(angs), np.sin(angs),) +
                    (np.zeros_like(angs),)*(inp_dim - 2), axis=1)
     return r*pts
+
+def _load_archive(archive, img_key, param_vals, param_names,
+                  norm_params=False, img_size=(64, 64),
+                  max_load=np.inf, norm_pixels=False, convert_color=True):
+    images = archive[img_key]
+    images_list = []
+    need_resize = not np.all(np.array(img_size) == images.shape[1:3])
+    for i, img in enumerate(images):
+        if i >= max_load:
+            break
+        if need_resize:
+            im = pImage.fromarray(img)
+            im = im.resize(img_size)
+            img = np.asarray(im)
+        if convert_color:
+            img = pImage.fromarray(img).convert(mode='RGB')
+            img = np.asarray(img)
+        if len(images.shape) == 3:
+            img = np.expand_dims(img, -1)
+        if norm_pixels:
+            img = img/255.
+        images_list.append(img)
+    if max_load == np.inf:
+        max_load = archive[param_vals].shape[0]
+    vals = archive[param_vals][:max_load]
+    if norm_params:
+        vals = u.demean_unit_std(vals)
+    d = {param_names[i]:vals[:, i] for i in range(vals.shape[1])}
+    d['images'] = images_list
+    data = pd.DataFrame(data=d)
+    return data    
+
+twod_shape_params = ('color', 'shape', 'scale','orientation', 'x_pos', 'y_pos')
+def load_2d_shapes(file_, img_key='imgs', param_vals='latents_values',
+                   param_names=twod_shape_params, img_size=(64, 64),
+                   **kwargs):
+    archive = np.load(file_)
+    return _load_archive(archive, img_key, param_vals, param_names,
+                         img_size=img_size, **kwargs)
+
+threed_shape_params = ('floor_hue', 'wall_hue', 'object_hue','scale', 'shape',
+                       'orientation')
+def load_3d_shapes(file_, img_key='images', param_vals='labels',
+                   param_names=threed_shape_params, img_size=(64, 64),
+                   norm_pixels=True, **kwargs):
+    archive = h5py.File(file_, 'r')
+    return _load_archive(archive, img_key, param_vals, param_names,
+                         img_size=img_size, norm_pixels=norm_pixels,
+                         **kwargs)    
 
 chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',

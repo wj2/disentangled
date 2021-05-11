@@ -166,8 +166,8 @@ class MultivariateUniform(object):
             size = 1
         samps = self.distr.rvs((size, self.n_dims))
         return samps*self.mags + self.bounds[:, 0:1].T
-    
-class ChairSourceDistrib(object):
+
+class ImageSourceDistrib(object):
 
     def __init__(self, datalist, set_partition=None, position_distr=None,
                  use_partition=False, partition_vec=None, offset=None):
@@ -216,7 +216,7 @@ class ChairSourceDistrib(object):
                        offset=None):
         if partition_vec is not None and offset is None:
             offset = 0
-        return ChairSourceDistrib(self.data_list,
+        return ImageSourceDistrib(self.data_list,
                                   position_distr=self.position_distr,
                                   set_partition=set_partition,
                                   use_partition=True, offset=offset,
@@ -225,36 +225,32 @@ class ChairSourceDistrib(object):
     def flip(self):
         if self.partition_func is not None:
             set_part = lambda x: np.logical_not(self.partition_func(x))
-            new = ChairSourceDistrib(self.data_list, set_partition=set_part,
+            new = ImageSourceDistrib(self.data_list, set_partition=set_part,
                                      position_distr=self.position_distr,
                                      use_partition=True, offset=self.offset)
             new.partition = -self.partition
             new.offset = self.offset
         else:
             print('no partition to flip')
-            new = ChairSourceDistrib(self.data_list)
+            new = ImageSourceDistrib(self.data_list)
         return new        
-    
-class ChairGenerator(DataGenerator):
 
-    def __init__(self, folder, norm_params=True, img_size=(128, 128),
-                 include_position=False, position_distr=None, max_move=4,
-                 max_load=np.inf, filter_edges=None, **kwargs):
-        data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
-                                    max_load=max_load, filter_edges=filter_edges,
-                                    **kwargs)
+class ChairSourceDistrib(ImageSourceDistrib):
+    pass
+    
+class ImageDatasetGenerator(DataGenerator):
+
+    def __init__(self, data, img_params, include_position=False,
+                 position_distr=None, max_move=4, **kwargs):
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
         self.include_position = include_position
         self.position_distr = position_distr
         self.data_table = data
-        if max_load == 1:
-            self.img_params = []
-        else:
-            self.img_params = ['rotation', 'pitch']
+        self.img_params = img_params
         self.n_img_params = len(self.img_params)
         self.img_out_label = ['images'][0]
-        self.source_distribution = ChairSourceDistrib(
+        self.source_distribution = ImageSourceDistrib(
             data[self.img_params],
             position_distr=position_distr)
         self.img_size = data[self.img_out_label][0].shape
@@ -352,9 +348,42 @@ class ChairGenerator(DataGenerator):
             out = np.sum(pd)**2/np.sum(pd**2)
         else:
             out = (p.explained_variance_ratio_, p.components_)
-        return out
+        return out        
     
-    
+class ChairGenerator(ImageDatasetGenerator):
+
+    def __init__(self, folder, norm_params=True, img_size=(128, 128),
+                 include_position=False, position_distr=None, max_move=4,
+                 max_load=np.inf, filter_edges=None,
+                 param_keys=('rotation', 'pitch'), **kwargs):
+        data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
+                                    max_load=max_load, filter_edges=filter_edges,
+                                    **kwargs)
+        super().__init__(data, param_keys,
+                         include_position=include_position,
+                         position_distr=position_distr,
+                         max_move=max_move)    
+
+class TwoDShapeGenerator(ImageDatasetGenerator):
+
+    default_pks = ['shape', 'scale','orientation', 'x_pos', 'y_pos']
+    def __init__(self, folder, img_size=(64, 64), norm_params=True,
+                 max_load=np.inf, param_keys=default_pks, **kwargs):
+        data = da.load_2d_shapes(folder, img_size=img_size,
+                                 norm_params=norm_params, max_load=max_load)
+        super().__init__(data, param_keys, **kwargs)
+
+class ThreeDShapeGenerator(ImageDatasetGenerator):
+
+    default_pks = ['floor_hue', 'wall_hue', 'object_hue','scale', 'shape',
+                   'orientation']
+    def __init__(self, folder, img_size=(64, 64), norm_params=True,
+                 max_load=np.inf, param_keys=default_pks, **kwargs):
+        data = da.load_3d_shapes(folder, img_size=img_size,
+                                 norm_params=norm_params,
+                                 max_load=max_load)
+        super().__init__(data, param_keys, **kwargs)
+
 class RFDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=0.001,
