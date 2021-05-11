@@ -450,7 +450,7 @@ def _load_archive(archive, img_key, param_vals, param_names,
         if convert_color:
             img = pImage.fromarray(img).convert(mode='RGB')
             img = np.asarray(img)
-        if len(images.shape) == 3:
+        if len(img.shape) == 2:
             img = np.expand_dims(img, -1)
         if norm_pixels:
             img = img/255.

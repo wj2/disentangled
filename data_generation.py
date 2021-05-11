@@ -368,9 +368,12 @@ class TwoDShapeGenerator(ImageDatasetGenerator):
 
     default_pks = ['shape', 'scale','orientation', 'x_pos', 'y_pos']
     def __init__(self, folder, img_size=(64, 64), norm_params=True,
-                 max_load=np.inf, param_keys=default_pks, **kwargs):
+                 max_load=np.inf, param_keys=default_pks, convert_color=False,
+                 **kwargs):
         data = da.load_2d_shapes(folder, img_size=img_size,
-                                 norm_params=norm_params, max_load=max_load)
+                                 convert_color=convert_color,
+                                 norm_params=norm_params,
+                                 max_load=max_load)
         super().__init__(data, param_keys, **kwargs)
 
 class ThreeDShapeGenerator(ImageDatasetGenerator):
