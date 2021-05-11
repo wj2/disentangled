@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-@tf.keras.utils.register_keras_serializable(name='var9')
+@tf.keras.utils.register_keras_serializable(name='var12')
 class VarianceRegularizer(tf.keras.regularizers.Regularizer):
 
     def __init__(self, weights=(.1, .1), **kwargs):
@@ -18,6 +18,7 @@ class VarianceRegularizer(tf.keras.regularizers.Regularizer):
         var_r = tf.math.reduce_variance(tf.math.reduce_mean(x**2, axis=0))
         return self.l2_weight*l2_r + self.var_weight*var_r
 
+@tf.keras.utils.register_keras_serializable(name='l2pr2')
 class L2PRRegularizer(tf.keras.regularizers.Regularizer):
 
     def __init__(self, weights=(.1, .1), **kwargs):
