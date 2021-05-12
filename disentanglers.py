@@ -782,7 +782,8 @@ class BetaVAEConv(BetaVAE):
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      act_func=tf.nn.relu, strides=1,
                      transform_layer=None, layer_type=None,
-                     conv=False, beta=1, full_cov=True, **layer_params):
+                     conv=False, beta=1, full_cov=True, dropout_rate=0,
+                     **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
         strides = []
