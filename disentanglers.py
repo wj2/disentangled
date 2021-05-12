@@ -847,10 +847,11 @@ class BetaVAEConv(BetaVAE):
         layer_list = [z]
         for i, lp in enumerate(layer_shapes):
             if ll != len(lp):
-                layer_list.append(tfkl.Dense(np.product(self.transition_shape),
-                                             activation=None))
+                layer_list.append(tfkl.Dense(
+                    np.product(self.transition_shape[1:]),
+                    activation=None))
                 layer_list.append(
-                    tfkl.Reshape(target_shape=self.transition_shape))
+                    tfkl.Reshape(target_shape=self.transition_shape[1:]))
             ll = len(lp)
             if layer_type is None:
                 if len(lp) == 3:
@@ -870,7 +871,6 @@ class BetaVAEConv(BetaVAE):
 
         layer_list.append(tfkl.Conv2DTranspose(col_dim, 1, strides=1,
                                                activation=tf.nn.sigmoid,
-                                               name=branch_names[1],
                                                padding='same', **layer_params))
         fixed_std = lambda x: tfd.Normal(x, out_eps)
         layer_list.append(
