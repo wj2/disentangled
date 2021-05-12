@@ -871,16 +871,17 @@ class BetaVAEConv(BetaVAE):
                                                activation=None,
                                                padding='same', **layer_params))
 
-        layer_list.append(tfkl.Conv2DTranspose(col_dim, 1, strides=1,
-                                               activation=tf.nn.sigmoid,
-                                               padding='same', **layer_params))
         if output_distrib is None:
             fixed_std = lambda x: tfd.Normal(x, out_eps)
-            out_distr = tfpl.DistributionLambda(make_distribution_fn=fixed_std)
+            out_distr = tfpl.DistributionLambda(
+                                                make_distribution_fn=fixed_std)
         elif output_distrib == 'binary':
-            out_distr = tfpl.IndependentBernoulli(event_shape=(1,))
+            layer_list.append(tfkl.Flatten())
+            out_distr = tfpl.IndependentBernoulli(input_shape,
+                                                  tfd.Bernoulli.logits)
         else:
-            out_distr = output_distrib(event_shape=(1,))
+            layer_list.append(tfkl.Flatten())
+            out_distr = output_distrib(event_shape=input_shape)
         layer_list.append(out_distr)
 
         dec = tfk.Sequential(layer_list)
