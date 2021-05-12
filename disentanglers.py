@@ -788,10 +788,12 @@ class BetaVAEConv(BetaVAE):
         layer_list = [inputs]
         strides = []
         ll = len(input_shape)
+        shape = (None,) + input_shape
         for i, lp in enumerate(layer_shapes):
             if ll != len(lp):
-                transition_shape = x.shape[1:]
+                self.transition_shape = shape
                 layer_list.append(tfkl.Flatten())
+                shape = layer_list[-1].compute_output_shape(shape)
             ll = len(lp)
             if layer_type is None:
                 if len(lp) == 3:
@@ -804,6 +806,7 @@ class BetaVAEConv(BetaVAE):
                 layer_type_i = layer_type[i]
             layer_list.append(layer_type_i(*lp, activation=act_func,
                                            **layer_params))
+            shape = layer_list[-1].compute_output_shape(shape)
         if ll == 3:
             layer_list.append(tfkl.Flatten())
             
