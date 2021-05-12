@@ -236,7 +236,10 @@ class ImageSourceDistrib(object):
         return new        
 
 class ChairSourceDistrib(ImageSourceDistrib):
-    pass
+
+    def __init__(self, *args, img_identifier='chair_id', **kwargs):
+        super().__init__(*args, **kwargs)
+        self.img_identifier = img_identifier
     
 class ImageDatasetGenerator(DataGenerator):
 
@@ -311,15 +314,15 @@ class ImageDatasetGenerator(DataGenerator):
                     new_x[i, j] = xu[xind]
             new_x[:, self.n_img_params:] = x[:, self.n_img_params:]
             x = new_x
-        if same_img:
-            img_ids = self.data_table['chair_id']
+        if same_img and self.img_identifier is not None:
+            img_ids = self.data_table[self.img_identifier]
             chosen_id = np.random.choice(img_ids, 1)[0]
             id_mask = img_ids == chosen_id
         for i, xi in enumerate(x):
             xi_img = xi[:self.n_img_params]
             mask = np.product(img_params == xi_img,
                               axis=1, dtype=bool)
-            if same_img:
+            if same_img and self.img_identifier is not None:
                 mask = mask*id_mask
             s = np.array(self.data_table[self.img_out_label])[mask]
             out_ind = np.random.choice(range(s.shape[0]))
@@ -370,6 +373,7 @@ class TwoDShapeGenerator(ImageDatasetGenerator):
     def __init__(self, folder, img_size=(64, 64), norm_params=True,
                  max_load=np.inf, param_keys=default_pks, convert_color=False,
                  **kwargs):
+        self.img_identifier = None
         data = da.load_2d_shapes(folder, img_size=img_size,
                                  convert_color=convert_color,
                                  norm_params=norm_params,
@@ -382,6 +386,7 @@ class ThreeDShapeGenerator(ImageDatasetGenerator):
                    'orientation']
     def __init__(self, folder, img_size=(64, 64), norm_params=True,
                  max_load=np.inf, param_keys=default_pks, **kwargs):
+        self.img_identifier = None
         data = da.load_3d_shapes(folder, img_size=img_size,
                                  norm_params=norm_params,
                                  max_load=max_load)
