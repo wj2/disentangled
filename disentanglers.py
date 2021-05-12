@@ -440,6 +440,8 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
         reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=reg)(x)
+        if noise > 0:
+            rep = tfkl.GaussianNoise(noise)(rep)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
         rep_inp = tfk.Input(shape=encoded_size)
         
