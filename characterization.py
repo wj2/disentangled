@@ -1137,6 +1137,36 @@ def compute_distgen_fromrun(dists, rads, run_ind, f_pattern, n_reps=10,
     inds = (n_trains, n_parts, np.arange(perf_all.shape[2]))
     return inds, perf_all
 
+def analyze_factor_alignment(run_ind, f_pattern, 
+                             folder='disentangled/simulation_data/partition/',
+                             reg=.5):
+    data, info = da.load_full_run(folder, run_ind, file_template=f_pattern,
+                                  analysis_only=True, skip_gd=False)
+    n_parts, _, _, _, _, _, _, _, samps = data
+    latent_samps, stim_samps, rep_samps = samps
+    perfs = np.zeros(rep_samps.shape[:3] + (latent_samps.shape[-1],))
+    angs = np.zeros_like(perfs)
+    dims = np.zeros_like(perfs)
+    comp_mat = np.identity(rep_samps.shape[-1])
+    for ind in u.make_array_ind_iterator(rep_samps.shape[:3]):
+        latents = latent_samps[:, ind[1]]
+        stims = stim_samps[:, ind[1]]
+        reps = rep_samps[ind]
+        for i in range(latent_samps.shape[-1]):
+            lr = sklm.LinearRegression()
+            lr.fit(reps, latents[:, i])
+            ind_i = ind + (i,)
+            perfs[ind_i] = lr.score(reps, reps[:, i])
+            if np.all(lr.coef_ == 0):
+                sim = np.nan
+            else:
+                lrc = u.make_unit_vector(lr.coef_)
+                sim = np.max(np.abs(u.cosine_similarity(comp_mat, lrc)))
+            angs[ind_i] = sim
+            dims[ind_i] = u.participation_ratio(reps)
+    return n_parts, perfs, angs, dims
+    
+
 def plot_distgen_index(perfs, plot_labels, x_labels, p_ind, axs=None, fwid=3,
                        ref_ind=0, ref_ax=0):
     if axs is None:
