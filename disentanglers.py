@@ -785,13 +785,13 @@ class BetaVAEConv(BetaVAE):
                      conv=False, beta=1, full_cov=True, dropout_rate=0,
                      **layer_params):
         inputs = tfk.Input(shape=input_shape)
-        x = inputs
+        layer_list = [inputs]
         strides = []
         ll = len(input_shape)
         for i, lp in enumerate(layer_shapes):
             if ll != len(lp):
                 transition_shape = x.shape[1:]
-                x = tfkl.Flatten()(x)
+                layer_list.append(tfkl.Flatten())
             ll = len(lp)
             if layer_type is None:
                 if len(lp) == 3:
@@ -802,13 +802,13 @@ class BetaVAEConv(BetaVAE):
                     strides.append(1)
             else:
                 layer_type_i = layer_type[i]
-            x = layer_type_i(*lp, activation=act_func,
-                           **layer_params)(x)
+            layer_list.append(layer_type_i(*lp, activation=act_func,
+                                           **layer_params))
         if ll == 3:
-            x = tfkl.Flatten()(x)
+            layer_list.append(tfkl.Flatten())
             
         if dropout_rate > 0:
-            x = tfkl.Dropout(dropout_rate)(x)
+            layer_list.append(tfkl.Dropout(dropout_rate))
                         
         # representation layer
         if full_cov:
@@ -816,7 +816,7 @@ class BetaVAEConv(BetaVAE):
         else:
             p_size = tfpl.IndependentNormal.params_size(encoded_size)
             
-        x = tfkl.Dense(p_size, activation=None)(x)
+        layer_list.append(tfkl.Dense(p_size, activation=None))
 
         prior = tfd.Independent(tfd.Normal(loc=tf.zeros(encoded_size), scale=1),
                                 reinterpreted_batch_ndims=1)
@@ -826,12 +826,13 @@ class BetaVAEConv(BetaVAE):
             rep_reg = None
 
         if full_cov:
-            rep = tfpl.MultivariateNormalTriL(encoded_size,
-                                              activity_regularizer=rep_reg)(x)
+            layer_list.append(tfpl.MultivariateNormalTriL(
+                encoded_size, activity_regularizer=rep_reg))
         else:
-            rep = tfpl.IndependentNormal(encoded_size,
-                                         activity_regularizer=rep_reg)(x)
-        rep_model = tfk.Model(inputs=inputs, outputs=rep)
+            layer_list.append(tfpl.IndependentNormal(
+                encoded_size,
+                activity_regularizer=rep_reg))
+        rep_model = tfk.Sequential(layer_list)
         return rep_model, prior
 
     def make_decoder(self, input_shape, layer_shapes, encoded_size,
@@ -840,11 +841,13 @@ class BetaVAEConv(BetaVAE):
                      conv=False, out_eps=.01, **layer_params):
         z = tfk.Input(shape=encoded_size)
         ll = 1
+        layer_list = [z]
         for i, lp in enumerate(layer_shapes):
             if ll != len(lp):
-                z = tfkl.Dense(np.product(self.transition_shape),
-                               activation=None)(z)
-                z = tfkl.Reshape(target_shape=self.transition_shape)(z)
+                layer_list.append(tfkl.Dense(np.product(self.transition_shape),
+                                             activation=None))
+                layer_list.append(
+                    tfkl.Reshape(target_shape=self.transition_shape))
             ll = len(lp)
             if layer_type is None:
                 if len(lp) == 3:
@@ -854,20 +857,21 @@ class BetaVAEConv(BetaVAE):
                     layer_type_i = tfkl.Dense
             else:
                 layer_type_i = layer_type[i]
-            z = layer_type_i(*lp, activation=act_func,
-                             **layer_params)(z)
+            layer_list.append(layer_type_i(*lp, activation=act_func,
+                                           **layer_params))
 
         col_dim = input_shape[-1]
-        z = tfkl.Conv2DTranspose(col_dim, 1, strides=1,
-                                 activation=None,
-                                 padding='same', **layer_params)(z)
+        layer_list.append(tfkl.Conv2DTranspose(col_dim, 1, strides=1,
+                                               activation=None,
+                                               padding='same', **layer_params))
 
-        z = tfkl.Conv2DTranspose(col_dim, 1, strides=1,
-                                 activation=tf.nn.sigmoid,
-                                 name=branch_names[1],
-                                 padding='same', **layer_params)(z)
+        layer_list.append(tfkl.Conv2DTranspose(col_dim, 1, strides=1,
+                                               activation=tf.nn.sigmoid,
+                                               name=branch_names[1],
+                                               padding='same', **layer_params))
         fixed_std = lambda x: tfd.Normal(x, out_eps)
-        dec_out = tfpl.DistributionLambda(make_distribution_fn=fixed_std)(z)
+        layer_list.append(
+            tfpl.DistributionLambda(make_distribution_fn=fixed_std))
 
-        dec = tfk.Model(inputs=rep_inp, outputs=dec_out)
+        dec = tfk.Sequential(layer_list)
         return dec
