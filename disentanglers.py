@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import tensorflow_hub as tfhub
 import functools as ft
+tf.compat.v1.disable_eager_execution()
 
 import numpy as np
 
@@ -741,7 +742,7 @@ class BetaVAE(da.TFModel):
             train_y = None
             eval_data = data_generator.rvs(10*5)
             eval_set = (eval_data, eval_data)
-            
+
         out = self.vae.fit(x=train_x, y=train_y, epochs=epochs,
                            validation_data=eval_set, batch_size=batch_size,
                            **kwargs)
