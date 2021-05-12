@@ -741,7 +741,7 @@ class BetaVAE(da.TFModel):
             train_y = None
             eval_data = data_generator.rvs(10*5)
             eval_set = (eval_data, eval_data)
-            
+
         out = self.vae.fit(x=train_x, y=train_y, epochs=epochs,
                            validation_data=eval_set, batch_size=batch_size,
                            **kwargs)
@@ -783,7 +783,7 @@ class BetaVAEConv(BetaVAE):
                      act_func=tf.nn.relu, strides=1,
                      transform_layer=None, layer_type=None,
                      conv=False, beta=1, full_cov=True, dropout_rate=0,
-                     **layer_params):
+                     output_distrib=None, **layer_params):
         inputs = tfk.Input(shape=input_shape)
         layer_list = [inputs]
         strides = []
@@ -841,7 +841,8 @@ class BetaVAEConv(BetaVAE):
     def make_decoder(self, input_shape, layer_shapes, encoded_size,
                      act_func=tf.nn.relu, strides=1,
                      transform_layer=None, layer_type=None,
-                     conv=False, out_eps=.01, **layer_params):
+                     conv=False, out_eps=.01, output_distrib=None,
+                     **layer_params):
         z = tfk.Input(shape=encoded_size)
         ll = 1
         layer_list = [z]
@@ -872,9 +873,14 @@ class BetaVAEConv(BetaVAE):
         layer_list.append(tfkl.Conv2DTranspose(col_dim, 1, strides=1,
                                                activation=tf.nn.sigmoid,
                                                padding='same', **layer_params))
-        fixed_std = lambda x: tfd.Normal(x, out_eps)
-        layer_list.append(
-            tfpl.DistributionLambda(make_distribution_fn=fixed_std))
+        if output_distrib is None:
+            fixed_std = lambda x: tfd.Normal(x, out_eps)
+            out_distr = tfpl.DistributionLambda(make_distribution_fn=fixed_std)
+        elif output_distrib == 'binary':
+            out_distr = tfpl.IndependentBernoulli(event_shape=(1,))
+        else:
+            out_distr = output_distrib(event_shape=(1,))
+        layer_list.append(out_distr)
 
         dec = tfk.Sequential(layer_list)
         return dec
