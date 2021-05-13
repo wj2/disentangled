@@ -1303,7 +1303,7 @@ def _create_samps(vals, dim, others):
 
 def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
                         other_vals=None, eps_d=.1, reps=20,
-                        n_dense_pts=10, full_perturb=1):
+                        n_dense_pts=10, full_perturb=1, learn_dim=None):
     if other_vals is None:
         other_vals = list(gen.get_center())
         other_vals.pop(trav_dim)
@@ -1320,7 +1320,6 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     dense_recons = autoenc.get_reconstruction(dense_latents)
     lr = sklm.LinearRegression()
     lr.fit(dense_latents_all, dense_pts_all)
-    print(dense_latents_all.shape)
     lr_val = lr.score(dense_latents, dense_pts)
     print(lr_val)
     dists = np.dot(dense_latents, lr.coef_)
@@ -1328,7 +1327,21 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     ptdists = np.diff(dense_pts)
     conv = np.mean(ldists/ptdists)
     perts = np.linspace(-full_perturb, full_perturb, n_pts)
-    center_rep = dense_latents[int(n_dense_pts/2)]
+    if learn_dim is not None:
+        vals = np.unique(gen.data_table[gen.img_params[learn_dim]])
+        c_val = gen.ppf(.5, learn_dim)
+        vals = vals[vals != c_val]
+        print(vals)
+        interp_val = np.random.choice(vals, 1)
+        print(interp_val)
+        
+        ind = int(n_dense_pts/2)
+        center_x = dense_xs[ind]
+        center_x[learn_dim] = interp_val
+        center_img = gen.get_representation(center_x)
+        center_rep = autoenc.get_representation(center_img)[0]
+    else:
+        center_rep = dense_latents[int(n_dense_pts/2)]
     lr_norm = u.make_unit_vector(lr.coef_)
     dev = np.expand_dims(perts, 0)*np.expand_dims(lr_norm, 1)
     pert_reps = (np.expand_dims(center_rep, 1)
