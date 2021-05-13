@@ -747,9 +747,13 @@ class BetaVAE(da.TFModel):
                            **kwargs)
         return out
 
-    def sample_latents(self, sample_size=10):
+    def sample_latents(self, sample_size=10, use_mean=True):
         samps = self.prior.sample(sample_size)
-        outs = self.decoder(samps).mean()
+        distr = self.decoder(samps)
+        if use_mean:
+            outs = distr.mean()
+        else:
+            outs = distr.sample()
         return outs
 
     def get_representation(self, samples, use_mean=True):
