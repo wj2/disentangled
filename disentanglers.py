@@ -789,7 +789,7 @@ class BetaVAEConv(BetaVAE):
                      transform_layer=None, layer_type=None,
                      conv=False, beta=1, full_cov=True, dropout_rate=0,
                      output_distrib=None, **layer_params):
-        inputs = tfkl.InputLayer(shape=input_shape)
+        inputs = tfkl.InputLayer(input_shape=input_shape)
         layer_list = [inputs]
         strides = []
         ll = len(input_shape)
@@ -848,7 +848,7 @@ class BetaVAEConv(BetaVAE):
                      transform_layer=None, layer_type=None,
                      conv=False, out_eps=.01, output_distrib=None,
                      **layer_params):
-        z = tfkl.InputLayer(shape=encoded_size)
+        z = tfkl.InputLayer(input_shape=encoded_size)
         ll = 1
         layer_list = [z]
         for i, lp in enumerate(layer_shapes):
