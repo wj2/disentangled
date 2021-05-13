@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import tensorflow_hub as tfhub
 import functools as ft
+tf.compat.v1.disable_eager_execution()
 
 import numpy as np
 
