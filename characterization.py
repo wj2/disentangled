@@ -8,6 +8,8 @@ import tensorflow as tf
 import sklearn.decomposition as skd
 import sklearn.svm as skc
 import sklearn.linear_model as sklm
+import sklearn.pipeline as sklpipe
+import sklearn.preprocessing as skp
 
 import general.utility as u
 import general.plotting as gpl
@@ -22,7 +24,8 @@ import disentangled.disentanglers as dd
 def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               test_distrib=None, test_func=None,
                               n_train_samples=5*10**3, n_test_samples=10**3,
-                              classifier=skc.SVC, kernel='linear', n_iters=10,
+                              classifier=skc.LinearSVC, kernel='linear',
+                              n_iters=2, mean=True,
                               shuffle=False, use_orthogonal=True, 
                               **classifier_params):
     if train_func is None:
@@ -48,18 +51,22 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         train_labels = train_func[i](train_samples)
         inp_reps = gen.generator(train_samples)
         train_rep = vae.get_representation(inp_reps)
-        c = classifier(kernel=kernel, **classifier_params)
-        c.fit(train_rep, train_labels)
-
+        c = classifier(max_iter=100000, **classifier_params)
+        ops = [skp.StandardScaler(), c]
+        pipe = sklpipe.make_pipeline(*ops)
+        pipe.fit(train_rep, train_labels)
         test_samples = test_distrib.rvs(n_test_samples)
         test_labels = test_func[i](test_samples)
         if shuffle:
             snp.random.shuffle(test_labels)
 
         test_rep = vae.get_representation(gen.generator(test_samples))
-        scores[i] = c.score(test_rep, test_labels)
-        chances[i] = .5 
-    return np.mean(scores), np.mean(chances)
+        scores[i] = pipe.score(test_rep, test_labels)
+        chances[i] = .5
+    if mean:
+        scores = np.mean(scores)
+        chances = np.mean(chances)
+    return scores, chances
 
 def lr_pts_dist(stim, reps, targ_dist, neighbor_rad, eps=.05, same_prob=True,
                 **kwargs):
@@ -189,8 +196,13 @@ def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size
 
 
 def evaluate_multiple_models(dg_use, models, train_func, test_distributions,
-                             train_distributions=None, **classifier_args):
-    performance = np.zeros(models.shape + (len(test_distributions),))
+                             train_distributions=None, mean=True,
+                             n_iters=2, **classifier_args):
+    if mean:
+        dim_add = (len(test_distributions),)
+    else:
+        dim_add = (len(test_distributions), n_iters)
+    performance = np.zeros(models.shape + dim_add)
     chance = np.zeros_like(performance)
     if train_distributions is None:
         train_distributions = (None,)*len(test_distributions)
@@ -202,6 +214,7 @@ def evaluate_multiple_models(dg_use, models, train_func, test_distributions,
                 out = classifier_generalization(dg_use, bvae, train_func,
                                                 test_distrib=td,
                                                 train_distrib=train_d_k,
+                                                mean=mean, n_iters=n_iters,
                                                 **classifier_args)
                 performance[i, j, k] = out[0]
                 chance[i, j, k]= out[1]
@@ -512,7 +525,7 @@ def plot_feature_ccgp(dec_mat, ax_labels=_default_labels,
 
 def make_classifier(pc, pv, dg_use, model, n_train=500, test=False,
                     classifier_model=skc.LinearSVC, max_iter=4000,
-                    **params):
+                    norm=True, **params):
     if pv is not None:
         td = dg_use.source_distribution.make_partition(partition_vec=pv)
         flip = True
@@ -929,7 +942,9 @@ def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
 def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
-                               test_labels=None, feat_mask=None, **kwargs):
+                               test_labels=None, feat_mask=None,
+                               lr_type=sklm.LinearRegression,
+                               partition_vec=None, **kwargs):
     if train_stim_set is not None and test_stim_set is not None:
         enc_pts = model.get_representation(train_stim_set)
         test_enc_pts = model.get_representation(test_stim_set)
@@ -938,7 +953,8 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
     else:
         if half:
             try:
-                src = dg_use.source_distribution.make_partition()
+                src = dg_use.source_distribution.make_partition(
+                    partition_vec=partition_vec)
             except AttributeError:
                 src = da.HalfMultidimensionalNormal.partition(
                     dg_use.source_distribution)
@@ -955,12 +971,12 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
         test_enc_pts = model.get_representation(dg_use.generator(test_stim))
     if feat_mask is None:
         feat_mask = np.ones(stim.shape[1], dtype=bool)
-    lr = sklm.LinearRegression(**kwargs)
+    lr = lr_type(**kwargs)
     lr.fit(enc_pts, stim[:, feat_mask])
     score = lr.score(test_enc_pts, test_stim[:, feat_mask])
     params = lr.get_params()
     if get_parallelism:
-        lr2 = sklm.LinearRegression(**kwargs)
+        lr2 = lr_type(**kwargs)
         lr2.fit(test_enc_pts, test_stim[:, feat_mask])
         sim = u.cosine_similarity(lr.coef_, lr2.coef_)
     else:
@@ -1105,6 +1121,39 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         gd = None
 
     return dg_use, (models, th), (p, c), lts_scores, gd
+
+def model_eval(dg_use, models, eval_n_iters=10, n_train_samples=500,
+               n_test_samples=500, mean=False):
+    try:
+        train_d2 = dg_use.source_distribution.make_partition()
+    except AttributeError:
+        train_d2 = da.HalfMultidimensionalNormal.partition(
+            dg_use.source_distribution)
+    train_ds = (None, train_d2)
+    test_ds = (None, train_d2.flip())
+    try:
+        len(models)
+    except TypeError:
+        m = np.zeros((1, 1, 1), dtype=object)
+        m[0, 0, 0] = models
+        models = m
+    p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
+                                         train_distributions=train_ds,
+                                         n_iters=eval_n_iters,
+                                         n_train_samples=n_train_samples,
+                                         n_test_samples=n_test_samples,
+                                         mean=mean)
+    lts_scores = find_linear_mappings(dg_use, models, half=True,
+                                      n_samps=n_test_samples)
+    return p, c, lts_scores
+
+def plot_sidebyside(m1, m2, m_off=.1, axs=None):
+    if axs is None:
+        f, axs = plt.subplots(1, 2)
+    c1, _, l1 = m1
+    c2, _, l2 = m2
+    gpl.violinplot(np.squeeze(c1), [0, 1], ax=axs[0])
+    gpl.violinplot(np.squeeze(c2), [m_off, 1 + m_off], ax=axs[0])
 
 def compute_distgen(l_samps, r_samps, dists, rads, n_reps=10, **kwargs):
     perf = np.zeros((len(dists), len(rads), n_reps))
@@ -1322,10 +1371,6 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     lr.fit(dense_latents_all, dense_pts_all)
     lr_val = lr.score(dense_latents, dense_pts)
     print(lr_val)
-    dists = np.dot(dense_latents, lr.coef_)
-    ldists = np.diff(dists)
-    ptdists = np.diff(dense_pts)
-    conv = np.mean(ldists/ptdists)
     perts = np.linspace(-full_perturb, full_perturb, n_pts)
     if learn_dim is not None:
         vals = np.unique(gen.data_table[gen.img_params[learn_dim]])
@@ -1350,12 +1395,16 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     pert_recons = autoenc.get_reconstruction(pert_reps.T)
     return pert_recons, dense_imgs, dense_latents, dense_recons, lr
 
-def plot_img_series(imgs, fwid=4, axs=None):
+def plot_img_series(imgs, fwid=4, axs=None, lines=False, title=''):
     fwid = 4
     fsize = (fwid*imgs.shape[0], fwid)
     if axs is None: 
         f, axs = plt.subplots(1, imgs.shape[0], figsize=fsize)
+        f.suptitle(title)
+    else:
+        axs[0].set_title(title)
     for i in range(imgs.shape[0]):
         axs[i].imshow(imgs[i])
-        gpl.add_hlines(imgs.shape[1]/2, axs[i])
-        gpl.add_vlines(imgs.shape[2]/2, axs[i])
+        if lines:
+            gpl.add_hlines(imgs.shape[1]/2, axs[i])
+            gpl.add_vlines(imgs.shape[2]/2, axs[i])

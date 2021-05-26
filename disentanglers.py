@@ -605,7 +605,7 @@ class BetaVAE(da.TFModel):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
                  act_func=tf.nn.relu, beta=1, dropout_rate=0,
-                 full_cov=True, **layer_params):
+                 full_cov=False, **layer_params):
         enc, prior = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                        act_func=act_func, beta=beta,
                                        full_cov=full_cov, **layer_params)
@@ -756,8 +756,8 @@ class BetaVAE(da.TFModel):
             outs = distr.sample()
         return outs
 
-    def get_representation(self, samples, use_mean=True):
-        if self.loaded:
+    def get_representation(self, samples, use_loaded=False, use_mean=True):
+        if self.loaded and use_loaded:
             rep = self.encoder(samples)
         else:
             if use_mean:
@@ -783,6 +783,22 @@ class BetaVAE(da.TFModel):
 
 class BetaVAEConv(BetaVAE):
 
+    @classmethod
+    def load(cls, path):
+        dummy = BetaVAEConv((32, 32, 1), ((10, 1, 1), (10,)), 2)
+        model = cls._load_model(dummy, path, skip=('vae',))
+        if model.beta > 0:
+            prior = tfd.Independent(tfd.Normal(loc=tf.zeros(model.encoded_size),
+                                               scale=1),
+                                    reinterpreted_batch_ndims=1)
+            rep_reg = tfpl.KLDivergenceRegularizer(prior, weight=model.beta)
+            model.encoder.layers[-1].activity_regularizer = rep_reg
+        model.var = tfk.Model(inputs=model.encoder.inputs,
+                              outputs=model.decoder(model.encoder.outputs[0]))
+        model.loaded = True
+        model._compile()
+        return model
+    
     def make_encoder(self, input_shape, layer_shapes, encoded_size,
                      act_func=tf.nn.relu, strides=1,
                      transform_layer=None, layer_type=None,
@@ -889,3 +905,13 @@ class BetaVAEConv(BetaVAE):
 
         dec = tfk.Sequential(layer_list)
         return dec
+
+    def get_reconstruction(self, reps, use_mean=True):
+        recon = super().get_reconstruction(reps, use_mean)
+        if self.loaded:
+            recon = tfd.Bernoulli(logits=recon)
+            if use_mean:
+                recon = recon.mean()
+            else:
+                recon = recon.sample()
+        return recon
