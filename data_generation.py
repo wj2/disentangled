@@ -263,6 +263,7 @@ class ImageDatasetGenerator(DataGenerator):
         self.output_dim = self.img_size
         self.input_dim = len(self.params)
         self.max_move = max_move
+        self.x_uniques = None
 
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()
@@ -296,7 +297,14 @@ class ImageDatasetGenerator(DataGenerator):
         if self.include_position:
             m_meds = self.position_distr.mean
             p_meds = np.concatenate((p_meds, m_meds))
-        return p_meds        
+        return p_meds
+
+    def _get_uniques(self):
+        if self.x_uniques is None:
+            img_params = np.array(self.data_table[self.img_params])
+            self.x_uniques = list(np.unique(img_params[:, i])
+                                  for i in range(self.n_img_params))
+        return self.x_uniques
     
     def get_representation(self, x, flat=False, same_img=False, nearest=True):
         x = np.array(x)
@@ -306,8 +314,7 @@ class ImageDatasetGenerator(DataGenerator):
         img_params = np.array(self.data_table[self.img_params])
         if nearest:
             new_x = np.zeros_like(x, dtype=float)
-            x_uniques = list(np.unique(img_params[:, i])
-                             for i in range(self.n_img_params))
+            x_uniques = self._get_uniques()
             for i, xi in enumerate(x):
                 for j, xu in enumerate(x_uniques):
                     xind = np.argmin(np.abs(xu - xi[j]))
@@ -318,6 +325,7 @@ class ImageDatasetGenerator(DataGenerator):
             img_ids = self.data_table[self.img_identifier]
             chosen_id = np.random.choice(img_ids, 1)[0]
             id_mask = img_ids == chosen_id
+        # this is a bit slow
         for i, xi in enumerate(x):
             xi_img = xi[:self.n_img_params]
             mask = np.product(img_params == xi_img,
@@ -358,7 +366,7 @@ class ChairGenerator(ImageDatasetGenerator):
     def __init__(self, folder, norm_params=True, img_size=(128, 128),
                  include_position=False, position_distr=None, max_move=4,
                  max_load=np.inf, filter_edges=None,
-                 param_keys=('rotation', 'pitch'), **kwargs):
+                 param_keys=['rotation', 'pitch'], **kwargs):
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
                                     max_load=max_load, filter_edges=filter_edges,
                                     **kwargs)
@@ -415,16 +423,17 @@ class RFDataGenerator(DataGenerator):
         self.compiled = True
         self.source_distribution = source_distribution
 
-    def plot_rfs(self, ax=None):
+    def plot_rfs(self, ax=None, plot_dots=False):
         if ax is None:
             f, ax = plt.subplots(1, 1)
         cps = da.get_circle_pts(100, 2)
         for i, rfc in enumerate(self.rf_cents):
-            l = ax.plot(rfc[0], rfc[1], 'o')
             rfw = np.sqrt(self.rf_wids[i])
-            ax.plot(cps[:, 0]*rfw[0] + rfc[0],
-                    cps[:, 1]*rfw[1] + rfc[1],
-                    color=l[0].get_color())
+            l = ax.plot(cps[:, 0]*rfw[0] + rfc[0],
+                        cps[:, 1]*rfw[1] + rfc[1])
+            if plot_dots:
+                ax.plot(rfc[0], rfc[1], 'o',
+                        color=l[0].get_color())
         
     def make_generator(self, out_dim, source_distribution, noise=.01,
                        scale=1, baseline=0, width_scaling=1, input_noise_var=0):
