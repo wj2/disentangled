@@ -302,7 +302,7 @@ def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
 
 def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
                          source_scale_mag=.2, rep_scale_mag=10,
-                         **kwargs):
+                         titles=True, **kwargs):
     if axs is None:
         fsize = (fwid*2, fwid)
         f, axs = plt.subplots(1, 2, figsize=fsize)
@@ -314,10 +314,11 @@ def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
                      **kwargs)
     plot_diagnostics(*args, dim_red=dim_red, ax=axs[1], scale_mag=rep_scale_mag,
                      compute_pr=True, **kwargs)
-    axs[0].set_title('latent variables')
+    if titles:
+        axs[0].set_title('latent variables')
+        axs[1].set_title('representation')
     axs[0].set_xlabel('feature 1 (au)')
     axs[0].set_ylabel('feature 2 (au)')
-    axs[1].set_title('representation')
     axs[1].set_xlabel('PCA 1 (au)')
     axs[1].set_ylabel('PCA 2 (au)')
     return out
@@ -329,7 +330,7 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      fwid=2.5, set_inds=(0, 1), plot_partitions=False,
                      plot_source=False, square=True, start_vals=(0,),
                      supply_range=1, plot_3d=False, dim_red_func=None,
-                     compute_pr=False, **pca_args):
+                     compute_pr=False, ret_dim_red=False, **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
 
@@ -437,10 +438,13 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
         ax.set_aspect('equal')
         gpl.make_xaxis_scale_bar(ax, scale_mag)
         gpl.make_yaxis_scale_bar(ax, scale_mag)
+    if ret_dim_red:
+        out = ax, ptrs
     if compute_pr:
         out = ax, pr
     else:
-        out = ax 
+        out = ax
+    
     return out
 
 def make_classifier_dimred(pcs, pvs, dg_use, model, n_train=500, 
@@ -844,7 +848,7 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
                                  plot_labels='train egs = {}', n_plots=None,
                                  ylabel='', ylim=None, num_dims=None,
                                  xlab='partitions', collapse_plots=False,
-                                 **kwargs):
+                                 set_title=True, **kwargs):
     if len(scores.shape) == 4:
         scores = np.mean(scores, axis=3)
     n_ds, n_mks, n_reps = scores.shape
@@ -862,7 +866,8 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
         plot_recon_accuracy_partition(sc, ax=axs[plot_ind], mks=xs,
                                       **kwargs)
         axs[plot_ind].set_ylabel(ylabel)
-        if n_plots is not None and len(plot_labels) > 0 and not collapse_plots:
+        if (n_plots is not None and len(plot_labels) > 0 and set_title
+            and not collapse_plots):
             axs[plot_ind].set_title(title)
         if ylim is not None:
             axs[plot_ind].set_ylim(ylim)
@@ -999,7 +1004,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             layer_spec=None, model_n_epochs=60,
                             plot=True, gpu_samples=False, dg_dim=100,
                             generate_data=True, n_save_samps=10**4,
-                            model_batch_size=30):
+                            model_batch_size=30, p_mean=True):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1090,7 +1095,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                                              train_distributions=train_ds,
                                              n_iters=eval_n_iters,
                                              n_train_samples=n_train_samples,
-                                             n_test_samples=n_test_samples)
+                                             n_test_samples=n_test_samples,
+                                             mean=p_mean)
     else:
         p, c = p_c
 
@@ -1258,7 +1264,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            folder='disentangled/simulation_data/partition/',
                            ret_info=False, collapse_plots=False,  pv_mask=None,
                            xlab='partitions', ret_fig=False, legend='',
-                           **kwargs):
+                           print_args=True, set_title=True, **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
@@ -1269,7 +1275,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     if ('l2pr_weights_mult' in info['args'][0].keys()
         and info['args'][0]['l2pr_weights'] is not None):
         n_parts = np.array(n_parts)*info['args'][0]['l2pr_weights_mult']*100
-    print(info['args'][0])
+    if print_args:
+        print(info['args'][0])
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
     if pv_mask is not None:
@@ -1283,7 +1290,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       panel_vals=panel_vals, xlab=xlab,
                                       axs=axs, collapse_plots=collapse_plots,
                                       ret_fig=ret_fig, label=legend,
-                                      fwid=fwid)
+                                      fwid=fwid, set_title=set_title)
     if ret_info:
         out_all = (out, info)
     else:
@@ -1295,7 +1302,8 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 fwid=3, info=None, log_x=True, label='',
                                 panel_labels='train egs = {}',
                                 xlab='partitions', axs=None, ct=np.nanmedian,
-                                collapse_plots=False, ret_fig=False):
+                                collapse_plots=False, ret_fig=False,
+                                set_title=True):
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -1328,14 +1336,19 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
         else:
             qp = np.swapaxes(qp, x_ax, 1)
             qp = np.swapaxes(qp, panel_ax, 0)
+        if i < (len(quants_plot) - 1):
+            use_label = ''
+        else:
+            use_label = label
         axs_i = plot_recon_accuracies_ntrain(qp, central_tendency=ct,
                                              axs=axs[:, i], xs=x_vals,
                                              log_x=log_x, n_plots=panel_vals,
                                              ylabel=labels[i], ylim=ylims[i],
                                              num_dims=nd, xlab=xlab,
-                                             label=label,
+                                             label=use_label,
                                              collapse_plots=collapse_plots,
-                                             plot_labels=panel_labels)
+                                             plot_labels=panel_labels,
+                                             set_title=set_title)
     if ret_fig:
         out = f, axs
     else:

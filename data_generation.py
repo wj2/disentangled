@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 import general.rf_models as rfm
 import general.utility as u
+import general.plotting as gpl
 import disentangled.aux as da
 import disentangled.regularizer as dr
 
@@ -258,13 +259,24 @@ class ImageDatasetGenerator(DataGenerator):
             position_distr=position_distr)
         self.img_size = data[self.img_out_label][0].shape
         self.params = self.img_params
+        self.data_dict = None
         if include_position:
             self.params = self.params + ['horiz_offset', 'vert_offset']
+        else:
+            self._make_dict()
         self.output_dim = self.img_size
         self.input_dim = len(self.params)
         self.max_move = max_move
         self.x_uniques = None
 
+    def _make_dict(self):
+        data_dict = {}
+        for i, row in self.data_table.iterrows():
+            ident = row[self.img_params]
+            img = row['images']
+            data_dict[tuple(ident)] = img
+        self.data_dict = data_dict
+        
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()
     
@@ -328,18 +340,21 @@ class ImageDatasetGenerator(DataGenerator):
         # this is a bit slow
         for i, xi in enumerate(x):
             xi_img = xi[:self.n_img_params]
-            mask = np.product(img_params == xi_img,
-                              axis=1, dtype=bool)
-            if same_img and self.img_identifier is not None:
-                mask = mask*id_mask
-            s = np.array(self.data_table[self.img_out_label])[mask]
-            out_ind = np.random.choice(range(s.shape[0]))
-            samp = s[out_ind]
-            if self.position_distr is not None:
-                samp = self._move_img(samp, xi[self.n_img_params:])
-            if flat:
-                samp = samp.flatten()
-            out[i] = samp
+            if self.data_dict is None:
+                mask = np.product(img_params == xi_img,
+                                  axis=1, dtype=bool)
+                if same_img and self.img_identifier is not None:
+                    mask = mask*id_mask
+                s = np.array(self.data_table[self.img_out_label])[mask]
+                out_ind = np.random.choice(range(s.shape[0]))
+                samp = s[out_ind]
+                if self.position_distr is not None:
+                    samp = self._move_img(samp, xi[self.n_img_params:])
+                if flat:
+                    samp = samp.flatten()
+                out[i] = samp
+            else:
+                out[i] = self.data_dict[tuple(xi_img)]
         return np.stack(out)
 
     def representation_dimensionality(self, source_distribution=None,
@@ -423,17 +438,24 @@ class RFDataGenerator(DataGenerator):
         self.compiled = True
         self.source_distribution = source_distribution
 
-    def plot_rfs(self, ax=None, plot_dots=False):
+    def plot_rfs(self, ax=None, plot_dots=False, color=None, make_scales=True):
         if ax is None:
             f, ax = plt.subplots(1, 1)
         cps = da.get_circle_pts(100, 2)
         for i, rfc in enumerate(self.rf_cents):
             rfw = np.sqrt(self.rf_wids[i])
             l = ax.plot(cps[:, 0]*rfw[0] + rfc[0],
-                        cps[:, 1]*rfw[1] + rfc[1])
+                        cps[:, 1]*rfw[1] + rfc[1],
+                        color=color)
             if plot_dots:
                 ax.plot(rfc[0], rfc[1], 'o',
                         color=l[0].get_color())
+        if make_scales:
+            x_scale = self.source_distribution.cov[0, 0]
+            y_scale = self.source_distribution.cov[1, 1]
+            gpl.make_xaxis_scale_bar(ax, x_scale, label='dimension 1')
+            gpl.make_yaxis_scale_bar(ax, y_scale, label='dimension 2')
+            gpl.clean_plot(ax, 0)
         
     def make_generator(self, out_dim, source_distribution, noise=.01,
                        scale=1, baseline=0, width_scaling=1, input_noise_var=0):
