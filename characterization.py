@@ -438,12 +438,12 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
         ax.set_aspect('equal')
         gpl.make_xaxis_scale_bar(ax, scale_mag)
         gpl.make_yaxis_scale_bar(ax, scale_mag)
-    if ret_dim_red:
-        out = ax, ptrs
     if compute_pr:
         out = ax, pr
     else:
         out = ax
+    if ret_dim_red:
+        out = out, ptrs
     
     return out
 
