@@ -153,7 +153,8 @@ class Figure2(pu.Figure):
         rep_grids = pu.make_mxn_gridspec(self.gs, n_parts, 2,
                                          0, 80, 70, 100,
                                          5, 5)
-        rep_axs = self.get_axs(rep_grids)
+        rep_axs = self.get_axs(rep_grids, sharex='vertical',
+                               sharey='vertical')
         gss[self.panel_keys[1]] = train_ax, rep_axs
         
         rep_classifier_grid = self.gs[80:, 70:85]
@@ -251,6 +252,7 @@ class Figure2(pu.Figure):
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
         npart_signifier = self.params.get('npart_signifier')
+        mid_i = np.floor(len(n_parts)/2)
         for i, num_p in enumerate(n_parts):
             hist = th[0, i, 0].history['loss']
             epochs = np.arange(1, len(hist) + 1)
@@ -259,9 +261,15 @@ class Figure2(pu.Figure):
                                                     num_p))
             dc.plot_source_manifold(fdg, models[0, i, 0], rs, n_arcs, 
                                     source_scale_mag=.2,
-                                    rep_scale_mag=.2,
+                                    rep_scale_mag=5,
                                     markers=False, axs=rep_axs[i],
                                     titles=False)
+            if mid_i != i:
+                rep_axs[i, 0].set_ylabel('')
+                rep_axs[i, 1].set_ylabel('')
+            if i < len(n_parts) - 1:
+                rep_axs[i, 0].set_xlabel('')
+                rep_axs[i, 1].set_xlabel('')
         gpl.clean_plot(train_ax, 0)
         train_ax.set_yscale('log')
 
@@ -483,7 +491,7 @@ class Figure4(pu.Figure):
         rfdg = self.make_rfdg()
 
         rf_eg_color = self.params.getcolor('rf_eg_color')
-        rfdg.plot_rfs(schem_ax, color=rf_eg_color)
+        rfdg.plot_rfs(schem_ax, color=rf_eg_color, thin=5)
 
         pass_model = dd.IdentityModel()
         rs = self.params.getlist('manifold_radii', typefunc=float)
@@ -536,13 +544,13 @@ class Figure4(pu.Figure):
                                   print_args=False, pv_mask=pv_mask)
         dc.plot_recon_gen_summary(run_ind_beta, beta_f_pattern, log_x=False, 
                                   collapse_plots=False, folder=beta_folder,
-                                  axs=res_axs, legend=r'$\beta$VAE$',
+                                  axs=res_axs, legend=r'$\beta$VAE',
                                   print_args=False, pv_mask=pv_mask)
 
 class Figure5(pu.Figure):
 
     def __init__(self, fig_key='figure5', colors=colors, **kwargs):
-        fsize = (5, 4)
+        fsize = (5.5, 3.5)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
@@ -566,18 +574,20 @@ class Figure5(pu.Figure):
     def make_gss(self):
         gss = {}
         
-        img_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 40,
-                                         0, 50, 5, 5)        
+        img_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 30,
+                                         0, 30, 3, 1)        
         gss[self.panel_keys[0]] = self.get_axs(img_grids)
 
-        rep_geom_fd = self.gs[55:, :14]
-        rep_geom_bvae = self.gs[55:, 16:30]
-        rep_geom_perf = self.gs[55:, 30:40]
+        rep_geom_fd = self.gs[30:65, :14]
+        rep_geom_bvae = self.gs[30:55, 16:30]
+        rep_geom_class_perf = self.gs[60:, :20]
+        rep_geom_regr_perf = self.gs[60:, 20:40]
         gss[self.panel_keys[1]] = self.get_axs((rep_geom_fd, rep_geom_bvae,
-                                                rep_geom_perf))
+                                                rep_geom_class_perf,
+                                                rep_geom_regr_perf))
 
         recon_grids = pu.make_mxn_gridspec(self.gs, 5, 7, 0, 100,
-                                           40, 100, 5, 5)        
+                                           40, 100, 3, 1)        
         gss[self.panel_keys[2]] = self.get_axs(recon_grids)
         
         self.gss = gss
@@ -591,6 +601,8 @@ class Figure5(pu.Figure):
         _, sample_imgs = out
         for i, ind in enumerate(u.make_array_ind_iterator(axs.shape)):
             axs[ind].imshow(sample_imgs[i])
+            axs[ind].set_xticks([])
+            axs[ind].set_yticks([])
 
     def _get_eg_models(self, reload_=False):
         try:
@@ -606,7 +618,7 @@ class Figure5(pu.Figure):
             
     def panel_rep_geometry(self):
         key = self.panel_keys[1]
-        rep_fd_ax, rep_bvae_ax, perf_ax = self.gss[key]
+        rep_fd_ax, rep_bvae_ax, class_ax, regr_ax = self.gss[key]
         shape_dg = self.make_shape_dg()
 
         rs = self.params.getlist('manifold_radii', typefunc=float)
@@ -629,15 +641,17 @@ class Figure5(pu.Figure):
         
         out_f = dc.plot_diagnostics(shape_dg, m_fd, rs, n_arcs, n_dim_red=100,
                                     ax=rep_fd_ax, set_inds=(3, 4),
+                                    scale_mag=20,
                                     dim_red_func=fd_red_func, ret_dim_red=True)
         out_b = dc.plot_diagnostics(shape_dg, m_bvae, rs, n_arcs, n_dim_red=100,
                                     ax=rep_bvae_ax, set_inds=(3, 4),
-                                    dim_red_func=bvae_red_func,
+                                    dim_red_func=bvae_red_func, scale_mag=.2,
                                     ret_dim_red=True)
         if 'dr' not in self.data[key].keys():
             self.data[key]['dr'] = (out_f[1], out_b[1])
         res_fd, res_bvae = self.data[key]['gen']
-        plot_multi_gen((res_fd[0], res_bvae[0]), perf_ax)
+        plot_multi_gen((res_fd[0], res_bvae[0]), class_ax)
+        plot_multi_gen((res_fd[1], res_bvae[1]), regr_ax)
 
     def panel_traversal_comparison(self):
         key = self.panel_keys[2]
@@ -658,7 +672,7 @@ class Figure5(pu.Figure):
                                      eps_d=eps_d, learn_dim=learn_dim,
                                      n_dense_pts=n_pts)
         recs, di, dl, dr, lr = out
-        dc.plot_img_series(di, title='original images', axs=axs[0])
+        dc.plot_img_series(di, title='', axs=axs[0])
         dc.plot_img_series(dr, title='', axs=axs[1])
         dc.plot_img_series(recs, title='', axs=axs[2])
 

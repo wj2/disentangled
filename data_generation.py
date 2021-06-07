@@ -438,11 +438,11 @@ class RFDataGenerator(DataGenerator):
         self.compiled = True
         self.source_distribution = source_distribution
 
-    def plot_rfs(self, ax=None, plot_dots=False, color=None, make_scales=True):
+    def plot_rfs(self, ax=None, plot_dots=False, color=None, make_scales=True, thin=1):
         if ax is None:
             f, ax = plt.subplots(1, 1)
         cps = da.get_circle_pts(100, 2)
-        for i, rfc in enumerate(self.rf_cents):
+        for i, rfc in enumerate(self.rf_cents[::thin]):
             rfw = np.sqrt(self.rf_wids[i])
             l = ax.plot(cps[:, 0]*rfw[0] + rfc[0],
                         cps[:, 1]*rfw[1] + rfc[1],

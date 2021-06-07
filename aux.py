@@ -436,7 +436,8 @@ def get_circle_pts(n, inp_dim, r=1):
 
 def _load_archive(archive, img_key, param_vals, param_names,
                   norm_params=False, img_size=(64, 64),
-                  max_load=np.inf, norm_pixels=False, convert_color=True):
+                  max_load=np.inf, norm_pixels=False, convert_color=True,
+                  binarize=False):
     images = archive[img_key]
     images_list = []
     need_resize = not np.all(np.array(img_size) == images.shape[1:3])
@@ -447,6 +448,8 @@ def _load_archive(archive, img_key, param_vals, param_names,
             im = pImage.fromarray(img)
             im = im.resize(img_size)
             img = np.asarray(im)
+            if binarize:
+                img = np.round(img).astype(int)
         if convert_color:
             img = pImage.fromarray(img).convert(mode='RGB')
             img = np.asarray(img)
@@ -468,10 +471,10 @@ def _load_archive(archive, img_key, param_vals, param_names,
 twod_shape_params = ('color', 'shape', 'scale','orientation', 'x_pos', 'y_pos')
 def load_2d_shapes(file_, img_key='imgs', param_vals='latents_values',
                    param_names=twod_shape_params, img_size=(64, 64),
-                   **kwargs):
+                   binarize=True, **kwargs):
     archive = np.load(file_)
     return _load_archive(archive, img_key, param_vals, param_names,
-                         img_size=img_size, **kwargs)
+                         img_size=img_size, binarize=True, **kwargs)
 
 threed_shape_params = ('floor_hue', 'wall_hue', 'object_hue','scale', 'shape',
                        'orientation')

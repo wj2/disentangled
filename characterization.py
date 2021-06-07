@@ -863,6 +863,8 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
             kwargs['label'] = legend
         else:
             plot_ind = i
+        if not set_title and collapse_plots:
+            kwargs['label'] = ''
         plot_recon_accuracy_partition(sc, ax=axs[plot_ind], mks=xs,
                                       **kwargs)
         axs[plot_ind].set_ylabel(ylabel)
@@ -948,7 +950,7 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
                                test_labels=None, feat_mask=None,
-                               lr_type=sklm.LinearRegression,
+                               lr_type=sklm.Ridge,
                                partition_vec=None, **kwargs):
     if train_stim_set is not None and test_stim_set is not None:
         enc_pts = model.get_representation(train_stim_set)
@@ -1284,8 +1286,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         p = p[pv_mask]
         sc = sc[pv_mask]
     out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),
-                                      labels=('gen classifier',
-                                              'gen regression'),
+                                      labels=('classifier\ngeneralization',
+                                              'regression\ngeneralization'),
                                       info=info, log_x=log_x,
                                       panel_vals=panel_vals, xlab=xlab,
                                       axs=axs, collapse_plots=collapse_plots,
@@ -1421,3 +1423,6 @@ def plot_img_series(imgs, fwid=4, axs=None, lines=False, title=''):
         if lines:
             gpl.add_hlines(imgs.shape[1]/2, axs[i])
             gpl.add_vlines(imgs.shape[2]/2, axs[i])
+        axs[i].set_xticks([])
+        axs[i].set_yticks([])
+            
