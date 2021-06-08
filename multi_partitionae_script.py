@@ -92,6 +92,8 @@ def create_parser():
                         help='the layer sizes to use')
     parser.add_argument('--rf_width', default=4, type=float,
                         help='scaling of RFs for RF data generator')
+    parser.add_argument('--nan_salt', default=None, type=float,
+                        help='probability an output is replaced with nan')
     return parser
 
 if __name__ == '__main__':
@@ -159,7 +161,8 @@ if __name__ == '__main__':
                                   regularizer_weight=reg_weight,
                                   noise=args.rep_noise,
                                   context_offset=context_offset,
-                                  act_func=act_func)
+                                  act_func=act_func,
+                                  nan_salt=args.nan_salt)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing

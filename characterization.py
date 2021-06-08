@@ -950,7 +950,7 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
                                test_labels=None, feat_mask=None,
-                               lr_type=sklm.Ridge,
+                               lr_type=sklm.LinearRegression,
                                partition_vec=None, **kwargs):
     if train_stim_set is not None and test_stim_set is not None:
         enc_pts = model.get_representation(train_stim_set)

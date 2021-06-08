@@ -142,7 +142,7 @@ class Figure2(pu.Figure):
 
         ordered_rep_grid = self.gs[:25, :30]
         class_perf_grid = self.gs[75:, :15]
-        regr_perf_grid = self.gs[75:, 20:35]
+        regr_perf_grid = self.gs[75:, 30:45]
         gss[self.panel_keys[0]] = self.get_axs((ordered_rep_grid,
                                                 class_perf_grid,
                                                 regr_perf_grid))
@@ -151,14 +151,14 @@ class Figure2(pu.Figure):
         train_ax = self.get_axs((train_grid,))[0]
         n_parts = len(self.params.getlist('n_parts'))
         rep_grids = pu.make_mxn_gridspec(self.gs, n_parts, 2,
-                                         0, 80, 70, 100,
+                                         0, 65, 70, 100,
                                          5, 5)
         rep_axs = self.get_axs(rep_grids, sharex='vertical',
                                sharey='vertical')
         gss[self.panel_keys[1]] = train_ax, rep_axs
         
-        rep_classifier_grid = self.gs[80:, 70:85]
-        rep_regression_grid = self.gs[80:, 85:]
+        rep_classifier_grid = self.gs[75:, 60:75]
+        rep_regression_grid = self.gs[75:, 85:]
         gss[self.panel_keys[2]] = self.get_axs((rep_classifier_grid,
                                                 rep_regression_grid))
         self.gss = gss
@@ -210,6 +210,8 @@ class Figure2(pu.Figure):
                             scale_mag=.2, markers=False, ax=latent_ax)
         plot_single_gen(gen_perf[0], class_ax)
         plot_single_gen(gen_perf[1], regr_ax)
+        class_ax.set_ylabel('classifier\ngeneralization')
+        regr_ax.set_ylabel('regression\ngeneralization')
         gpl.add_hlines(.5, class_ax)
         gpl.add_hlines(0, regr_ax)
 
@@ -290,7 +292,7 @@ class Figure2(pu.Figure):
 class Figure3(pu.Figure):
     
     def __init__(self, fig_key='figure3', colors=colors, **kwargs):
-        fsize = (5, 4)
+        fsize = (5.5, 3.5)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
@@ -330,15 +332,18 @@ class Figure3(pu.Figure):
         unbalanced_rep_grid = self.gs[:30:, 30:45]
         unbalanced_class_grid = self.gs[:30, 55:70]
         unbalanced_regress_grid = self.gs[:30, 80:]
-        axs = pu.make_mxn_gridspec(self.gs, 3, 4, 0, 100, 0, 100,
-                                   5, 5)
-        
-        gss[self.panel_keys[0]] = self.get_axs(axs[0])
 
-        gss[self.panel_keys[1]] = self.get_axs(axs[1])
+        axs_left = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 0, 40,
+                                        3, 10)
+        axs_right = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 54, 100,
+                                         5, 15)
+        gss[self.panel_keys[0]] = self.get_axs(np.concatenate((axs_left[0],
+                                                              axs_right[0])))
+        gss[self.panel_keys[1]] = self.get_axs(np.concatenate((axs_left[1],
+                                                               axs_right[1])))
+        gss[self.panel_keys[2]] = self.get_axs(np.concatenate((axs_left[2],
+                                                               axs_right[2])))
 
-        gss[self.panel_keys[2]] = self.get_axs(axs[2])
-        
         self.gss = gss
 
     def _standard_panel(self, fdg, model, run_inds, f_pattern, folder, axs,
@@ -472,9 +477,9 @@ class Figure4(pu.Figure):
     def make_gss(self):
         gss = {}
 
-        rf_schematic_grid = self.gs[:50, :50]
-        rf_projection_grid = self.gs[50:, :25]
-        rf_decoding_grid = self.gs[50:, 25:50]
+        rf_schematic_grid = self.gs[:50, :25]
+        rf_projection_grid = self.gs[:50, 25:50]
+        rf_decoding_grid = self.gs[50:, 30:45]
         gss[self.panel_keys[0]] = self.get_axs((rf_schematic_grid,
                                                 rf_projection_grid,
                                                 rf_decoding_grid))
@@ -530,10 +535,10 @@ class Figure4(pu.Figure):
         folder = self.params.get('mp_simulations_path')
         beta_folder = self.params.get('beta_simulations_path')
         dc.plot_diagnostics(rfdg, m_fd, rs, n_arcs, 
-                            scale_mag=.2, markers=False,
+                            scale_mag=20, markers=False,
                             ax=axs[0, 0])
         dc.plot_diagnostics(rfdg, m_bvae, rs, n_arcs, 
-                            scale_mag=.2, markers=False,
+                            scale_mag=.01, markers=False,
                             ax=axs[0, 1])
         res_axs = axs[1:]
         pv_mask = np.array([False, True, False])
@@ -541,11 +546,13 @@ class Figure4(pu.Figure):
         dc.plot_recon_gen_summary(run_ind_fd, f_pattern, log_x=False, 
                                   collapse_plots=False, folder=folder,
                                   axs=res_axs, legend='partition',
-                                  print_args=False, pv_mask=pv_mask)
+                                  print_args=False, pv_mask=pv_mask,
+                                  set_title=False)
         dc.plot_recon_gen_summary(run_ind_beta, beta_f_pattern, log_x=False, 
                                   collapse_plots=False, folder=beta_folder,
                                   axs=res_axs, legend=r'$\beta$VAE',
-                                  print_args=False, pv_mask=pv_mask)
+                                  print_args=False, pv_mask=pv_mask,
+                                  set_title=False)
 
 class Figure5(pu.Figure):
 
