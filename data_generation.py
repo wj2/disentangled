@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 import general.rf_models as rfm
 import general.utility as u
+import general.plotting as gpl
 import disentangled.aux as da
 import disentangled.regularizer as dr
 
@@ -166,8 +167,8 @@ class MultivariateUniform(object):
             size = 1
         samps = self.distr.rvs((size, self.n_dims))
         return samps*self.mags + self.bounds[:, 0:1].T
-    
-class ChairSourceDistrib(object):
+
+class ImageSourceDistrib(object):
 
     def __init__(self, datalist, set_partition=None, position_distr=None,
                  use_partition=False, partition_vec=None, offset=None):
@@ -216,7 +217,7 @@ class ChairSourceDistrib(object):
                        offset=None):
         if partition_vec is not None and offset is None:
             offset = 0
-        return ChairSourceDistrib(self.data_list,
+        return ImageSourceDistrib(self.data_list,
                                   position_distr=self.position_distr,
                                   set_partition=set_partition,
                                   use_partition=True, offset=offset,
@@ -225,46 +226,57 @@ class ChairSourceDistrib(object):
     def flip(self):
         if self.partition_func is not None:
             set_part = lambda x: np.logical_not(self.partition_func(x))
-            new = ChairSourceDistrib(self.data_list, set_partition=set_part,
+            new = ImageSourceDistrib(self.data_list, set_partition=set_part,
                                      position_distr=self.position_distr,
                                      use_partition=True, offset=self.offset)
             new.partition = -self.partition
             new.offset = self.offset
         else:
             print('no partition to flip')
-            new = ChairSourceDistrib(self.data_list)
+            new = ImageSourceDistrib(self.data_list)
         return new        
-    
-class ChairGenerator(DataGenerator):
 
-    def __init__(self, folder, norm_params=True, img_size=(128, 128),
-                 include_position=False, position_distr=None, max_move=4,
-                 max_load=np.inf, filter_edges=None, **kwargs):
-        data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
-                                    max_load=max_load, filter_edges=filter_edges,
-                                    **kwargs)
+class ChairSourceDistrib(ImageSourceDistrib):
+
+    def __init__(self, *args, img_identifier='chair_id', **kwargs):
+        super().__init__(*args, **kwargs)
+        self.img_identifier = img_identifier
+    
+class ImageDatasetGenerator(DataGenerator):
+
+    def __init__(self, data, img_params, include_position=False,
+                 position_distr=None, max_move=4, **kwargs):
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
         self.include_position = include_position
         self.position_distr = position_distr
         self.data_table = data
-        if max_load == 1:
-            self.img_params = []
-        else:
-            self.img_params = ['rotation', 'pitch']
+        self.img_params = img_params
         self.n_img_params = len(self.img_params)
         self.img_out_label = ['images'][0]
-        self.source_distribution = ChairSourceDistrib(
+        self.source_distribution = ImageSourceDistrib(
             data[self.img_params],
             position_distr=position_distr)
         self.img_size = data[self.img_out_label][0].shape
         self.params = self.img_params
+        self.data_dict = None
         if include_position:
             self.params = self.params + ['horiz_offset', 'vert_offset']
+        else:
+            self._make_dict()
         self.output_dim = self.img_size
         self.input_dim = len(self.params)
         self.max_move = max_move
+        self.x_uniques = None
 
+    def _make_dict(self):
+        data_dict = {}
+        for i, row in self.data_table.iterrows():
+            ident = row[self.img_params]
+            img = row['images']
+            data_dict[tuple(ident)] = img
+        self.data_dict = data_dict
+        
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()
     
@@ -297,7 +309,14 @@ class ChairGenerator(DataGenerator):
         if self.include_position:
             m_meds = self.position_distr.mean
             p_meds = np.concatenate((p_meds, m_meds))
-        return p_meds        
+        return p_meds
+
+    def _get_uniques(self):
+        if self.x_uniques is None:
+            img_params = np.array(self.data_table[self.img_params])
+            self.x_uniques = list(np.unique(img_params[:, i])
+                                  for i in range(self.n_img_params))
+        return self.x_uniques
     
     def get_representation(self, x, flat=False, same_img=False, nearest=True):
         x = np.array(x)
@@ -307,32 +326,35 @@ class ChairGenerator(DataGenerator):
         img_params = np.array(self.data_table[self.img_params])
         if nearest:
             new_x = np.zeros_like(x, dtype=float)
-            x_uniques = list(np.unique(img_params[:, i])
-                             for i in range(self.n_img_params))
+            x_uniques = self._get_uniques()
             for i, xi in enumerate(x):
                 for j, xu in enumerate(x_uniques):
                     xind = np.argmin(np.abs(xu - xi[j]))
                     new_x[i, j] = xu[xind]
             new_x[:, self.n_img_params:] = x[:, self.n_img_params:]
             x = new_x
-        if same_img:
-            img_ids = self.data_table['chair_id']
+        if same_img and self.img_identifier is not None:
+            img_ids = self.data_table[self.img_identifier]
             chosen_id = np.random.choice(img_ids, 1)[0]
             id_mask = img_ids == chosen_id
+        # this is a bit slow
         for i, xi in enumerate(x):
             xi_img = xi[:self.n_img_params]
-            mask = np.product(img_params == xi_img,
-                              axis=1, dtype=bool)
-            if same_img:
-                mask = mask*id_mask
-            s = np.array(self.data_table[self.img_out_label])[mask]
-            out_ind = np.random.choice(range(s.shape[0]))
-            samp = s[out_ind]
-            if self.position_distr is not None:
-                samp = self._move_img(samp, xi[self.n_img_params:])
-            if flat:
-                samp = samp.flatten()
-            out[i] = samp
+            if self.data_dict is None:
+                mask = np.product(img_params == xi_img,
+                                  axis=1, dtype=bool)
+                if same_img and self.img_identifier is not None:
+                    mask = mask*id_mask
+                s = np.array(self.data_table[self.img_out_label])[mask]
+                out_ind = np.random.choice(range(s.shape[0]))
+                samp = s[out_ind]
+                if self.position_distr is not None:
+                    samp = self._move_img(samp, xi[self.n_img_params:])
+                if flat:
+                    samp = samp.flatten()
+                out[i] = samp
+            else:
+                out[i] = self.data_dict[tuple(xi_img)]
         return np.stack(out)
 
     def representation_dimensionality(self, source_distribution=None,
@@ -352,9 +374,47 @@ class ChairGenerator(DataGenerator):
             out = np.sum(pd)**2/np.sum(pd**2)
         else:
             out = (p.explained_variance_ratio_, p.components_)
-        return out
+        return out        
     
-    
+class ChairGenerator(ImageDatasetGenerator):
+
+    def __init__(self, folder, norm_params=True, img_size=(128, 128),
+                 include_position=False, position_distr=None, max_move=4,
+                 max_load=np.inf, filter_edges=None,
+                 param_keys=['rotation', 'pitch'], **kwargs):
+        data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
+                                    max_load=max_load, filter_edges=filter_edges,
+                                    **kwargs)
+        super().__init__(data, param_keys,
+                         include_position=include_position,
+                         position_distr=position_distr,
+                         max_move=max_move)    
+
+class TwoDShapeGenerator(ImageDatasetGenerator):
+
+    default_pks = ['shape', 'scale','orientation', 'x_pos', 'y_pos']
+    def __init__(self, folder, img_size=(64, 64), norm_params=True,
+                 max_load=np.inf, param_keys=default_pks, convert_color=False,
+                 **kwargs):
+        self.img_identifier = None
+        data = da.load_2d_shapes(folder, img_size=img_size,
+                                 convert_color=convert_color,
+                                 norm_params=norm_params,
+                                 max_load=max_load)
+        super().__init__(data, param_keys, **kwargs)
+
+class ThreeDShapeGenerator(ImageDatasetGenerator):
+
+    default_pks = ['floor_hue', 'wall_hue', 'object_hue','scale', 'shape',
+                   'orientation']
+    def __init__(self, folder, img_size=(64, 64), norm_params=True,
+                 max_load=np.inf, param_keys=default_pks, **kwargs):
+        self.img_identifier = None
+        data = da.load_3d_shapes(folder, img_size=img_size,
+                                 norm_params=norm_params,
+                                 max_load=max_load)
+        super().__init__(data, param_keys, **kwargs)
+
 class RFDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=0.001,
@@ -378,16 +438,24 @@ class RFDataGenerator(DataGenerator):
         self.compiled = True
         self.source_distribution = source_distribution
 
-    def plot_rfs(self, ax=None):
+    def plot_rfs(self, ax=None, plot_dots=False, color=None, make_scales=True, thin=1):
         if ax is None:
             f, ax = plt.subplots(1, 1)
         cps = da.get_circle_pts(100, 2)
-        for i, rfc in enumerate(self.rf_cents):
-            l = ax.plot(rfc[0], rfc[1], 'o')
+        for i, rfc in enumerate(self.rf_cents[::thin]):
             rfw = np.sqrt(self.rf_wids[i])
-            ax.plot(cps[:, 0]*rfw[0] + rfc[0],
-                    cps[:, 1]*rfw[1] + rfc[1],
-                    color=l[0].get_color())
+            l = ax.plot(cps[:, 0]*rfw[0] + rfc[0],
+                        cps[:, 1]*rfw[1] + rfc[1],
+                        color=color)
+            if plot_dots:
+                ax.plot(rfc[0], rfc[1], 'o',
+                        color=l[0].get_color())
+        if make_scales:
+            x_scale = self.source_distribution.cov[0, 0]
+            y_scale = self.source_distribution.cov[1, 1]
+            gpl.make_xaxis_scale_bar(ax, x_scale, label='dimension 1')
+            gpl.make_yaxis_scale_bar(ax, y_scale, label='dimension 2')
+            gpl.clean_plot(ax, 0)
         
     def make_generator(self, out_dim, source_distribution, noise=.01,
                        scale=1, baseline=0, width_scaling=1, input_noise_var=0):

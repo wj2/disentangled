@@ -8,6 +8,8 @@ import tensorflow as tf
 import sklearn.decomposition as skd
 import sklearn.svm as skc
 import sklearn.linear_model as sklm
+import sklearn.pipeline as sklpipe
+import sklearn.preprocessing as skp
 
 import general.utility as u
 import general.plotting as gpl
@@ -22,7 +24,8 @@ import disentangled.disentanglers as dd
 def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               test_distrib=None, test_func=None,
                               n_train_samples=5*10**3, n_test_samples=10**3,
-                              classifier=skc.SVC, kernel='linear', n_iters=10,
+                              classifier=skc.LinearSVC, kernel='linear',
+                              n_iters=2, mean=True,
                               shuffle=False, use_orthogonal=True, 
                               **classifier_params):
     if train_func is None:
@@ -48,18 +51,22 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         train_labels = train_func[i](train_samples)
         inp_reps = gen.generator(train_samples)
         train_rep = vae.get_representation(inp_reps)
-        c = classifier(kernel=kernel, **classifier_params)
-        c.fit(train_rep, train_labels)
-
+        c = classifier(max_iter=100000, **classifier_params)
+        ops = [skp.StandardScaler(), c]
+        pipe = sklpipe.make_pipeline(*ops)
+        pipe.fit(train_rep, train_labels)
         test_samples = test_distrib.rvs(n_test_samples)
         test_labels = test_func[i](test_samples)
         if shuffle:
             snp.random.shuffle(test_labels)
 
         test_rep = vae.get_representation(gen.generator(test_samples))
-        scores[i] = c.score(test_rep, test_labels)
-        chances[i] = .5 
-    return np.mean(scores), np.mean(chances)
+        scores[i] = pipe.score(test_rep, test_labels)
+        chances[i] = .5
+    if mean:
+        scores = np.mean(scores)
+        chances = np.mean(chances)
+    return scores, chances
 
 def lr_pts_dist(stim, reps, targ_dist, neighbor_rad, eps=.05, same_prob=True,
                 **kwargs):
@@ -189,8 +196,13 @@ def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size
 
 
 def evaluate_multiple_models(dg_use, models, train_func, test_distributions,
-                             train_distributions=None, **classifier_args):
-    performance = np.zeros(models.shape + (len(test_distributions),))
+                             train_distributions=None, mean=True,
+                             n_iters=2, **classifier_args):
+    if mean:
+        dim_add = (len(test_distributions),)
+    else:
+        dim_add = (len(test_distributions), n_iters)
+    performance = np.zeros(models.shape + dim_add)
     chance = np.zeros_like(performance)
     if train_distributions is None:
         train_distributions = (None,)*len(test_distributions)
@@ -202,6 +214,7 @@ def evaluate_multiple_models(dg_use, models, train_func, test_distributions,
                 out = classifier_generalization(dg_use, bvae, train_func,
                                                 test_distrib=td,
                                                 train_distrib=train_d_k,
+                                                mean=mean, n_iters=n_iters,
                                                 **classifier_args)
                 performance[i, j, k] = out[0]
                 chance[i, j, k]= out[1]
@@ -289,7 +302,7 @@ def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
 
 def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
                          source_scale_mag=.2, rep_scale_mag=10,
-                         **kwargs):
+                         titles=True, **kwargs):
     if axs is None:
         fsize = (fwid*2, fwid)
         f, axs = plt.subplots(1, 2, figsize=fsize)
@@ -301,10 +314,11 @@ def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
                      **kwargs)
     plot_diagnostics(*args, dim_red=dim_red, ax=axs[1], scale_mag=rep_scale_mag,
                      compute_pr=True, **kwargs)
-    axs[0].set_title('latent variables')
+    if titles:
+        axs[0].set_title('latent variables')
+        axs[1].set_title('representation')
     axs[0].set_xlabel('feature 1 (au)')
     axs[0].set_ylabel('feature 2 (au)')
-    axs[1].set_title('representation')
     axs[1].set_xlabel('PCA 1 (au)')
     axs[1].set_ylabel('PCA 2 (au)')
     return out
@@ -316,7 +330,7 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      fwid=2.5, set_inds=(0, 1), plot_partitions=False,
                      plot_source=False, square=True, start_vals=(0,),
                      supply_range=1, plot_3d=False, dim_red_func=None,
-                     compute_pr=False, **pca_args):
+                     compute_pr=False, ret_dim_red=False, **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
 
@@ -427,7 +441,10 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
     if compute_pr:
         out = ax, pr
     else:
-        out = ax 
+        out = ax
+    if ret_dim_red:
+        out = out, ptrs
+    
     return out
 
 def make_classifier_dimred(pcs, pvs, dg_use, model, n_train=500, 
@@ -511,7 +528,8 @@ def plot_feature_ccgp(dec_mat, ax_labels=_default_labels,
     return f, axs    
 
 def make_classifier(pc, pv, dg_use, model, n_train=500, test=False,
-                    **params):
+                    classifier_model=skc.LinearSVC, max_iter=4000,
+                    norm=True, **params):
     if pv is not None:
         td = dg_use.source_distribution.make_partition(partition_vec=pv)
         flip = True
@@ -523,7 +541,7 @@ def make_classifier(pc, pv, dg_use, model, n_train=500, test=False,
     out = _get_classifier_reps(n_train, td, pc, dg_use, model)
     train_samps, train_cats, train_imgs, train_reps = out
 
-    classer = skc.SVC(kernel='linear', **params)
+    classer = classifier_model(max_iter=max_iter, **params)
     classer.fit(train_reps, train_cats)
 
     if test:
@@ -830,7 +848,7 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
                                  plot_labels='train egs = {}', n_plots=None,
                                  ylabel='', ylim=None, num_dims=None,
                                  xlab='partitions', collapse_plots=False,
-                                 **kwargs):
+                                 set_title=True, **kwargs):
     if len(scores.shape) == 4:
         scores = np.mean(scores, axis=3)
     n_ds, n_mks, n_reps = scores.shape
@@ -845,10 +863,13 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
             kwargs['label'] = legend
         else:
             plot_ind = i
+        if not set_title and collapse_plots:
+            kwargs['label'] = ''
         plot_recon_accuracy_partition(sc, ax=axs[plot_ind], mks=xs,
                                       **kwargs)
         axs[plot_ind].set_ylabel(ylabel)
-        if n_plots is not None and len(plot_labels) > 0 and not collapse_plots:
+        if (n_plots is not None and len(plot_labels) > 0 and set_title
+            and not collapse_plots):
             axs[plot_ind].set_title(title)
         if ylim is not None:
             axs[plot_ind].set_ylim(ylim)
@@ -928,7 +949,9 @@ def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
 def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
-                               test_labels=None, feat_mask=None, **kwargs):
+                               test_labels=None, feat_mask=None,
+                               lr_type=sklm.LinearRegression,
+                               partition_vec=None, **kwargs):
     if train_stim_set is not None and test_stim_set is not None:
         enc_pts = model.get_representation(train_stim_set)
         test_enc_pts = model.get_representation(test_stim_set)
@@ -937,7 +960,8 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
     else:
         if half:
             try:
-                src = dg_use.source_distribution.make_partition()
+                src = dg_use.source_distribution.make_partition(
+                    partition_vec=partition_vec)
             except AttributeError:
                 src = da.HalfMultidimensionalNormal.partition(
                     dg_use.source_distribution)
@@ -954,12 +978,12 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
         test_enc_pts = model.get_representation(dg_use.generator(test_stim))
     if feat_mask is None:
         feat_mask = np.ones(stim.shape[1], dtype=bool)
-    lr = sklm.LinearRegression(**kwargs)
+    lr = lr_type(**kwargs)
     lr.fit(enc_pts, stim[:, feat_mask])
     score = lr.score(test_enc_pts, test_stim[:, feat_mask])
     params = lr.get_params()
     if get_parallelism:
-        lr2 = sklm.LinearRegression(**kwargs)
+        lr2 = lr_type(**kwargs)
         lr2.fit(test_enc_pts, test_stim[:, feat_mask])
         sim = u.cosine_similarity(lr.coef_, lr2.coef_)
     else:
@@ -982,7 +1006,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             layer_spec=None, model_n_epochs=60,
                             plot=True, gpu_samples=False, dg_dim=100,
                             generate_data=True, n_save_samps=10**4,
-                            model_batch_size=30):
+                            model_batch_size=30, p_mean=True):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1073,7 +1097,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                                              train_distributions=train_ds,
                                              n_iters=eval_n_iters,
                                              n_train_samples=n_train_samples,
-                                             n_test_samples=n_test_samples)
+                                             n_test_samples=n_test_samples,
+                                             mean=p_mean)
     else:
         p, c = p_c
 
@@ -1105,6 +1130,39 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
 
     return dg_use, (models, th), (p, c), lts_scores, gd
 
+def model_eval(dg_use, models, eval_n_iters=10, n_train_samples=500,
+               n_test_samples=500, mean=False):
+    try:
+        train_d2 = dg_use.source_distribution.make_partition()
+    except AttributeError:
+        train_d2 = da.HalfMultidimensionalNormal.partition(
+            dg_use.source_distribution)
+    train_ds = (None, train_d2)
+    test_ds = (None, train_d2.flip())
+    try:
+        len(models)
+    except TypeError:
+        m = np.zeros((1, 1, 1), dtype=object)
+        m[0, 0, 0] = models
+        models = m
+    p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
+                                         train_distributions=train_ds,
+                                         n_iters=eval_n_iters,
+                                         n_train_samples=n_train_samples,
+                                         n_test_samples=n_test_samples,
+                                         mean=mean)
+    lts_scores = find_linear_mappings(dg_use, models, half=True,
+                                      n_samps=n_test_samples)
+    return p, c, lts_scores
+
+def plot_sidebyside(m1, m2, m_off=.1, axs=None):
+    if axs is None:
+        f, axs = plt.subplots(1, 2)
+    c1, _, l1 = m1
+    c2, _, l2 = m2
+    gpl.violinplot(np.squeeze(c1), [0, 1], ax=axs[0])
+    gpl.violinplot(np.squeeze(c2), [m_off, 1 + m_off], ax=axs[0])
+
 def compute_distgen(l_samps, r_samps, dists, rads, n_reps=10, **kwargs):
     perf = np.zeros((len(dists), len(rads), n_reps))
     for (d_i, r_i, n_i) in u.make_array_ind_iterator(perf.shape):
@@ -1135,6 +1193,36 @@ def compute_distgen_fromrun(dists, rads, run_ind, f_pattern, n_reps=10,
             perf_all[ic] = perf
     inds = (n_trains, n_parts, np.arange(perf_all.shape[2]))
     return inds, perf_all
+
+def analyze_factor_alignment(run_ind, f_pattern, 
+                             folder='disentangled/simulation_data/partition/',
+                             reg=.5):
+    data, info = da.load_full_run(folder, run_ind, file_template=f_pattern,
+                                  analysis_only=True, skip_gd=False)
+    n_parts, _, _, _, _, _, _, _, samps = data
+    latent_samps, stim_samps, rep_samps = samps
+    perfs = np.zeros(rep_samps.shape[:3] + (latent_samps.shape[-1],))
+    angs = np.zeros_like(perfs)
+    dims = np.zeros_like(perfs)
+    comp_mat = np.identity(rep_samps.shape[-1])
+    for ind in u.make_array_ind_iterator(rep_samps.shape[:3]):
+        latents = latent_samps[:, ind[1]]
+        stims = stim_samps[:, ind[1]]
+        reps = rep_samps[ind]
+        for i in range(latent_samps.shape[-1]):
+            lr = sklm.LinearRegression()
+            lr.fit(reps, latents[:, i])
+            ind_i = ind + (i,)
+            perfs[ind_i] = lr.score(reps, reps[:, i])
+            if np.all(lr.coef_ == 0):
+                sim = np.nan
+            else:
+                lrc = u.make_unit_vector(lr.coef_)
+                sim = np.max(np.abs(u.cosine_similarity(comp_mat, lrc)))
+            angs[ind_i] = sim
+            dims[ind_i] = u.participation_ratio(reps)
+    return n_parts, perfs, angs, dims
+    
 
 def plot_distgen_index(perfs, plot_labels, x_labels, p_ind, axs=None, fwid=3,
                        ref_ind=0, ref_ax=0):
@@ -1178,7 +1266,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            folder='disentangled/simulation_data/partition/',
                            ret_info=False, collapse_plots=False,  pv_mask=None,
                            xlab='partitions', ret_fig=False, legend='',
-                           **kwargs):
+                           print_args=True, set_title=True, **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
@@ -1189,7 +1277,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     if ('l2pr_weights_mult' in info['args'][0].keys()
         and info['args'][0]['l2pr_weights'] is not None):
         n_parts = np.array(n_parts)*info['args'][0]['l2pr_weights_mult']*100
-    print(info['args'][0])
+    if print_args:
+        print(info['args'][0])
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
     if pv_mask is not None:
@@ -1197,13 +1286,13 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         p = p[pv_mask]
         sc = sc[pv_mask]
     out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),
-                                      labels=('gen classifier',
-                                              'gen regression'),
+                                      labels=('classifier\ngeneralization',
+                                              'regression\ngeneralization'),
                                       info=info, log_x=log_x,
                                       panel_vals=panel_vals, xlab=xlab,
                                       axs=axs, collapse_plots=collapse_plots,
                                       ret_fig=ret_fig, label=legend,
-                                      fwid=fwid)
+                                      fwid=fwid, set_title=set_title)
     if ret_info:
         out_all = (out, info)
     else:
@@ -1215,7 +1304,8 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 fwid=3, info=None, log_x=True, label='',
                                 panel_labels='train egs = {}',
                                 xlab='partitions', axs=None, ct=np.nanmedian,
-                                collapse_plots=False, ret_fig=False):
+                                collapse_plots=False, ret_fig=False,
+                                set_title=True):
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -1248,14 +1338,19 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
         else:
             qp = np.swapaxes(qp, x_ax, 1)
             qp = np.swapaxes(qp, panel_ax, 0)
+        if i < (len(quants_plot) - 1):
+            use_label = ''
+        else:
+            use_label = label
         axs_i = plot_recon_accuracies_ntrain(qp, central_tendency=ct,
                                              axs=axs[:, i], xs=x_vals,
                                              log_x=log_x, n_plots=panel_vals,
                                              ylabel=labels[i], ylim=ylims[i],
                                              num_dims=nd, xlab=xlab,
-                                             label=label,
+                                             label=use_label,
                                              collapse_plots=collapse_plots,
-                                             plot_labels=panel_labels)
+                                             plot_labels=panel_labels,
+                                             set_title=set_title)
     if ret_fig:
         out = f, axs
     else:
@@ -1272,7 +1367,7 @@ def _create_samps(vals, dim, others):
 
 def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
                         other_vals=None, eps_d=.1, reps=20,
-                        n_dense_pts=10, full_perturb=1):
+                        n_dense_pts=10, full_perturb=1, learn_dim=None):
     if other_vals is None:
         other_vals = list(gen.get_center())
         other_vals.pop(trav_dim)
@@ -1289,15 +1384,24 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     dense_recons = autoenc.get_reconstruction(dense_latents)
     lr = sklm.LinearRegression()
     lr.fit(dense_latents_all, dense_pts_all)
-    print(dense_latents_all.shape)
     lr_val = lr.score(dense_latents, dense_pts)
     print(lr_val)
-    dists = np.dot(dense_latents, lr.coef_)
-    ldists = np.diff(dists)
-    ptdists = np.diff(dense_pts)
-    conv = np.mean(ldists/ptdists)
     perts = np.linspace(-full_perturb, full_perturb, n_pts)
-    center_rep = dense_latents[int(n_dense_pts/2)]
+    if learn_dim is not None:
+        vals = np.unique(gen.data_table[gen.img_params[learn_dim]])
+        c_val = gen.ppf(.5, learn_dim)
+        vals = vals[vals != c_val]
+        print(vals)
+        interp_val = np.random.choice(vals, 1)
+        print(interp_val)
+        
+        ind = int(n_dense_pts/2)
+        center_x = dense_xs[ind]
+        center_x[learn_dim] = interp_val
+        center_img = gen.get_representation(center_x)
+        center_rep = autoenc.get_representation(center_img)[0]
+    else:
+        center_rep = dense_latents[int(n_dense_pts/2)]
     lr_norm = u.make_unit_vector(lr.coef_)
     dev = np.expand_dims(perts, 0)*np.expand_dims(lr_norm, 1)
     pert_reps = (np.expand_dims(center_rep, 1)
@@ -1306,12 +1410,19 @@ def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
     pert_recons = autoenc.get_reconstruction(pert_reps.T)
     return pert_recons, dense_imgs, dense_latents, dense_recons, lr
 
-def plot_img_series(imgs, fwid=4, axs=None):
+def plot_img_series(imgs, fwid=4, axs=None, lines=False, title=''):
     fwid = 4
     fsize = (fwid*imgs.shape[0], fwid)
     if axs is None: 
         f, axs = plt.subplots(1, imgs.shape[0], figsize=fsize)
+        f.suptitle(title)
+    else:
+        axs[0].set_title(title)
     for i in range(imgs.shape[0]):
         axs[i].imshow(imgs[i])
-        gpl.add_hlines(imgs.shape[1]/2, axs[i])
-        gpl.add_vlines(imgs.shape[2]/2, axs[i])
+        if lines:
+            gpl.add_hlines(imgs.shape[1]/2, axs[i])
+            gpl.add_vlines(imgs.shape[2]/2, axs[i])
+        axs[i].set_xticks([])
+        axs[i].set_yticks([])
+            
