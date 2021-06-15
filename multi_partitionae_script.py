@@ -92,6 +92,12 @@ def create_parser():
                         help='the layer sizes to use')
     parser.add_argument('--rf_width', default=4, type=float,
                         help='scaling of RFs for RF data generator')
+    parser.add_argument('--rf_input_noise', default=0, type=float,
+                        help='noise applied to latent variables before '
+                        'they are passed to the RF functions (default 0)')
+    parser.add_argument('--rf_output_noise', default=0, type=float,
+                        help='noise applied to the output of the RF '
+                        'functions (default 0)')
     parser.add_argument('--nan_salt', default=None, type=float,
                         help='probability an output is replaced with nan')
     return parser
@@ -118,7 +124,9 @@ if __name__ == '__main__':
         inp_dim = dg_use.input_dim
     elif args.use_rf_dg:
         dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True,
-                                    width_scaling=args.rf_width)
+                                    width_scaling=args.rf_width,
+                                    noise=args.rf_output_noise,
+                                    input_noise=args.rf_input_noise)
     else:
         dg_use = None
 
