@@ -23,10 +23,11 @@ colors = np.array([(127,205,187),
 
 tuple_int = lambda x: (int(x),)
 
-def plot_single_gen(results, ax, xs=None, labels=('standard', 'gen')):
+def plot_single_gen(results, ax, xs=None, color=None,
+                    labels=('standard', 'gen')):
     if xs is None:
         xs = [0, 1]
-    gpl.violinplot(results.T, xs, ax=ax)
+    gpl.violinplot(results.T, xs, ax=ax, color=(color, color))
     ax.set_xticks(xs)
     ax.set_xticklabels(labels)
     gpl.clean_plot(ax, 0)
@@ -94,7 +95,7 @@ def train_eg_fd(dg, params, offset_var=True, **kwargs):
 
 def characterize_generalization(dg, model, c_reps, train_samples=500,
                                 test_samples=500, bootstrap_regr=True,
-                                n_boots=1000, norm=True):
+                                n_boots=1000, norm=True, cut_zero=True):
     results_class = np.zeros((c_reps, 2))
     results_regr = np.zeros((c_reps, 2))
     for i in range(c_reps):
@@ -117,7 +118,9 @@ def characterize_generalization(dg, model, c_reps, train_samples=500,
             dg, model, half=False, n_samps=train_samples)[1]
         results_regr[i, 1] = dc.find_linear_mapping_single(
             dg, model, n_samps=train_samples)[1]
-    if bootstrap_regr:
+    if cut_zero:
+        results_regr[results_regr < 0] = 0
+    if False and bootstrap_regr:
         results_regr_b = np.zeros((n_boots, 2))
         results_regr_b[:, 0] = u.bootstrap_list(results_regr[:, 0],
                                                 np.mean, n=n_boots)
@@ -208,8 +211,9 @@ class Figure2(pu.Figure):
         dc.plot_diagnostics(fdg, pass_model, rs, n_arcs, plot_source=True,
                             dim_red=False,
                             scale_mag=.2, markers=False, ax=latent_ax)
-        plot_single_gen(gen_perf[0], class_ax)
-        plot_single_gen(gen_perf[1], regr_ax)
+        dg_color = self.params.getcolor('dg_color')
+        plot_single_gen(gen_perf[0], class_ax, color=dg_color)
+        plot_single_gen(gen_perf[1], regr_ax, color=dg_color)
         class_ax.set_ylabel('classifier\ngeneralization')
         regr_ax.set_ylabel('regression\ngeneralization')
         gpl.add_hlines(.5, class_ax)
@@ -282,12 +286,15 @@ class Figure2(pu.Figure):
         run_ind = self.params.get('rep_summary_run')
         f_pattern = self.params.get('f_pattern')
         path = self.params.get('mp_simulations_path')
+        part_color = self.params.getcolor('partition_color')
 
+        pv_mask = np.array([False, True, False])
         axs = np.expand_dims(axs, 0)
         dc.plot_recon_gen_summary(run_ind, f_pattern, log_x=False, 
                                   collapse_plots=True, folder=path,
                                   axs=axs, print_args=False,
-                                  set_title=False)
+                                  pv_mask=pv_mask,
+                                  set_title=False, color=part_color)
 
 class Figure3(pu.Figure):
     
@@ -348,7 +355,7 @@ class Figure3(pu.Figure):
 
     def _standard_panel(self, fdg, model, run_inds, f_pattern, folder, axs,
                         labels=None, rep_scale_mag=.2, source_scale_mag=.2,
-                        x_label=True, y_label=True, **kwargs):
+                        x_label=True, y_label=True, colors=None, **kwargs):
         model = model[0, 0]
         if labels is None:
             labels = ('',)*len(run_inds)
@@ -361,12 +368,14 @@ class Figure3(pu.Figure):
                                 rep_scale_mag=rep_scale_mag,
                                 markers=False, axs=manifold_axs,
                                 titles=False)
+        if colors is None:
+            colors = (None,)*len(run_inds)
         for i, ri in enumerate(run_inds):
             dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
                                       collapse_plots=False, folder=folder,
                                       axs=res_axs, legend=labels[i],
                                       print_args=False, set_title=False,
-                                      **kwargs)
+                                      color=colors[i], **kwargs)
 
     def panel_unbalanced_partitions(self):
         key = self.panel_keys[0]
@@ -382,12 +391,18 @@ class Figure3(pu.Figure):
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
         labels = ('balanced', 'unbalanced', 'very unbalanced')
+
+        part_color = self.params.getcolor('partition_color')
+        unbal1_color = self.params.getcolor('unbalance_color1')
+        unbal2_color = self.params.getcolor('unbalance_color2')
+        colors = (part_color, unbal1_color, unbal2_color)
+
         rep_scale_mag = 3
 
         pv_mask = np.array([False, True, False])
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
-                             rep_scale_mag=rep_scale_mag)
+                             rep_scale_mag=rep_scale_mag, colors=colors)
         for ax in axs:
             ax.set_xlabel('')
             ax.set_ylabel('')
@@ -408,12 +423,16 @@ class Figure3(pu.Figure):
         folder = self.params.get('mp_simulations_path')
         rep_scale_mag = 3
 
+        part_color = self.params.getcolor('partition_color')
+        context_color = self.params.getcolor('contextual_color')
+        colors = (part_color, context_color)
+        
         labels = ('full partitions', 'contextual partitions')
         pv_mask = np.array([False, False, False, False, True, False, False,
                             False])
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
-                             rep_scale_mag=rep_scale_mag)
+                             rep_scale_mag=rep_scale_mag, colors=colors)
         for ax in axs[:2]:
             ax.set_xlabel('')
 
@@ -433,12 +452,16 @@ class Figure3(pu.Figure):
         f_pattern = self.params.get('beta_f_pattern')
         folder = self.params.get('beta_simulations_path')
         labels = (r'$\beta$VAE',)
+
+        bvae_color = self.params.getcolor('bvae_color')
+        colors = (bvae_color,)
+        
         m[0, 0].p_vectors = []
         m[0, 0].p_offsets = []
         pv_mask = np.array([False, True, False])
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
-                             xlab=r'$\beta$')
+                             xlab=r'$\beta$', colors=colors)
         for ax in axs:
             ax.set_ylabel('')
             
@@ -510,7 +533,9 @@ class Figure4(pu.Figure):
                                               c_reps)
             self.data[key] = out
         results_class, results_regr = self.data[key]
-        plot_single_gen(results_class, dec_ax)
+
+        color = self.params.getcolor('dg_color')
+        plot_single_gen(results_class, dec_ax, color=color)
 
     def panel_disentangling_comparison(self):
         key = self.panel_keys[1]
