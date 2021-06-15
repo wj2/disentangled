@@ -8,12 +8,6 @@ import numpy as np
 import disentangled.aux as da
 import disentangled.regularizer as dr
 
-from pathint.pathint import protocols
-from pathint.pathint.optimizers import KOOptimizer
-from tensorflow.keras.optimizers import SGD, Adam, RMSprop
-from tensorflow.keras.callbacks import Callback
-from pathint.pathint.keras_utils import LossHistory
-
 
 tfk = tf.keras
 tfkl = tf.keras.layers
@@ -408,91 +402,6 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         recon = self.get_reconstruction(reps)
         return np.mean((samples - recon)**2)
 
-class SequentialDisentanglerAE(FlexibleDisentanglerAE):
-
-    def _compile(self, optimizer=None, stab_cval=.1,
-                 loss=tf.losses.MeanSquaredError(),
-                 losee_weights=None, learning_rate=1e-4,
-                 categ_loss=None,
-                 autoenc_loss=None, standard_loss=True,
-                 loss_ratio=None, xi=0.1):
-        if categ_loss is None:
-            categ_loss = tfk.losses.BinaryCrossentropy()
-        if autoenc_loss is None:
-            autoenc_loss = tfk.losses.MeanSquaredError()
-        if not standard_loss or self.contextual_partitions:
-            categ_loss = _binary_crossentropy_nan,
-
-        loss_dict = {self.branch_names[0]:categ_loss,
-                     self.branch_names[1]:autoenc_loss}
-        if loss_ratio is None:
-            loss_ratio = self.loss_ratio
-        if self.no_autoencoder:
-            loss_weights = {self.branch_names[0]:1, self.branch_names[1]:0}
-        else:
-            loss_weights = {self.branch_names[0]:1,
-                            self.branch_names[1]:loss_ratio}
-        if self.n_partitions == 0:
-            loss_dict[self.branch_names[0]] = lambda x, y: 0.
-
-        out = protocols.PATH_INT_PROTOCOL(omega_decay='sum', xi=xi)
-        protocol_name, protocol = out
-        if optimizer is None:
-            opt = tf.optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999)
-            opt_name = 'adam'
-        else:
-            opt_name = 'other'
-        oopt = KOOptimizer(opt, model=self.model, **protocol)
-        self.stabilizer_opt = oopt
-        self.model.compile(loss=loss_dict, optimizer=oopt,
-                           loss_weights=loss_weights,
-                           metrics=['accuracy'])
-        self.compiled = True
-        self.loss_history = LossHistory()
-        self.comp_callbacks = [self.loss_history]
-    
-    def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
-            data_generator=None, batch_size=32, standard_loss=False, **kwargs):
-        if standard_loss or self.contextual_partitions:
-            comp_kwargs = {'standard_loss':True}
-        else:
-            comp_kwargs = {'standard_loss':False}
-        if not self.compiled:
-            self._compile(**comp_kwargs)
-
-        train_y = self.generate_target(train_y)
-        train_y_dict = {self.branch_names[0]:train_y,
-                        self.branch_names[1]:train_x}
-
-        if eval_y is not None:
-            eval_y = self.generate_target(eval_y)
-            
-        if eval_x is not None and eval_y is not None:
-            eval_y_dict = {self.branch_names[0]:eval_y,
-                           self.branch_names[1]:eval_x}
-            eval_set = (eval_x, eval_y_dict)
-        else:
-            eval_set = None
-        n_tasks = train_y.shape[1]
-        task_inds = np.arange(n_tasks, dtype=int)
-        n_per_task = int(np.floor(train_x.shape[0]/n_tasks))
-        for i in range(n_tasks):
-            train_x_i = train_x[i*n_per_task:(i+1)*n_per_task]
-            train_y_i = train_y[i*n_per_task:(i+1)*n_per_task]
-            y_mask = task_inds != i
-            train_y_i[:, y_mask] = np.nan
-            train_yim_dict = {self.branch_names[0]:train_y_i,
-                              self.branch_names[1]:train_x_i}
-            self.stabilizer_opt.set_nb_data(train_x_i.shape[0])
-            print(train_x_i.shape, train_yim_dict)
-            out = self.model.fit(x=train_x_i, y=train_yim_dict, epochs=epochs,
-                                 validation_data=eval_set, batch_size=batch_size,
-                                 **kwargs)
-            self.stabilizer_opt.update_task_metrics(train_x_i,
-                                                    train_yim_dict,
-                                                    batch_size)
-            self.stabilizer_opt.update_task_vars()
-        return out
 
 class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 

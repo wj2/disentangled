@@ -889,7 +889,7 @@ def plot_recon_accuracy_partition(scores, mks=None, ax=None, indiv_pts=True,
         l = gpl.plot_trace_werr(mks, scores.T, ax=ax, log_x=log_x, **kwargs)
     else:
         l = ax.plot(mks, np.nanmedian(scores.T, axis=0),
-                    label=kwargs['label'])
+                    label=kwargs['label'], color=kwargs.get('color'))
         gpl.clean_plot(ax, 0)
         ax.legend(frameon=False)
     if indiv_pts:
@@ -995,7 +995,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             train_models_blind=False, inp_dim=2,
                             p_c=None, dg_kind=dg_kind_default,
                             dg_args=None, dg_kwargs=None, dg_source_var=1,
-                            dg_train_epochs=25, models_args=None,
+                            dg_train_epochs=0, models_args=None,
                             models_kwargs=None, models_log_x=True,
                             use_samples_x=True, models_n_diffs=6,
                             models_n_bounds=(2, 6.5),
@@ -1004,17 +1004,17 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             train_test_distrs=None, n_reps=5,
                             model_kinds=model_kinds_default,
                             layer_spec=None, model_n_epochs=60,
-                            plot=True, gpu_samples=False, dg_dim=100,
+                            plot=True, gpu_samples=False, dg_dim=500,
                             generate_data=True, n_save_samps=10**4,
                             model_batch_size=30, p_mean=True):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
-        layers =  (50, 100)
+        layers =  (100, 200)
         dg_args = (inp_dim, layers, out_dim)
     if dg_kwargs is None:
-        noise = .1
-        reg_weight = (0, .2)
+        noise = .2
+        reg_weight = (0, .3)
         dg_kwargs = {'noise':noise, 'l2_weight':reg_weight}
     
     if dg_use is None:
@@ -1266,7 +1266,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            folder='disentangled/simulation_data/partition/',
                            ret_info=False, collapse_plots=False,  pv_mask=None,
                            xlab='partitions', ret_fig=False, legend='',
-                           print_args=True, set_title=True, **kwargs):
+                           print_args=True, set_title=True, color=None,
+                           **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
@@ -1292,7 +1293,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       panel_vals=panel_vals, xlab=xlab,
                                       axs=axs, collapse_plots=collapse_plots,
                                       ret_fig=ret_fig, label=legend,
-                                      fwid=fwid, set_title=set_title)
+                                      fwid=fwid, set_title=set_title,
+                                      color=color)
     if ret_info:
         out_all = (out, info)
     else:
@@ -1305,7 +1307,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 panel_labels='train egs = {}',
                                 xlab='partitions', axs=None, ct=np.nanmedian,
                                 collapse_plots=False, ret_fig=False,
-                                set_title=True):
+                                set_title=True, color=None):
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -1347,7 +1349,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                              log_x=log_x, n_plots=panel_vals,
                                              ylabel=labels[i], ylim=ylims[i],
                                              num_dims=nd, xlab=xlab,
-                                             label=use_label,
+                                             label=use_label, color=color,
                                              collapse_plots=collapse_plots,
                                              plot_labels=panel_labels,
                                              set_title=set_title)
