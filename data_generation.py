@@ -4,6 +4,7 @@ import tensorflow_probability as tfp
 import numpy as np
 import scipy.stats as sts
 import sklearn.decomposition as skd
+import sklearn.kernel_approximation as skka
 import functools as ft
 import matplotlib.pyplot as plt
 
@@ -12,6 +13,7 @@ import general.utility as u
 import general.plotting as gpl
 import disentangled.aux as da
 import disentangled.regularizer as dr
+import disentangled.disentanglers as dd
 
 tfk = tf.keras
 tfkl = tf.keras.layers
@@ -144,29 +146,6 @@ class VariationalDataGenerator(DataGenerator):
 
     def get_representation(self, x):
         return self.generator(x).mean()
-
-class MultivariateUniform(object):
-
-    def __init__(self, n_dims, bounds):
-        bounds = np.array(bounds)
-        if len(bounds.shape) == 1:
-            bounds = np.expand_dims(bounds, 0)
-        if bounds.shape[0] == 1:
-            bounds = np.repeat(bounds, n_dims, axis=0)
-        if bounds.shape[0] != n_dims:
-            raise IOError('too many or too few bounds provided')
-        self.n_dims = n_dims
-        self.dim = n_dims
-        self.bounds = bounds
-        self.distr = sts.uniform(0, 1)
-        self.mags = np.expand_dims(self.bounds[:, 1] - self.bounds[:, 0], 0)
-        self.mean = np.mean(bounds, axis=1)
-
-    def rvs(self, size=None):
-        if size is None:
-            size = 1
-        samps = self.distr.rvs((size, self.n_dims))
-        return samps*self.mags + self.bounds[:, 0:1].T
 
 class ImageSourceDistrib(object):
 
@@ -419,15 +398,17 @@ class RFDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=0.001,
                  distrib_variance=1, setup_distribution=None, total_out=False,
-                 width_scaling=4, input_noise=0):
+                 width_scaling=4, input_noise=0, low_thr=None):
         if source_distribution is None:
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)
         if setup_distribution is None:
             setup_distribution = source_distribution
-
-        sd_list = [sts.norm(m, np.sqrt(setup_distribution.cov[i, i]))
-                   for i, m in enumerate(setup_distribution.mean)]
+        try:
+            sd_list = setup_distribution.get_indiv_distributions()
+        except:
+            sd_list = [sts.norm(m, np.sqrt(setup_distribution.cov[i, i]))
+                       for i, m in enumerate(setup_distribution.mean)]
         if total_out:
             out_dim = int(np.round(.5*out_dim**(1/inp_dim))*2)
         self.input_dim = inp_dim
@@ -435,10 +416,12 @@ class RFDataGenerator(DataGenerator):
                                   noise=noise, width_scaling=width_scaling)
         self.generator, self.rf_cents, self.rf_wids = out
         self.output_dim = len(self.rf_cents)
+        self.low_thr = low_thr
         self.compiled = True
         self.source_distribution = source_distribution
 
-    def plot_rfs(self, ax=None, plot_dots=False, color=None, make_scales=True, thin=1):
+    def plot_rfs(self, ax=None, plot_dots=False, color=None, make_scales=True,
+                 thin=1):
         if ax is None:
             f, ax = plt.subplots(1, 1)
         cps = da.get_circle_pts(100, 2)
@@ -480,6 +463,8 @@ class RFDataGenerator(DataGenerator):
             else:
                 out_noise = 0
             samps = rfs(x + in_noise) + out_noise
+            if self.low_thr is not None:
+                samps[samps < self.low_thr] = 0 
             return samps
         return gen, ms, ws
 
@@ -488,18 +473,57 @@ class RFDataGenerator(DataGenerator):
 
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()
+
+class KernelDataGenerator(DataGenerator):
+
+    def __init__(self, inp_dim, transform_widths, out_dim,
+                 kernel_func=skka.RBFSampler, l2_weight=(0, .1),
+                 layer=None,
+                 source_distribution=None, noise=.01, **kernel_kwargs):
+        self.kernel = kernel_func(n_components=out_dim, **kernel_kwargs)
+        self.input_dim = inp_dim
+        self.output_dim = out_dim
+        self.compiled = False
+        self.kernel_init = False
+        self.source_distribution = source_distribution
+        if layer is not None:
+            self.layer = dd.SingleLayer(out_dim, layer)
+        else:
+            self.layer = dd.IdentityModel()
+
+    def fit(self, train_x=None, train_y=None, eval_x=None, eval_y=None,
+            source_distribution=None, epochs=15, train_samples=10**5,
+            eval_samples=10**3, batch_size=32, **kwargs):
+        if source_distribution is not None:
+            train_x = source_distribution.rvs(train_samples)
+            train_y = train_x
+            self.source_distribution = source_distribution
+        self.kernel.fit(train_x)
+        self.kernel_init = True
+        
+    def _compile(self, *args, **kwargs):
+        self.compiled = True
+
+    def generator(self, x):
+        return self.layer.get_representation(self.kernel.transform(x))
+        
+    def get_representation(self, x):
+        if not self.kernel_init:
+            self.kernel.fit(x)
+            self.kernel_init = True
+        return self.generator(x)
     
 class FunctionalDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim, l2_weight=(0, .1),
-                 source_distribution=None, noise=.01):
+                 source_distribution=None, noise=.01, **kwargs):
         
         self.generator = self.make_generator(inp_dim, transform_widths,
                                              out_dim, l2_weight=l2_weight,
-                                             noise=noise)
+                                             noise=noise, **kwargs)
         self.degenerator = self.make_degenerator(inp_dim,
                                                  transform_widths[::-1],
-                                                 out_dim)
+                                                 out_dim, **kwargs)
         self.model = tfk.Model(inputs=self.generator.inputs,
                                outputs=self.degenerator(self.generator.outputs[0]))
         self.input_dim = inp_dim

@@ -74,10 +74,28 @@ def _contextual_binary_classification(x, plane=None, off=0, context=None,
         ret[mask] = np.nan
     return ret
 
+def generate_scalar(inps, p_planes):
+    projs = list(np.sum(np.expand_dims(pp, 0)*inps, axis=1)
+                 for pp in p_planes)
+    if len(projs) > 0:
+        target_scalar = np.stack(projs, axis=1)
+    else:
+        target_scalar = np.zeros((len(inps), 0))
+    return target_scalar
+
+def generate_target(inps, p_funcs):
+    cats = list(pf(inps) for pf in p_funcs)
+    if len(cats) > 0:
+        target = np.stack(cats, axis=1)
+    else:
+        target = np.zeros((len(inps), 0))
+    return target
+
 def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
                                  orth_vec=None, orth_off=None,
                                  orth_basis=False, contextual=False,
-                                 smaller=False, context_offset=False):
+                                 smaller=False, context_offset=False,
+                                 offset_var=None):
     if orth_basis:
         orth_vecs = u.generate_orthonormal_basis(dim)
         seq_inds = np.arange(n_funcs, dtype=int) % dim
@@ -88,6 +106,8 @@ def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
         direction = np.random.randn(n_funcs, dim)
         norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
         plane_vec = direction/norms
+    if offset_var is not None:
+        offset_distribution = sts.multivariate_normal(0, offset_var)
     if offset_distribution is not None:
         offsets = offset_distribution.rvs(n_funcs)
     else:
@@ -112,14 +132,53 @@ def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
                               context=plane_vec_context[i:i+1],
                               context_off=offsets_context[i])
     return funcs, plane_vec, offsets
-    
-class HalfMultidimensionalNormal(object):
 
-    def __init__(self, *args, set_partition=None, **kwargs):
+class MultivariateUniform(object):
+
+    def __init__(self, n_dims, bounds):
+        bounds = np.array(bounds)
+        if len(bounds.shape) == 1:
+            bounds = np.expand_dims(bounds, 0)
+        if bounds.shape[0] == 1:
+            bounds = np.repeat(bounds, n_dims, axis=0)
+        if bounds.shape[0] != n_dims:
+            raise IOError('too many or too few bounds provided')
+        self.n_dims = n_dims
+        self.dim = n_dims
+        self.bounds = bounds
+        self.distr = sts.uniform(0, 1)
+        self.mags = np.expand_dims(self.bounds[:, 1] - self.bounds[:, 0], 0)
+        self.mean = np.mean(bounds, axis=1)
+
+    def get_indiv_distributions(self):
+        sd_list = list(sts.uniform(b[0], self.mags[0, i])
+                       for i, b in enumerate(self.bounds))
+        return sd_list
+
+    def rvs(self, size=None):
+        if size is None:
+            size = 1
+        samps = self.distr.rvs((size, self.n_dims))
+        return samps*self.mags + self.bounds[:, 0:1].T
+
+    def make_partition(self, *args, **kwargs):
+        return HalfMultidimensionalUniform(self.dim, self.bounds, *args,
+                                           **kwargs)
+
+class HalfDistribution(object):
+    
+    def __init__(self, distr, *args, set_partition=None, partition_vec=None,
+                 **kwargs):
         self.args = args
         self.kwargs = kwargs
-        self.distr = sts.multivariate_normal(*args, **kwargs)
+        self.distr = distr(*args, **kwargs)
         self.dim = self.distr.dim
+        if partition_vec is not None:
+                self.partition = u.make_unit_vector(np.array(partition_vec))
+                self.offset = offset
+                set_partition = ft.partial(_binary_classification,
+                                           plane=self.partition,
+                                           off=self.offset)
         if set_partition is None:
             out = generate_partition_functions(len(self.distr.mean),
                                                n_funcs=1)
@@ -132,12 +191,6 @@ class HalfMultidimensionalNormal(object):
             self.offset = None
         self.partition_func = set_partition
 
-    @classmethod
-    def partition(cls, norm):
-        m = norm.mean
-        s = norm.cov
-        return cls(m, s)
-    
     def rvs(self, rvs_shape):
         rvs = self.distr.rvs(rvs_shape)
         while not np.all(self.partition_func(rvs)):
@@ -146,13 +199,41 @@ class HalfMultidimensionalNormal(object):
             rvs[mask] = sample[mask]
         return rvs
 
-    def flip(self):
+    def flip(self, cls):
         set_part = lambda x: np.logical_not(self.partition_func(x))
-        new = HalfMultidimensionalNormal(*self.args, set_partition=set_part,
-                                         **self.kwargs)
+        new = cls(*self.args, set_partition=set_part,
+                  **self.kwargs)
         new.partition = -self.partition
         new.offset = self.offset
         return new
+    
+class HalfMultidimensionalUniform(HalfDistribution):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(MultivariateUniform, *args, **kwargs)
+
+    def flip(self):
+        return super().flip(HalfMultidimensionalUniform)
+
+    @classmethod
+    def partition(cls, unif):
+        d = unif.n_dims
+        b = unif.bounds
+        return cls(d, b)
+    
+class HalfMultidimensionalNormal(HalfDistribution):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(sts.multivariate_normal, *args, **kwargs)
+
+    @classmethod
+    def partition(cls, norm):
+        m = norm.mean
+        s = norm.cov
+        return cls(m, s)
+    
+    def flip(self):
+        return super().flip(HalfMultidimensionalNormal)
 
 def save_object_arr(path, model_arr, save_method):
     path_arr = np.zeros_like(model_arr, dtype=object)

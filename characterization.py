@@ -692,7 +692,6 @@ def test_generalization(dg_use=None, models_ths=None, train_models_blind=False,
     else:
         p, c = p_c
 
-
     plot_wid = 3
     n_models = p.shape[1]
     ref_model = 0
@@ -950,7 +949,8 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
                                test_labels=None, feat_mask=None,
-                               lr_type=sklm.LinearRegression,
+                               lr_type=sklm.Ridge,
+                               correct=False,
                                partition_vec=None, **kwargs):
     if train_stim_set is not None and test_stim_set is not None:
         enc_pts = model.get_representation(train_stim_set)
@@ -989,7 +989,11 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
     else:
         lr2 = None
         sim = None
-    return (lr, lr2), score, sim
+    out = (lr, lr2), score, sim
+    if correct:
+        pred_stim = lr.predict(test_enc_pts)
+        out = out + ((test_stim[:, feat_mask], pred_stim),)
+    return out
 
 def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             train_models_blind=False, inp_dim=2,
@@ -1006,7 +1010,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             layer_spec=None, model_n_epochs=60,
                             plot=True, gpu_samples=False, dg_dim=500,
                             generate_data=True, n_save_samps=10**4,
-                            model_batch_size=30, p_mean=True):
+                            model_batch_size=30, p_mean=True,
+                            distr_type='normal'):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1020,14 +1025,23 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     if dg_use is None:
         dg_use = dg_kind(*dg_args, **dg_kwargs)
 
-        source_distr = sts.multivariate_normal(np.zeros(inp_dim), dg_source_var)
+        if distr_type == 'normal':
+            source_distr = sts.multivariate_normal(np.zeros(inp_dim),
+                                                   dg_source_var)
+        elif distr_type == 'uniform':
+            bounds = (-dg_source_var, dg_source_var)
+            source_distr = da.MultivariateUniform(inp_dim,
+                                                  bounds)
+        else:
+            raise IOError('distribution type indicated ({}) is not '
+                          'recognized'.format(distr_type))
+            
         dg_use.fit(source_distribution=source_distr, epochs=dg_train_epochs,
                    use_multiprocessing=use_mp)
     else:
         source_distr = dg_use.source_distribution
 
     # test dimensionality
-
     pdims = dg_use.representation_dimensionality()[0]
     print('participation ratio', np.sum(pdims)**2/np.sum(pdims**2))
     if plot:
@@ -1077,8 +1091,16 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         try:
             train_d2 = dg_use.source_distribution.make_partition()
         except AttributeError:
-            train_d2 = da.HalfMultidimensionalNormal.partition(
-                dg_use.source_distribution)
+            if distr_type == 'normal':
+                train_d2 = da.HalfMultidimensionalNormal.partition(
+                    dg_use.source_distribution)
+            elif distr_type == 'uniform':
+                train_d2 = da.HalfMultidimensionalUniform.partition(
+                    dg_use.source_distribution)
+            else:
+                raise IOError('distribution type indicated ({}) is not '
+                              'recognized'.format(distr_type))
+                
         train_ds = (None, train_d2)
         test_ds = (None, train_d2.flip())
     else:
@@ -1286,7 +1308,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         panel_vals = panel_vals[pv_mask]
         p = p[pv_mask]
         sc = sc[pv_mask]
-    out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=((.5, 1), (0, 1)),
+    ylims = ((.5, 1), (0, 1))
+    out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=ylims,
                                       labels=('classifier\ngeneralization',
                                               'regression\ngeneralization'),
                                       info=info, log_x=log_x,
@@ -1367,52 +1390,97 @@ def _create_samps(vals, dim, others):
         out[i, dim+1:] = others[dim:]
     return out
 
-def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
-                        other_vals=None, eps_d=.1, reps=20,
-                        n_dense_pts=10, full_perturb=1, learn_dim=None):
-    if other_vals is None:
-        other_vals = list(gen.get_center())
-        other_vals.pop(trav_dim)
-    dense_samp = np.linspace(.5 - eps_d, .5 + eps_d, n_dense_pts)
-    dense_pts = list(gen.ppf(ds, trav_dim) for ds in dense_samp)
-    dense_xs = _create_samps(dense_pts, trav_dim, other_vals)
-    dense_pts_all = dense_pts*reps
-    dense_latents_all = []
-    for i in range(reps):
-        dense_imgs = gen.get_representation(dense_xs, same_img=True)
-        dense_latents = autoenc.get_representation(dense_imgs)
-        dense_latents_all.append(dense_latents)
-    dense_latents_all = np.concatenate(dense_latents_all, axis=0)
-    dense_recons = autoenc.get_reconstruction(dense_latents)
-    lr = sklm.LinearRegression()
-    lr.fit(dense_latents_all, dense_pts_all)
-    lr_val = lr.score(dense_latents, dense_pts)
-    print(lr_val)
-    perts = np.linspace(-full_perturb, full_perturb, n_pts)
-    if learn_dim is not None:
-        vals = np.unique(gen.data_table[gen.img_params[learn_dim]])
-        c_val = gen.ppf(.5, learn_dim)
-        vals = vals[vals != c_val]
-        print(vals)
-        interp_val = np.random.choice(vals, 1)
-        print(interp_val)
-        
-        ind = int(n_dense_pts/2)
-        center_x = dense_xs[ind]
-        center_x[learn_dim] = interp_val
-        center_img = gen.get_representation(center_x)
-        center_rep = autoenc.get_representation(center_img)[0]
-    else:
-        center_rep = dense_latents[int(n_dense_pts/2)]
-    lr_norm = u.make_unit_vector(lr.coef_)
-    dev = np.expand_dims(perts, 0)*np.expand_dims(lr_norm, 1)
-    pert_reps = (np.expand_dims(center_rep, 1)
+def _gen_perturbed(autoenc, center_img, vec, full_perturb, n_perts):    
+    center_rep = autoenc.get_representation(center_img)
+    perts = np.linspace(-full_perturb, full_perturb, n_perts)
+    dev = np.expand_dims(perts, 0)*np.expand_dims(vec, 1)
+    pert_reps = (np.expand_dims(center_rep[0], 1)
                  + dev)
-    print(lr.predict(pert_reps.T))
+    # print(lr_m.predict(pert_reps.T))
     pert_recons = autoenc.get_reconstruction(pert_reps.T)
-    return pert_recons, dense_imgs, dense_latents, dense_recons, lr
+    return pert_recons
 
-def plot_img_series(imgs, fwid=4, axs=None, lines=False, title=''):
+def plot_traversal_plot(gen, autoenc, trav_dim=1, learn_dim=0, full_perturb=1,
+                        n_pts=1000, lr=sklm.Ridge, n_perts=5,
+                        leave_const=(2,),
+                        **kwargs):
+    ld = gen.img_params[learn_dim]
+    ld_u = np.unique(gen.data_table[ld])
+    np.random.shuffle(ld_u)
+    test_ld = ld_u[0]
+    train_ld = ld_u[1:]
+    train_xs, train_imgs = gen.sample_reps(sample_size=n_pts)
+    center_all = gen.get_center()
+    if leave_const is not None:
+        train_xs[:, leave_const] = center_all[leave_const]
+        train_imgs = gen.get_representation(train_xs)
+    mask = np.isin(train_xs[:, learn_dim], train_ld)
+    train_xs, train_imgs = train_xs[mask], train_imgs[mask]
+    train_reps = autoenc.get_representation(train_imgs)
+    train_recons = autoenc.get_reconstruction(train_reps)
+    lr_m = lr()
+    lr_m.fit(train_reps, train_xs[:, trav_dim])
+    lr_norm = u.make_unit_vector(lr_m.coef_)
+    center_test = gen.get_center()
+    center_test[learn_dim] = test_ld
+    center_test_img = gen.get_representation(center_test)
+    center_in = gen.get_center()
+    center_in[learn_dim] = train_ld[0]
+    center_in_img = gen.get_representation(center_in)
+
+    pert_recons = _gen_perturbed(autoenc, center_test_img, lr_norm,
+                                 full_perturb, n_perts)
+    pert_recons_in = _gen_perturbed(autoenc, center_in_img, lr_norm,
+                                    full_perturb, n_perts)
+    
+    return pert_recons, train_imgs, train_reps, pert_recons_in, lr_m
+    
+
+# def plot_traversal_plot(gen, autoenc, trav_dim=0, axs=None, n_pts=5,
+#                         other_vals=None, eps_d=.1, reps=20,
+#                         n_dense_pts=10, full_perturb=1, learn_dim=None):
+#     if other_vals is None:
+#         other_vals = list(gen.get_center())
+#         other_vals.pop(trav_dim)
+#     dense_samp = np.linspace(.5 - eps_d, .5 + eps_d, n_dense_pts)
+#     dense_pts = list(gen.ppf(ds, trav_dim) for ds in dense_samp)
+#     dense_xs = _create_samps(dense_pts, trav_dim, other_vals)
+#     print(dense_xs)
+#     dense_pts_all = dense_pts*reps
+#     dense_latents_all = []
+#     for i in range(reps):
+#         dense_imgs = gen.get_representation(dense_xs, same_img=True)
+#         dense_latents = autoenc.get_representation(dense_imgs)
+#         dense_latents_all.append(dense_latents)
+#     dense_latents_all = np.concatenate(dense_latents_all, axis=0)
+#     dense_recons = autoenc.get_reconstruction(dense_latents)
+#     lr = sklm.Ridge()
+#     lr.fit(dense_latents_all, dense_pts_all)
+#     lr_val = lr.score(dense_latents, dense_pts)
+#     perts = np.linspace(-full_perturb, full_perturb, n_pts)
+#     if learn_dim is not None:
+#         vals = np.unique(gen.data_table[gen.img_params[learn_dim]])
+#         c_val = gen.ppf(.5, learn_dim)
+#         vals = vals[vals != c_val]
+#         interp_val = np.random.choice(vals, 1)
+        
+#         ind = int(n_dense_pts/2)
+#         center_x = dense_xs[ind]
+#         center_x[learn_dim] = interp_val
+#         center_img = gen.get_representation(center_x)
+#         center_rep = autoenc.get_representation(center_img)[0]
+#     else:
+#         center_rep = dense_latents[int(n_dense_pts/2)]
+#     lr_norm = u.make_unit_vector(lr.coef_)
+#     dev = np.expand_dims(perts, 0)*np.expand_dims(lr_norm, 1)
+#     pert_reps = (np.expand_dims(center_rep, 1)
+#                  + dev)
+#     print(lr.predict(pert_reps.T))
+#     pert_recons = autoenc.get_reconstruction(pert_reps.T)
+#     return pert_recons, dense_imgs, dense_latents, dense_recons, lr
+
+def plot_img_series(imgs, fwid=4, axs=None, lines=False, title='',
+                    **kwargs):
     fwid = 4
     fsize = (fwid*imgs.shape[0], fwid)
     if axs is None: 
@@ -1421,7 +1489,7 @@ def plot_img_series(imgs, fwid=4, axs=None, lines=False, title=''):
     else:
         axs[0].set_title(title)
     for i in range(imgs.shape[0]):
-        axs[i].imshow(imgs[i])
+        axs[i].imshow(imgs[i], **kwargs)
         if lines:
             gpl.add_hlines(imgs.shape[1]/2, axs[i])
             gpl.add_vlines(imgs.shape[2]/2, axs[i])

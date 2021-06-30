@@ -100,8 +100,10 @@ def create_parser():
                         'functions (default 0)')
     parser.add_argument('--nan_salt', default=None, type=float,
                         help='probability an output is replaced with nan')
-    parser.add_argument('--train_dg', default=False, type=bool,	action='store_true',
+    parser.add_argument('--train_dg', default=False, action='store_true',
                         help='train data generator')
+    parser.add_argument('--source_distr', default='normal', type=str,
+                        help='distribution to sample from (normal or uniform)')
     return parser
 
 if __name__ == '__main__':
@@ -114,22 +116,28 @@ if __name__ == '__main__':
     if args.test:
         n_reps = 1
         n_train_diffs = 1
-        dg_train_epochs = 10
+        dg_train_epochs = 1
+        args.model_epochs = 1
     else:
         n_reps = args.n_reps
         n_train_diffs = args.n_train_diffs
         dg_train_epochs = 25
     if not args.train_dg:
-	dg_train_epochs = 0
+        dg_train_epochs = 0
     save_tf_models = not args.no_models
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
     elif args.use_rf_dg:
+        if args.source_distr == 'uniform':
+            sd = da.MultivariateUniform(true_inp_dim, (-1, 1))
+        else:
+            sd = None
         dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True,
                                     width_scaling=args.rf_width,
                                     noise=args.rf_output_noise,
-                                    input_noise=args.rf_input_noise)
+                                    input_noise=args.rf_input_noise,
+                                    source_distribution=sd)
     else:
         dg_use = None
 
@@ -188,7 +196,8 @@ if __name__ == '__main__':
                                      model_batch_size=args.batch_size,
                                      model_n_epochs=args.model_epochs,
                                      layer_spec=layer_spec,
-                                     generate_data=not args.no_data)
+                                     generate_data=not args.no_data,
+                                     distr_type=args.source_distr)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
