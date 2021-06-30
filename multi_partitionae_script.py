@@ -100,6 +100,8 @@ def create_parser():
                         'functions (default 0)')
     parser.add_argument('--nan_salt', default=None, type=float,
                         help='probability an output is replaced with nan')
+    parser.add_argument('--train_dg', default=False, action='store_true',
+                        help='train data generator')
     return parser
 
 if __name__ == '__main__':
@@ -118,6 +120,8 @@ if __name__ == '__main__':
         n_train_diffs = args.n_train_diffs
         dg_train_epochs = 25
 
+    if not args.train_dg:
+        dg_train_epochs = 0
     save_tf_models = not args.no_models
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
