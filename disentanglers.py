@@ -372,9 +372,20 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             self._compile(**comp_kwargs)
 
         train_y = self.generate_target(train_y)
-        if nan_salt is not None:
+        print('oo')
+        print(nan_salt)
+        if nan_salt is not None and nan_salt != 'single':
             mask = np.random.random_sample(train_y.shape) < nan_salt
             train_y[mask] = np.nan
+        elif nan_salt == 'single':
+            mask = np.ones_like(train_y, dtype=bool)
+            inds = np.random.choice(train_y.shape[1], train_y.shape[0])
+            full_inds = list(zip(range(train_y.shape[0]), inds))
+            for ind in full_inds:
+                mask[ind] = False
+            print(mask)
+            train_y[mask] = np.nan
+        print(train_y)
         train_y_dict = {self.branch_names[0]:train_y,
                         self.branch_names[1]:train_x}
 
