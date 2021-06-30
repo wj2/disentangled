@@ -1015,7 +1015,10 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
-        layers =  (100, 200)
+        if dg_train_epochs == 0:
+            layers = (100, 200, 300, 100)
+        else:
+            layers =  (100, 200)
         dg_args = (inp_dim, layers, out_dim)
     if dg_kwargs is None:
         noise = .2
