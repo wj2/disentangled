@@ -104,6 +104,10 @@ def create_parser():
                         help='train data generator')
     parser.add_argument('--source_distr', default='normal', type=str,
                         help='distribution to sample from (normal or uniform)')
+    parser.add_argument('--use_rbf_dg', default=False, action='store_true',
+                        help='use radial basis function data generator')
+    parser.add_argument('--use_periodic_dg', default=False, action='store_true',
+                        help='use shift map data generator')
     return parser
 
 if __name__ == '__main__':
@@ -126,19 +130,25 @@ if __name__ == '__main__':
         dg_train_epochs = 0
 
     save_tf_models = not args.no_models
+    if args.source_distr == 'uniform':
+        sd = da.MultivariateUniform(true_inp_dim, (-1, 1))
+    else:
+        sd = None
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
     elif args.use_rf_dg:
-        if args.source_distr == 'uniform':
-            sd = da.MultivariateUniform(true_inp_dim, (-1, 1))
-        else:
-            sd = None
         dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True,
                                     width_scaling=args.rf_width,
                                     noise=args.rf_output_noise,
                                     input_noise=args.rf_input_noise,
                                     source_distribution=sd)
+    elif args.use_rbf_dg:
+        dg_use = dg.KernelDataGenerator(true_inp_dim, None, args.dg_dim,
+                                        source_distribution=sd)
+    elif args.use_periodic_dg:
+        dg_use = dg.ShiftMapDataGenerator(true_inp_dim, None, args.dg_dim,
+                                          source_distribution=sd)
     else:
         dg_use = None
 

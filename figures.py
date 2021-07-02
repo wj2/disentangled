@@ -39,12 +39,16 @@ def plot_single_gen(results, ax, xs=None, color=None,
     return ax
 
 def plot_multi_gen(res_list, ax, xs=None, labels=('standard', 'gen'),
-                   sep=.2):
+                   sep=.2, colors=None):
     if xs is None:
         xs = np.array([0, 1])
-    start_xs = xs - len(res_list)/4
+    if colors is None:
+        colors = (None,)*len(res_list)
+    start_xs = xs - len(res_list)*sep/4
+
     for i, rs in enumerate(res_list):
-        plot_single_gen(rs, ax, xs=start_xs + i*sep)
+        plot_single_gen(rs, ax, xs=start_xs + i*sep, color=colors[i])
+        print(start_xs + i*sep)
     ax.set_xticks(xs)
     ax.set_xticklabels(labels)
     gpl.clean_plot(ax, 0)
@@ -101,7 +105,8 @@ def train_eg_fd(dg, params, offset_var=True, **kwargs):
 
 def characterize_generalization(dg, model, c_reps, train_samples=500,
                                 test_samples=500, bootstrap_regr=True,
-                                n_boots=1000, norm=True, cut_zero=True):
+                                n_boots=1000, norm=True, cut_zero=True,
+                                repl_mean=None):
     results_class = np.zeros((c_reps, 2))
     results_regr = np.zeros((c_reps, 2))
     for i in range(c_reps):
@@ -115,15 +120,17 @@ def characterize_generalization(dg, model, c_reps, train_samples=500,
         results_class[i, 0] = dc.classifier_generalization(
             dg, model, n_train_samples=train_samples,
             n_test_samples=test_samples,
-            n_iters=1)[0]
+            n_iters=1, repl_mean=repl_mean)[0]
         results_class[i, 1] = dc.classifier_generalization(
             dg, model, train_distrib=train_distr,
             test_distrib=test_distr, n_train_samples=train_samples,
-            n_test_samples=test_samples, n_iters=1)[0]
+            n_test_samples=test_samples, n_iters=1, repl_mean=repl_mean)[0]
         results_regr[i, 0] = dc.find_linear_mapping_single(
-            dg, model, half=False, n_samps=train_samples)[1]
+            dg, model, half=False, n_samps=train_samples,
+            repl_mean=repl_mean)[1]
         results_regr[i, 1] = dc.find_linear_mapping_single(
-            dg, model, n_samps=train_samples)[1]
+            dg, model, n_samps=train_samples,
+            repl_mean=repl_mean)[1]
     if cut_zero:
         results_regr[results_regr < 0] = 0
     if False and bootstrap_regr:
@@ -774,7 +781,7 @@ class Figure5(DisentangledFigure):
             img_size = self.params.getlist('img_size', typefunc=int)
             shape_dg = dg.TwoDShapeGenerator(twod_file, img_size=img_size,
                                              max_load=np.inf,
-                                             convert_color=False)  
+                                             convert_color=False)
             self.shape_dg = shape_dg 
         return shape_dg
         
@@ -793,7 +800,7 @@ class Figure5(DisentangledFigure):
                                                 rep_geom_class_perf,
                                                 rep_geom_regr_perf))
 
-        recon_grids = pu.make_mxn_gridspec(self.gs, 5, 7, 0, 100,
+        recon_grids = pu.make_mxn_gridspec(self.gs, 5, 6, 0, 100,
                                            45, 100, 3, 1)        
         gss[self.panel_keys[2]] = self.get_axs(recon_grids)
         
@@ -838,11 +845,18 @@ class Figure5(DisentangledFigure):
             fd_red_func, bvae_red_func = None, None
             
             c_reps = self.params.getint('dg_classifier_reps')
+            ident_model = dd.IdentityModel(flatten=True)
+            repl_mean = (2,)
+            res_ident = characterize_generalization(shape_dg, ident_model,
+                                                    c_reps, norm=False,
+                                                    repl_mean=repl_mean)
             res_fd = characterize_generalization(shape_dg, m_fd,
-                                                 c_reps, norm=False)
+                                                 c_reps, norm=False,
+                                                 repl_mean=repl_mean)
             res_bvae = characterize_generalization(shape_dg, m_bvae,
-                                                   c_reps, norm=False)
-            self.data[key]['gen'] = (res_fd, res_bvae)
+                                                   c_reps, norm=False,
+                                                   repl_mean=repl_mean)
+            self.data[key]['gen'] = (res_ident, res_fd, res_bvae)
 
         if 'dr' in self.data[key].keys():
             fd_red_func, bvae_red_func = self.data[key]['dr']
@@ -857,14 +871,31 @@ class Figure5(DisentangledFigure):
                                     ret_dim_red=True)
         if 'dr' not in self.data[key].keys():
             self.data[key]['dr'] = (out_f[1], out_b[1])
-        res_fd, res_bvae = self.data[key]['gen']
-        plot_multi_gen((res_fd[0], res_bvae[0]), class_ax)
+        res_ident, res_fd, res_bvae = self.data[key]['gen']
+        dg_col = self.params.getcolor('dg_color')
+        bvae_col = self.params.getcolor('bvae_color')
+        fd_col = self.params.getcolor('partition_color')
+        colors = (dg_col, fd_col, bvae_col)
+        
+        plot_multi_gen((res_ident[0], res_fd[0], res_bvae[0]), class_ax,
+                       colors=colors)
         gpl.add_hlines(.5, class_ax)
         class_ax.set_ylim([.5, 1])
-        plot_multi_gen((res_fd[1], res_bvae[1]), regr_ax)
+        plot_multi_gen((res_ident[1], res_fd[1], res_bvae[1]), regr_ax,
+                       colors=colors)
         gpl.add_hlines(0, regr_ax)
         regr_ax.set_ylim([0, 1])
 
+    def _get_img_traversal(self, dg, dim, n):
+        cent = dg.get_center()
+        unique_inds = np.unique(dg.data_table[dg.img_params[dim]])
+        cent_ind = int(np.floor(len(unique_inds)/2))
+        x = np.zeros((n, len(cent)))
+        off_ind = int(np.floor(n/2))
+        x[:, dim] = unique_inds[cent_ind - off_ind:cent_ind + off_ind]
+        imgs = dg.get_representation(x)
+        return imgs
+        
     def panel_traversal_comparison(self):
         key = self.panel_keys[2]
         axs = self.gss[key]
@@ -885,8 +916,10 @@ class Figure5(DisentangledFigure):
                                      trav_dim=traverse_dim, n_pts=n_pts,
                                      eps_d=eps_d, learn_dim=learn_dim,
                                      n_dense_pts=n_pts, n_perts=n_perts)
-        recs, di, dl, dr, lr = out
-        # dc.plot_img_series(di, title='', axs=axs[0], cmap=cm)
+        recs, _, dl, dr, lr = out
+
+        di = self._get_img_traversal(shape_dg, traverse_dim, len(axs[0]))
+        dc.plot_img_series(di, title='', axs=axs[0], cmap=cm)
         dc.plot_img_series(dr, title='', axs=axs[1], cmap=cm)
         dc.plot_img_series(recs, title='', axs=axs[2], cmap=cm)
 

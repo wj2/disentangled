@@ -27,7 +27,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               classifier=skc.LinearSVC, kernel='linear',
                               n_iters=2, mean=True,
                               shuffle=False, use_orthogonal=True, 
-                              **classifier_params):
+                              repl_mean=None, **classifier_params):
     if train_func is None:
         if use_orthogonal and hasattr(train_distrib, 'partition'):
             orth_vec = train_distrib.partition
@@ -48,6 +48,8 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
     chances = np.zeros(n_iters)
     for i in range(n_iters):
         train_samples = train_distrib.rvs(n_train_samples)
+        if repl_mean:
+            train_samples[:, repl_mean] = train_distrib.mean[repl_mean]
         train_labels = train_func[i](train_samples)
         inp_reps = gen.generator(train_samples)
         train_rep = vae.get_representation(inp_reps)
@@ -56,6 +58,8 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         pipe = sklpipe.make_pipeline(*ops)
         pipe.fit(train_rep, train_labels)
         test_samples = test_distrib.rvs(n_test_samples)
+        if repl_mean:
+            test_samples[:, repl_mean] = test_distrib.mean[repl_mean]
         test_labels = test_func[i](test_samples)
         if shuffle:
             snp.random.shuffle(test_labels)
@@ -950,7 +954,7 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                train_labels=None, test_stim_set=None,
                                test_labels=None, feat_mask=None,
                                lr_type=sklm.Ridge,
-                               correct=False,
+                               correct=False, repl_mean=None,
                                partition_vec=None, **kwargs):
     if train_stim_set is not None and test_stim_set is not None:
         enc_pts = model.get_representation(train_stim_set)
@@ -966,8 +970,12 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                 src = da.HalfMultidimensionalNormal.partition(
                     dg_use.source_distribution)
             stim = src.rvs(n_samps)
+            if repl_mean is not None:
+                stim[:, repl_mean] = src.mean[repl_mean]
         else:
             stim = dg_use.source_distribution.rvs(n_samps)
+            if repl_mean is not None:
+                stim[:, repl_mean] = dg_use.source_distribution.mean[repl_mean]
 
         enc_pts = model.get_representation(dg_use.generator(stim))
         if half:

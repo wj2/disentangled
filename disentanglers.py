@@ -221,11 +221,14 @@ def _binary_crossentropy_nan(label, prediction):
 
 class IdentityModel(da.TFModel):
 
-    def __init__(self):
+    def __init__(self, flatten=False):
         self.p_vectors = []
         self.p_offsets = []
+        self.flatten = flatten
         
     def get_representation(self, x):
+        if self.flatten:
+            x = np.reshape(x, (x.shape[0], -1))
         return x
 
 class SingleLayer(da.TFModel):

@@ -64,12 +64,15 @@ class DataGenerator(da.TFModel):
             out = (p.explained_variance_ratio_, p.components_)
         return out
 
-    def sample_reps(self, source_distribution=None, sample_size=10**4):
+    def sample_reps(self, sample_size=10**4, source_distribution=None,
+                    repl_mean=None):
         if source_distribution is None and self.source_distribution is not None:
             source_distribution = self.source_distribution
         elif source_distribution is None:
             raise Exception('no source distribution provided')
         inp_samps = source_distribution.rvs(sample_size)
+        if repl_mean is not None:
+            inp_samps[:, repl_mean] = source_distribution.mean[repl_mean]
         rep_samps = self.get_representation(inp_samps)
         return inp_samps, rep_samps
     
@@ -175,6 +178,12 @@ class ImageSourceDistrib(object):
                 self.offset = None
             self.partition_func = set_partition
 
+    @property
+    def mean(self):
+        p_meds = np.percentile(self.data_list, 50, axis=0,
+                               interpolation='nearest')
+        return p_meds
+            
     def rvs(self, rvs_shape):
         rvs = self._candidate_rvs(rvs_shape)
         while (self.partition_func is not None
@@ -478,13 +487,16 @@ class KernelDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim,
                  kernel_func=skka.RBFSampler, l2_weight=(0, .1),
-                 layer=None,
+                 layer=None, distrib_variance=1,
                  source_distribution=None, noise=.01, **kernel_kwargs):
         self.kernel = kernel_func(n_components=out_dim, **kernel_kwargs)
         self.input_dim = inp_dim
         self.output_dim = out_dim
         self.compiled = False
         self.kernel_init = False
+        if source_distribution is None:
+            source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
+                                                          distrib_variance)
         self.source_distribution = source_distribution
         if layer is not None:
             self.layer = dd.SingleLayer(out_dim, layer)
@@ -505,6 +517,9 @@ class KernelDataGenerator(DataGenerator):
         self.compiled = True
 
     def generator(self, x):
+        if not self.kernel_init:
+            self.kernel.fit(x)
+            self.kernel_init = True
         return self.layer.get_representation(self.kernel.transform(x))
         
     def get_representation(self, x):
@@ -512,7 +527,35 @@ class KernelDataGenerator(DataGenerator):
             self.kernel.fit(x)
             self.kernel_init = True
         return self.generator(x)
-    
+
+class ShiftMapDataGenerator(DataGenerator):
+
+    def __init__(self, inp_dim, transform_widths, out_dim,
+                 shift_base=2, layer=None, distrib_support=(-.5, .5),
+                 source_distribution=None):
+        if source_distribution is None:
+            source_distribution = da.MultivariateUniform(inp_dim,
+                                                         distrib_support)
+        self.source_distribution = source_distribution
+        units_per_dim = int(np.floor(out_dim/inp_dim))
+        shift_map = np.ones((units_per_dim, inp_dim))
+        for i in range(units_per_dim):
+            shift_map[i] = shift_base**(i + 1)
+        self.shift_map = shift_map
+        self.input_dim = inp_dim
+        self.output_dim = units_per_dim*inp_dim
+
+    def generator(self, x):
+        x_exp = np.expand_dims(x, 1)
+        x_lin = self.shift_map*x_exp
+        x_code = x_lin - np.round(x_lin)
+        
+        x_out = np.reshape(x_code, (x_code.shape[0], -1))
+        return x_out
+
+    def get_representation(self, x):
+        return self.generator(x)
+        
 class FunctionalDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim, l2_weight=(0, .1),
