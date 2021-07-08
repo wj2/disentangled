@@ -133,7 +133,7 @@ def explore_autodisentangling(dims, inp_dim, layers, latent, n_samps=10000,
     class_m, regr_m = characterize_generalization(rbf_dg, fdae, n_class)
     return class_m, regr_m    
 
-def characterize_generalization(dg, model, c_reps, train_samples=500,
+def characterize_generalization(dg, model, c_reps, train_samples=1000,
                                 test_samples=500, bootstrap_regr=True,
                                 n_boots=1000, norm=True, cut_zero=True,
                                 repl_mean=None):

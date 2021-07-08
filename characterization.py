@@ -47,7 +47,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
     chances = np.zeros(n_iters)
     for i in range(n_iters):
         train_samples = train_distrib.rvs(n_train_samples)
-        if repl_mean:
+        if repl_mean is not None:
             train_samples[:, repl_mean] = train_distrib.mean[repl_mean]
         train_labels = train_func[i](train_samples)
         inp_reps = gen.generator(train_samples)
@@ -57,7 +57,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         pipe = sklpipe.make_pipeline(*ops)
         pipe.fit(train_rep, train_labels)
         test_samples = test_distrib.rvs(n_test_samples)
-        if repl_mean:
+        if repl_mean is not None:
             test_samples[:, repl_mean] = test_distrib.mean[repl_mean]
         test_labels = test_func[i](test_samples)
         if shuffle:
