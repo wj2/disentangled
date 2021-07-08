@@ -19,7 +19,6 @@ import matplotlib.patches as mpatches
 import disentangled.aux as da
 import disentangled.data_generation as dg
 import disentangled.disentanglers as dd
-
     
 def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               test_distrib=None, test_func=None,
@@ -306,7 +305,8 @@ def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
 
 def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
                          source_scale_mag=.2, rep_scale_mag=10,
-                         titles=True, **kwargs):
+                         titles=True, plot_source_3d=False, plot_model_3d=False,
+                         **kwargs):
     if axs is None:
         fsize = (fwid*2, fwid)
         f, axs = plt.subplots(1, 2, figsize=fsize)
@@ -315,9 +315,9 @@ def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
         out = axs
     plot_diagnostics(*args, plot_partitions=True, plot_source=True,
                      dim_red=False, ax=axs[0], scale_mag=source_scale_mag,
-                     **kwargs)
+                     plot_3d=plot_source_3d, **kwargs)
     plot_diagnostics(*args, dim_red=dim_red, ax=axs[1], scale_mag=rep_scale_mag,
-                     compute_pr=True, **kwargs)
+                     compute_pr=True, plot_3d=plot_model_3d, **kwargs)
     if titles:
         axs[0].set_title('latent variables')
         axs[1].set_title('representation')
@@ -334,10 +334,10 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      fwid=2.5, set_inds=(0, 1), plot_partitions=False,
                      plot_source=False, square=True, start_vals=(0,),
                      supply_range=1, plot_3d=False, dim_red_func=None,
-                     compute_pr=False, ret_dim_red=False, **pca_args):
+                     compute_pr=False, ret_dim_red=False, buff=1, **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
-
+        
     pts = np.zeros((n, dg_use.input_dim))
     if len(start_vals) == 1:
         start_vals = start_vals*dg_use.input_dim
@@ -438,7 +438,14 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
             ax.plot(xs + v_o[0], ys + v_o[1], color='r')
 
     gpl.clean_plot(ax, 0)
-    if not plot_3d:
+    if plot_3d:
+        cent = (np.min(to_plot[0]) - buff, np.min(to_plot[1]) - buff,
+                np.min(to_plot[2]) - buff)
+        var = np.max([np.std(to_plot[0]), np.std(to_plot[1]),
+                     np.std(to_plot[2])])
+        gpl.make_3d_bars(ax, center=cent, bar_len=var)
+        # gpl.clean_3d_plot(ax)
+    else:
         ax.set_aspect('equal')
         gpl.make_xaxis_scale_bar(ax, scale_mag)
         gpl.make_yaxis_scale_bar(ax, scale_mag)

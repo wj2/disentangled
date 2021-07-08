@@ -487,7 +487,7 @@ class KernelDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim,
                  kernel_func=skka.RBFSampler, l2_weight=(0, .1),
-                 layer=None, distrib_variance=1,
+                 layer=None, distrib_variance=1, low_thr=None,
                  source_distribution=None, noise=.01, **kernel_kwargs):
         self.kernel = kernel_func(n_components=out_dim, **kernel_kwargs)
         self.input_dim = inp_dim
@@ -502,6 +502,7 @@ class KernelDataGenerator(DataGenerator):
             self.layer = dd.SingleLayer(out_dim, layer)
         else:
             self.layer = dd.IdentityModel()
+        self.low_thr = low_thr
 
     def fit(self, train_x=None, train_y=None, eval_x=None, eval_y=None,
             source_distribution=None, epochs=15, train_samples=10**5,
@@ -520,7 +521,10 @@ class KernelDataGenerator(DataGenerator):
         if not self.kernel_init:
             self.kernel.fit(x)
             self.kernel_init = True
-        return self.layer.get_representation(self.kernel.transform(x))
+        out = self.layer.get_representation(self.kernel.transform(x))
+        if self.low_thr is not None:
+            out[out < self.low_thr] = 0
+        return out
         
     def get_representation(self, x):
         if not self.kernel_init:

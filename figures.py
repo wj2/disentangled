@@ -103,6 +103,36 @@ def train_eg_fd(dg, params, offset_var=True, **kwargs):
                                    hide_print=hide_print)
     return out
 
+def explore_autodisentangling_layers(latents, layers, inp_dim, dims, **kwargs):
+    out_dict = {}
+    for i in range(len(layers) + 1):
+        layers_i = layers[:i]
+        out = explore_autodisentangling_latents(latents, dims, inp_dim,
+                                                layers_i, **kwargs)
+        out_dict[layers_i] = out
+    return out_dict
+
+def explore_autodisentangling_latents(latents, *args, n_class=10, **kwargs):
+    classes = np.zeros((len(latents), n_class, 2))
+    regrs = np.zeros_like(classes)
+    for i, latent in enumerate(latents):
+        full_args = args + (latent,)
+        out = explore_autodisentangling(*full_args, n_class=n_class, **kwargs)
+        classes[i], regrs[i] = out
+    return classes, regrs
+
+def explore_autodisentangling(dims, inp_dim, layers, latent, n_samps=10000,
+                              epochs=200, n_class=10):
+    rbf_dg = dg.KernelDataGenerator(dims, None, inp_dim)
+    fdae = dd.FlexibleDisentanglerAE(inp_dim, layers, latent, n_partitions=0)
+    y, x = rbf_dg.sample_reps(n_samps)
+    fdae.fit(x, y, epochs=epochs, verbose=False)
+    class_p, regr_p = characterize_generalization(rbf_dg,
+                                                  dd.IdentityModel(),
+                                                  n_class)
+    class_m, regr_m = characterize_generalization(rbf_dg, fdae, n_class)
+    return class_m, regr_m    
+
 def characterize_generalization(dg, model, c_reps, train_samples=500,
                                 test_samples=500, bootstrap_regr=True,
                                 n_boots=1000, norm=True, cut_zero=True,
@@ -299,8 +329,10 @@ class Figure2(DisentangledFigure):
         rep_grids = pu.make_mxn_gridspec(self.gs, n_parts, 2,
                                          0, 65, 60, 100,
                                          5, 8)
+        plot_3d_axs = np.zeros((n_parts, 2), dtype=bool)
+        plot_3d_axs[:, 1] = True
         rep_axs = self.get_axs(rep_grids, sharex='vertical',
-                               sharey='vertical')
+                               sharey='vertical', plot_3ds=plot_3d_axs)
         gss[self.panel_keys[1]] = train_ax, rep_axs
         
         rep_classifier_grid = self.gs[75:, 60:75]
@@ -428,7 +460,7 @@ class Figure2(DisentangledFigure):
                                                     num_p))
             dc.plot_source_manifold(fdg, models[0, i, 0], rs, n_arcs, 
                                     source_scale_mag=.2,
-                                    rep_scale_mag=5,
+                                    rep_scale_mag=5, plot_model_3d=True,
                                     markers=False, axs=rep_axs[i],
                                     titles=False)
             if mid_i != i:
@@ -645,13 +677,13 @@ class Figure4(DisentangledFigure):
         
         params = cf[fig_key]
         self.panel_keys = ('rf_input', 'disentangling_comparison')
-        super().__init__(fsize, params, colors=colors, **kwargs)        
+        super().__init__(fsize, params, colors=colors, **kwargs)
+        self.rfdg = self.data.get('rfdg')
 
-    def make_rfdg(self, retrain=False):
-        try:
-            assert not retrain
+    def make_rfdg(self, retrain=False, kernel=False):
+        if self.rfdg is not None and not retrain:
             rfdg = self.rfdg
-        except:
+        else:
             inp_dim = self.params.getint('inp_dim')
             dg_dim = self.params.getint('dg_dim')
             in_noise = self.params.getfloat('in_noise')
@@ -661,12 +693,17 @@ class Figure4(DisentangledFigure):
             
             source_distr = sts.multivariate_normal(np.zeros(inp_dim),
                                                    dg_source_var)
-            rfdg = dg.RFDataGenerator(inp_dim, dg_dim, total_out=True, 
-                                      input_noise=in_noise, noise=out_noise,
-                                      width_scaling=width_scaling,
-                                      source_distribution=source_distr,
-                                      low_thr=.01)
-            self.rfdg = rfdg 
+            if not kernel:
+                rfdg = dg.RFDataGenerator(inp_dim, dg_dim, total_out=True, 
+                                          input_noise=in_noise, noise=out_noise,
+                                          width_scaling=width_scaling,
+                                          source_distribution=source_distr,
+                                          low_thr=.01)
+            else:
+                rfdg = dg.KernelDataGenerator(inp_dim, None, dg_dim,
+                                              low_thr=.01)
+            self.rfdg = rfdg
+        self.data['rfdg'] = rfdg
         return rfdg
         
     def make_gss(self):
@@ -687,13 +724,14 @@ class Figure4(DisentangledFigure):
         
         self.gss = gss
 
-    def panel_rf_input(self):
+    def panel_rf_input(self, kernel=False):
         key = self.panel_keys[0]
         schem_ax, proj_ax, dec_c_ax, dec_r_ax = self.gss[key]
-        rfdg = self.make_rfdg()
+        rfdg = self.make_rfdg(kernel=kernel)
 
         rf_eg_color = self.params.getcolor('rf_eg_color')
-        rfdg.plot_rfs(schem_ax, color=rf_eg_color, thin=5)
+        if not kernel:
+            rfdg.plot_rfs(schem_ax, color=rf_eg_color, thin=5)
 
         pass_model = dd.IdentityModel()
         rs = self.params.getlist('manifold_radii', typefunc=float)
@@ -716,10 +754,10 @@ class Figure4(DisentangledFigure):
         dec_c_ax.set_ylabel('classifier\ngeneralization')
         dec_r_ax.set_ylabel('regression\ngeneralization')
 
-    def panel_disentangling_comparison(self):
+    def panel_disentangling_comparison(self, kernel=None):
         key = self.panel_keys[1]
         axs = self.gss[key]
-        rfdg = self.make_rfdg()
+        rfdg = self.make_rfdg(kernel=kernel)
 
         if not key in self.data.keys():
             out_fd = train_eg_fd(rfdg, self.params)
@@ -731,6 +769,12 @@ class Figure4(DisentangledFigure):
 
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
+        fd_gen = characterize_generalization(rfdg, m_fd, 10)
+        bvae_gen = characterize_generalization(rfdg, m_bvae, 10)
+        print(np.mean(fd_gen[0], axis=0)) 
+        print(np.mean(fd_gen[1], axis=0))
+        print(np.mean(bvae_gen[0], axis=0))
+        print(np.mean(bvae_gen[1], axis=0))
 
         run_ind_fd = self.params.get('run_ind_fd')  
         run_ind_beta = self.params.get('run_ind_beta')
