@@ -77,7 +77,7 @@ def create_parser():
     parser.add_argument('--dropout', default=0, type=float,
                         help='amount of dropout to include during model '
                         'training')
-    parser.add_argument('--model_epochs', default=60, type=int,
+    parser.add_argument('--model_epochs', default=200, type=int,
                         help='the number of epochs to train each model for')
     parser.add_argument('--l2pr_weights', default=None, nargs=2, type=float,
                         help='the weights for L2-PR regularization')

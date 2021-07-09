@@ -9,7 +9,7 @@ def create_parser():
     parser.add_argument('-o', '--output_folder', default='auto_dim.pkl',
                         type=str, help='folder to save the output in')
     parser.add_argument('-l', '--latent_dims', nargs='*', type=int,
-                        default=None
+                        default=None,
                         help='number of dimensions to use in latent layer')
     parser.add_argument('-i', '--input_dims', default=2, type=int,
                         help='true number of dimensions in input')
