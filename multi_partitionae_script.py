@@ -6,6 +6,8 @@ import functools as ft
 import tensorflow as tf
 import tensorflow.keras as tfk
 
+import general.utility as u
+
 import disentangled.characterization as dc
 import disentangled.aux as da
 import disentangled.disentanglers as dd
@@ -108,11 +110,18 @@ def create_parser():
                         help='use radial basis function data generator')
     parser.add_argument('--use_periodic_dg', default=False, action='store_true',
                         help='use shift map data generator')
+    parser.add_argument('--config_path', default=None, type=str,
+                        help='path to config file to use, will override other '
+                        'params')
     return parser
 
 if __name__ == '__main__':
     parser = create_parser()
     args = parser.parse_args()
+
+    if args.config_path is not None:
+        config_dict = pickle.load(open(args.config_path, 'rb'))
+        args = u.merge_params_dict(args, config_dict)
 
     partitions = args.partitions
     true_inp_dim = args.input_dims
@@ -178,6 +187,10 @@ if __name__ == '__main__':
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
     context_offset = args.context_offset
+    if args.nan_salt == -1:
+        nan_salt = 'single'
+    else:
+        nan_salt = args.nan_salt
     model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
                                   true_inp_dim=true_inp_dim,
                                   n_partitions=p,
@@ -192,7 +205,7 @@ if __name__ == '__main__':
                                   noise=args.rep_noise,
                                   context_offset=context_offset,
                                   act_func=act_func,
-                                  nan_salt=args.nan_salt)
+                                  nan_salt=nan_salt)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing

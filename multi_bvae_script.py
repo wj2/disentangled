@@ -58,13 +58,28 @@ def create_parser():
                         'training')
     parser.add_argument('--model_epochs', default=60, type=int,
                         help='the number of epochs to train each model for')
-    parser.add_argument('--no_full_cov', default=False, action='store_true',
-                        help='do not fit the full covariance matrix')
+    parser.add_argument('--full_cov', default=False, action='store_true',
+                        help='fit the full covariance matrix')
+    parser.add_argument('--config_path', default=None, type=str,
+                        help='path to config file to use, will override other '
+                        'params')
+    parser.add_argument('--use_tanh', default=False, action='store_true',
+                        help='use tanh instead of relu transfer function')
+    parser.add_argument('--layer_spec', default=None, type=int, nargs='*',
+                        help='the layer sizes to use')
+    parser.add_argument('--train_dg', default=False, action='store_true',
+                        help='train data generator')
+    parser.add_argument('--source_distr', default='normal', type=str,
+                        help='distribution to sample from (normal or uniform)')
     return parser
 
 if __name__ == '__main__':
     parser = create_parser()
     args = parser.parse_args()
+
+    if args.config_path is not None:
+        config_dict = pickle.load(open(args.config_path, 'rb'))
+        args = u.merge_params_dict(args, config_dict)
 
     true_inp_dim = args.input_dims
     est_inp_dim = args.latent_dims
@@ -77,26 +92,46 @@ if __name__ == '__main__':
         n_train_diffs = args.n_train_diffs
         dg_train_epochs = 25
 
+    if not args.train_dg:
+        dg_train_epochs = 0
+
     save_tf_models = not args.no_models
+    if args.source_distr == 'uniform':
+        sd = da.MultivariateUniform(true_inp_dim, (-1, 1))
+    else:
+        sd = None
+    
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
     elif args.use_rf_dg:
-        dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True)
+        dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True,
+                                    sd=sd)
     else:
         dg_use = None
 
     hide_print = not args.show_prints
-        
+
+    if args.use_tanh:
+        act_func = tf.nn.tanh
+    else:
+        act_func = tf.nn.relu
+
+    if args.layer_spec is None:
+        layer_spec = ((50,), (50,), (50,))
+    else:
+        layer_spec = tuple((i,) for i in args.layer_spec)
+
     betas = args.betas
     model_kinds = list(ft.partial(dd.BetaVAE, beta=b*args.beta_mult,
                                   dropout_rate=args.dropout,
-                                  full_cov=not args.no_full_cov)
+                                  full_cov=args.full_cov, act_func=act_func)
                        for b in betas)
     
     use_mp = not args.no_multiprocessing
     out = dc.test_generalization_new(dg_use=dg_use, est_inp_dim=est_inp_dim,
                                      inp_dim=true_inp_dim,
+                                     layer_spec=layer_spec,
                                      hide_print=hide_print,
                                      dg_train_epochs=dg_train_epochs,
                                      n_reps=n_reps, model_kinds=model_kinds,
@@ -104,7 +139,8 @@ if __name__ == '__main__':
                                      models_n_bounds=args.n_train_bounds,
                                      dg_dim=args.dg_dim,
                                      model_batch_size=args.batch_size,
-                                     model_n_epochs=args.model_epochs)
+                                     model_n_epochs=args.model_epochs,
+                                     distr_type=args.source_distr)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
     
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
