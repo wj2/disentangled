@@ -71,6 +71,8 @@ def create_parser():
                         help='train data generator')
     parser.add_argument('--source_distr', default='normal', type=str,
                         help='distribution to sample from (normal or uniform)')
+    parser.add_argument('--no_data', default=False, action='store_true',
+                        help='do not save representation samples')
     return parser
 
 if __name__ == '__main__':
@@ -140,7 +142,8 @@ if __name__ == '__main__':
                                      dg_dim=args.dg_dim,
                                      model_batch_size=args.batch_size,
                                      model_n_epochs=args.model_epochs,
-                                     distr_type=args.source_distr)
+                                     distr_type=args.source_distr,
+                                     generate_data=not args.no_data)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
     
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
