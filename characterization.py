@@ -956,6 +956,19 @@ def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
         lr, score, sim = find_linear_mapping_single(*args, half=half, **kwargs)
     return lr, score, sims
 
+def plot_autodis_performance(latents, perf, axs=None):
+    if axs is None:
+        f, axs = plt.subplots(1, 2)
+    ax_c, ax_r = axs
+    for layers, (clas, regr) in perf.items():
+        l = gpl.plot_trace_werr(latents, clas[..., 1].T, ax=ax_c,
+                                label=str(layers))
+        col = l[0].get_color()
+        gpl.plot_trace_werr(latents, regr[..., 1].T, ax=ax_r,
+                            color=col)
+    ax_c.set_ylim([.5, 1])
+    ax_r.set_ylim([0, 1])
+
 def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,

@@ -422,6 +422,19 @@ def _interpret_foldername(fl, td_pattern='-td([0-9]+)-',
     return dict(input_dimensions=td_out, latent_dimensions=ld_out,
                 training_eg_args=bd_out, orthogonal_partitions=orth_out)
 
+
+def load_all_autodis(run_ind, folder='disentangled/autodis/',
+                     pattern='ad_[0-9]+_{run_ind}'):
+    tomatch = pattern.format(run_ind=run_ind)
+    fls = os.listdir(folder)
+    out_dict = {}
+    for fl in fls:
+        x = re.match(tomatch, fl)
+        if x is not None:
+            data = pickle.load(open(os.path.join(folder, fl), 'rb'))
+            out_dict.update(data)
+    return out_dict    
+
 def load_full_run(folder, run_ind, merge_axis=1,
                   file_template='bvae-n_([0-9])_{run_ind}',
                   analysis_only=False, **kwargs):

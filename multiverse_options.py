@@ -58,9 +58,11 @@ def save_option_dicts(d, folder, file_base='mvo_{}.pkl',
         dict_dict[i] = pi_dict
     manifest_path = os.path.join(folder, manifest_name)
     pickle.dump(dict_dict, open(manifest_path, 'wb'))
+    return dict_dict
 
 def generate_and_save_dicts(folder, file_base='mvo_{}.pkl'):
-    save_option_dicts(make_fd_multi_dict(), folder, 'fd-' + file_base,
-                      manifest_name='fd_manifest.pkl')
-    save_option_dicts(make_bvae_multi_dict(), folder, 'bv-' + file_base,
-                      manifest_name='bv_manifest.pkl')
+    fd = save_option_dicts(make_fd_multi_dict(), folder, 'fd-' + file_base,
+                           manifest_name='fd_manifest.pkl')
+    bd = save_option_dicts(make_bvae_multi_dict(), folder, 'bv-' + file_base,
+                           manifest_name='bv_manifest.pkl')
+    return fd, bd

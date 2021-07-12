@@ -282,6 +282,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.no_autoencoder = no_autoenc
         self.loss_ratio = loss_ratio
         self.recon_model = autoenc_model
+        self.layer_shapes = layer_shapes
 
     def save(self, path):
         tf_entries = ('model', 'rep_model', 'recon_model')
