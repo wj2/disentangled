@@ -3,6 +3,8 @@ import scipy.stats as sts
 import numpy as np
 import pickle
 import functools as ft
+import tensorflow as tf
+import tensorflow.keras as tfk
 
 import general.utility as u
 
