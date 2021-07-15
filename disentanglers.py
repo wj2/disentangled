@@ -242,6 +242,24 @@ class SingleLayer(da.TFModel):
         
     def get_representation(self, x):
         return self.generator(x)
+
+class IntermediateLayers():
+
+    def __init__(self, model):
+        self.model = model
+        inp = tfk.Input(self.model.layers[0].input_shape[0][1])
+        x = inp
+        i_models = []
+        for i in range(0, len(self.model.layers)):
+            x = self.model.layers[i](x)
+            i_models.append(tfk.Model(inputs=inp, outputs=x))
+        self.i_models = i_models
+        self.use_i = 0
+
+    def get_representation(self, x, layer_ind=None):
+        if layer_ind is None:
+            layer_ind = self.use_i
+        return self.i_models[layer_ind](x)
     
 class FlexibleDisentanglerAE(FlexibleDisentangler):
 
