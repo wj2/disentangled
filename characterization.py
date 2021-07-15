@@ -1079,7 +1079,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             plot=True, gpu_samples=False, dg_dim=500,
                             generate_data=True, n_save_samps=10**4,
                             model_batch_size=30, p_mean=True,
-                            distr_type='normal'):
+                            distr_type='normal', dg_layers=None):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1087,6 +1087,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             layers = (100, 200, 300, 100)
         else:
             layers =  (100, 200)
+        if dg_layers is not None:
+            layers = dg_layers
         dg_args = (inp_dim, layers, out_dim)
     if dg_kwargs is None:
         noise = .2

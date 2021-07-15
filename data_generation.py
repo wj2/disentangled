@@ -592,11 +592,15 @@ class ShiftMapDataGenerator(DataGenerator):
 class FunctionalDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim, l2_weight=(0, .1),
-                 source_distribution=None, noise=.01, **kwargs):
-        
+                 source_distribution=None, noise=.01, use_pr_reg=False,
+                 **kwargs):
+        if use_pr_reg:
+            reg = dr.L2PRRegularizerInv
+        else:
+            reg = dr.VarianceRegularizer
         self.generator = self.make_generator(inp_dim, transform_widths,
                                              out_dim, l2_weight=l2_weight,
-                                             noise=noise, **kwargs)
+                                             noise=noise, reg=reg, **kwargs)
         self.degenerator = self.make_degenerator(inp_dim,
                                                  transform_widths[::-1],
                                                  out_dim, **kwargs)
@@ -609,11 +613,12 @@ class FunctionalDataGenerator(DataGenerator):
 
     def make_generator(self, inp_dim, hidden_dims, out_dim,
                        layer_type=tfkl.Dense, act_func=tf.nn.relu,
-                       expo_mean=5, l2_weight=1, noise=None):
+                       expo_mean=5, l2_weight=1, noise=None,
+                       reg=dr.VarianceRegularizer):
         layer_list = []
         layer_list.append(tfkl.InputLayer(input_shape=inp_dim))
 
-        regularizer = dr.VarianceRegularizer(l2_weight)
+        regularizer = reg(l2_weight)
 
         for hd in hidden_dims:
             l_i = layer_type(hd, activation=act_func,

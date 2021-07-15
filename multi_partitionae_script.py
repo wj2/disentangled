@@ -92,6 +92,8 @@ def create_parser():
                         help='use tanh instead of relu transfer function')
     parser.add_argument('--layer_spec', default=None, type=int, nargs='*',
                         help='the layer sizes to use')
+    parser.add_argument('--dg_layer_spec', default=None, type=int, nargs='*',
+                        help='the layer sizes to use')
     parser.add_argument('--rf_width', default=4, type=float,
                         help='scaling of RFs for RF data generator')
     parser.add_argument('--rf_input_noise', default=0, type=float,
@@ -110,6 +112,8 @@ def create_parser():
                         help='use radial basis function data generator')
     parser.add_argument('--use_periodic_dg', default=False, action='store_true',
                         help='use shift map data generator')
+    parser.add_argument('--use_prf_dg', default=False, action='store_true',
+                        help='use participation ratio-optimized data generator')
     parser.add_argument('--config_path', default=None, type=str,
                         help='path to config file to use, will override other '
                         'params')
@@ -143,6 +147,14 @@ if __name__ == '__main__':
         sd = da.MultivariateUniform(true_inp_dim, (-1, 1))
     else:
         sd = None
+        
+    if args.dg_layer_spec is None and dg_train_epochs > 0:
+        dg_layers = (100, 200)
+    elif args.dg_layer_spec is None:
+        dg_layers = (100, 200, 300, 100)
+    else:
+        dg_layers = args.dg_layer_spec
+        
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
@@ -158,6 +170,12 @@ if __name__ == '__main__':
     elif args.use_periodic_dg:
         dg_use = dg.ShiftMapDataGenerator(true_inp_dim, None, args.dg_dim,
                                           source_distribution=sd)
+    elif args.use_prf_dg:
+        dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
+                                            args.dg_dim, 
+                                            noise=.01, use_pr_reg=True)
+        dgpr.fit(source_distribution=source_distr, epochs=dg_train_epochs,
+                 batch_size=args.batch_size)
     else:
         dg_use = None
 
