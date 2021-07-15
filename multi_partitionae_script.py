@@ -79,6 +79,9 @@ def create_parser():
                         'training')
     parser.add_argument('--model_epochs', default=200, type=int,
                         help='the number of epochs to train each model for')
+    parser.add_argument('--dg_train_epochs', default=25, type=int,
+                        help='the number of epochs to train the data generator '
+                        'for')
     parser.add_argument('--l2pr_weights', default=None, nargs=2, type=float,
                         help='the weights for L2-PR regularization')
     parser.add_argument('--l2pr_weights_mult', default=1, type=float,
@@ -138,7 +141,7 @@ if __name__ == '__main__':
     else:
         n_reps = args.n_reps
         n_train_diffs = args.n_train_diffs
-        dg_train_epochs = 25
+        dg_train_epochs = args.dg_train_epochs
     if not args.train_dg:
         dg_train_epochs = 0
 
