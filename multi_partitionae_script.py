@@ -175,10 +175,11 @@ if __name__ == '__main__':
                                           source_distribution=sd)
     elif args.use_prf_dg:
         dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
-                                            args.dg_dim, 
+                                            args.dg_dim,
+                                            source_distribution=sd,
                                             noise=.01, use_pr_reg=True)
-        dgpr.fit(source_distribution=source_distr, epochs=dg_train_epochs,
-                 batch_size=args.batch_size)
+        dg_use.fit(epochs=dg_train_epochs,
+                   batch_size=args.batch_size)
     else:
         dg_use = None
 

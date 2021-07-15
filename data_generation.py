@@ -28,8 +28,11 @@ class DataGenerator(da.TFModel):
             eval_samples=10**3, batch_size=32, **kwargs):
         if not self.compiled:
             self._compile()
+        if (source_distribution is None
+            and self.source_distribution is not None):
+            source_distribution = self.source_distribution
 
-        if source_distribution is not None:
+        if source_distribution is not None and train_x is None:
             train_x = source_distribution.rvs(train_samples)
             train_y = train_x
             eval_x = source_distribution.rvs(eval_samples)
@@ -593,7 +596,7 @@ class FunctionalDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim, l2_weight=(0, .1),
                  source_distribution=None, noise=.01, use_pr_reg=False,
-                 **kwargs):
+                 distrib_variance=1, **kwargs):
         if use_pr_reg:
             reg = dr.L2PRRegularizerInv
         else:
@@ -609,7 +612,11 @@ class FunctionalDataGenerator(DataGenerator):
         self.input_dim = inp_dim
         self.output_dim = out_dim
         self.compiled = False
+        if source_distribution is None:
+            source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
+                                                          distrib_variance)
         self.source_distribution = source_distribution
+            
 
     def make_generator(self, inp_dim, hidden_dims, out_dim,
                        layer_type=tfkl.Dense, act_func=tf.nn.relu,
