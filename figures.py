@@ -122,9 +122,11 @@ def explore_autodisentangling_latents(latents, *args, n_class=10, **kwargs):
     return classes, regrs
 
 def explore_autodisentangling(dims, inp_dim, layers, latent, n_samps=10000,
-                              epochs=200, n_class=10):
+                              epochs=200, n_class=10, **kwargs):
+    
     rbf_dg = dg.KernelDataGenerator(dims, None, inp_dim)
-    fdae = dd.FlexibleDisentanglerAE(inp_dim, layers, latent, n_partitions=0)
+    fdae = dd.FlexibleDisentanglerAE(inp_dim, layers, latent, n_partitions=0,
+                                     **kwargs)
     y, x = rbf_dg.sample_reps(n_samps)
     fdae.fit(x, y, epochs=epochs, verbose=False)
     class_p, regr_p = characterize_generalization(rbf_dg,

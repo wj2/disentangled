@@ -19,6 +19,8 @@ def create_parser():
                         help='the number of epochs to train each model for')
     parser.add_argument('--layer_spec', default=None, type=int, nargs='*',
                         help='the layer sizes to use')
+    parser.add_argument('--use_linear', default=False, action='store_true',
+                        help='use linear activation function')
     return parser
 
 if __name__ == '__main__':
@@ -36,8 +38,12 @@ if __name__ == '__main__':
     else:
         latents = args.latent_dims
     epochs = args.model_epochs
+    kwargs = {}
+    if args.use_linear:
+        kwargs['act_func'] = None
 
     out_dims = {}
     out_dims[dim] = df.explore_autodisentangling_layers(latents, layers, inp, dim, 
-                                                        epochs=epochs)
+                                                        epochs=epochs, 
+                                                        **kwargs)
     pickle.dump(out_dims, open(args.output_folder, 'wb'))
