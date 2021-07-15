@@ -327,6 +327,46 @@ def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
     axs[1].set_ylabel('PCA 2 (au)')
     return out
 
+def make_half_square(n_pts_per_side, lpt=0, rpt=1):
+    pts = np.zeros((n_pts_per_side*2, 2))
+    side_trav = np.linspace(lpt, rpt, n_pts_per_side)
+    h_lpt = lpt + (rpt - lpt)*.5
+    half_trav = np.linspace(h_lpt, rpt, int(n_pts_per_side*.5))
+    npps = n_pts_per_side
+    h_npps = int(npps*.5)
+    pts[:h_npps, 0] = lpt
+    pts[:h_npps, 1] = half_trav
+    pts[h_npps:npps + h_npps, 0] = side_trav
+    pts[h_npps:npps + h_npps, 1] = rpt
+    pts[npps + h_npps:2*npps, 0] = rpt
+    pts[npps + h_npps:2*npps, 1] = half_trav[::-1]
+    corners = np.array([[lpt, h_lpt],
+                        [lpt, rpt],
+                        [rpt, rpt],
+                        [rpt, h_lpt]])
+    return pts, corners
+    
+
+def make_square(n_pts_per_side=100, lpt=0, rpt=1):
+    pts = np.zeros((n_pts_per_side*4, 2))
+    side_trav = np.linspace(lpt, rpt, n_pts_per_side)
+    npps = n_pts_per_side
+    pts[:npps, 0] = lpt
+    pts[:npps, 1] = side_trav
+    pts[npps:2*npps, 0] = side_trav
+    pts[npps:2*npps, 1] = rpt
+    pts[2*npps:3*npps, 0] = rpt
+    pts[2*npps:3*npps, 1] = side_trav[::-1]
+    pts[3*npps:4*npps, 0] = side_trav[::-1]
+    pts[3*npps:4*npps, 1] = lpt
+    corners = np.array([[lpt, lpt],
+                        [lpt, rpt],
+                        [rpt, rpt],
+                        [rpt, lpt],
+                        [lpt, lpt]])
+
+    return pts, corners
+
 def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
                      markers=True, line_alpha=1, use_arc_dim=False,
@@ -1361,7 +1401,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 panel_labels='train egs = {}',
                                 xlab='partitions', axs=None, ct=np.nanmedian,
                                 collapse_plots=False, ret_fig=False,
-                                set_title=True, color=None):
+                                set_title=True, color=None, thresh=.9):
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -1407,11 +1447,28 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                              collapse_plots=collapse_plots,
                                              plot_labels=panel_labels,
                                              set_title=set_title)
+        print_thresh_exceed(x_vals, qp, thresh, labels[i], super_label=label)
     if ret_fig:
         out = f, axs
     else:
         out = axs
     return out
+
+def print_thresh_exceed(xs, ys, thresh, label, super_label='',
+                        s='{} exceeded {} at {} x-axis',
+                        prefix='{}: '):
+    inds = np.where(np.nanmean(ys, axis=0) > thresh)[0]
+    if len(inds) > 0:
+        pt = xs[inds[0]]
+        sp = s.format(label, thresh, pt)
+    else:
+        sp = '{} did not exceed threshold'.format(label)
+    if len(super_label) > 0:
+        spre = prefix.format(super_label)
+        sp = spre + sp
+    sp = sp.replace('\n', ' ')
+    print(sp)
+    return sp                 
 
 def _create_samps(vals, dim, others):
     out = np.zeros((len(vals), len(others) + 1))

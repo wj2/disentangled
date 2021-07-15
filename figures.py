@@ -122,16 +122,29 @@ def explore_autodisentangling_latents(latents, *args, n_class=10, **kwargs):
     return classes, regrs
 
 def explore_autodisentangling(dims, inp_dim, layers, latent, n_samps=10000,
-                              epochs=200, n_class=10):
-    rbf_dg = dg.KernelDataGenerator(dims, None, inp_dim)
-    fdae = dd.FlexibleDisentanglerAE(inp_dim, layers, latent, n_partitions=0)
+                              epochs=200, n_class=10, ret_m=False,
+                              use_rf=False, low_thr=.001, rf_width=3):
+    if use_rf:
+        rbf_dg = dg.RFDataGenerator(dims, inp_dim, total_out=True,
+                                    low_thr=low_thr, input_noise=0,
+                                    noise=0, width_scaling=rf_width)
+    else:
+        rbf_dg = dg.KernelDataGenerator(dims, None, inp_dim,
+                                        low_thr=low_thr)
+    print(rbf_dg.representation_dimensionality(participation_ratio=True))
+    fdae = dd.FlexibleDisentanglerAE(rbf_dg.output_dim, layers, latent,
+                                     n_partitions=0)
     y, x = rbf_dg.sample_reps(n_samps)
     fdae.fit(x, y, epochs=epochs, verbose=False)
     class_p, regr_p = characterize_generalization(rbf_dg,
                                                   dd.IdentityModel(),
                                                   n_class)
     class_m, regr_m = characterize_generalization(rbf_dg, fdae, n_class)
-    return class_m, regr_m    
+    if ret_m:
+        out = class_m, regr_m, (rbf_dg, fdae)
+    else:
+        out = (class_m, regr_m)
+    return out
 
 def characterize_generalization(dg, model, c_reps, train_samples=1000,
                                 test_samples=500, bootstrap_regr=True,
@@ -232,31 +245,131 @@ class Figure1(DisentangledFigure):
         
         params = cf[fig_key]
         self.fig_key = fig_key
-        self.panel_keys = ('partition_schematic', 'encoder_schematic',
+        self.panel_keys = ('partition_schematic',
+                           'representation_schematic',
+                           'encoder_schematic',
                            'encoder_visualization', 'metric_schematic')
         super().__init__(fsize, params, colors=colors, **kwargs)
     
     def make_gss(self):
         gss = {}
 
-        part_schem_grid = self.gs[:, :30]
+        part_schem_grid = self.gs[:80, :30]
         gss[self.panel_keys[0]] = self.get_axs((part_schem_grid,))
+
+        metric_schem_grid = self.gs[:80, 36:55]
+        gss[self.panel_keys[4]] = self.get_axs((metric_schem_grid,))
+
+        rep_schem_grid = pu.make_mxn_gridspec(self.gs, 2, 2,
+                                                25, 100, 0, 55,
+                                                0, 0)
+        gss[self.panel_keys[1]] = self.get_axs(rep_schem_grid, all_3d=True)
         
         encoder_schem_grid = self.gs[:40, 70:]
-        gss[self.panel_keys[1]] = self.get_axs((encoder_schem_grid,))
-
-        metric_schem_grid = self.gs[:, 36:55]
-        gss[self.panel_keys[3]] = self.get_axs((metric_schem_grid,))
+        gss[self.panel_keys[2]] = self.get_axs((encoder_schem_grid,))
 
         encoder_vis_grid = pu.make_mxn_gridspec(self.gs, 2, 2,
                                                 50, 100, 65, 100,
                                                 8, 15)
-        gss[self.panel_keys[2]] = self.get_axs(encoder_vis_grid)
+        gss[self.panel_keys[3]] = self.get_axs(encoder_vis_grid)
 
         self.gss = gss
+
+    def _make_nonlin_func(self, cents, wids=2):
+        def f(x):
+            cs = np.expand_dims(cents, 0)
+            xs = np.expand_dims(x, 1)
+            d = np.sum(-(xs - cs)**2, axis=2)
+            r = np.exp(d/2*wids)
+            return r
+        return f
+
+    def _plot_schem(self, pts, f, ax, corners=None, corner_color=None,
+                    **kwargs):
+        pts_trs = f(pts)
+        l = ax.plot(pts_trs[:, 0], pts_trs[:, 1], pts_trs[:, 2],
+                    **kwargs)
+        if corners is not None:
+            if corner_color is not None:
+                kwargs['color'] = corner_color
+            corners_trs = f(corners)
+            ax.plot(corners_trs[:, 0], corners_trs[:, 1],
+                    corners_trs[:, 2], 'o', **kwargs)
+
     
+    def panel_representation_schematic(self):
+        key = self.panel_keys[1]
+        ax_lin, ax_nonlin = self.gss[key][0]
+        ax_lin_h, ax_nonlin_h = self.gss[key][1]
+        rpt = 1
+        lpt = -1
+        pts, corners = dc.make_square(100, lpt=lpt, rpt=rpt)
+
+        ## plot half and half in different colors
+        pts_h1, corners_h1 = dc.make_half_square(100, lpt=lpt, rpt=rpt)
+        pts_h2, corners_h2 = dc.make_half_square(100, lpt=rpt, rpt=lpt)
+        trs = u.make_unit_vector(np.array([[1, 1],
+                                           [-1, 1],
+                                           [-1, .5]]))
+        lin_func = lambda x: np.dot(x, trs.T)
+        cents = np.array([[rpt, rpt],
+                          [lpt, lpt],
+                          [.5*rpt, 0]])
+        nonlin_func = self._make_nonlin_func(cents)
+        rads = self.params.getlist('manifold_radii', typefunc=float)
+        grey_col = self.params.getcolor('grey_color')
+        pt_color = self.params.getcolor('berry_color')
+        h1_color = self.params.getcolor('train_color')
+        h2_color = self.params.getcolor('test_color')
+        alpha = self.params.getfloat('schem_alpha')
+        ms = 3
+        elev_lin = 20
+        az_lin = -10
+        elev_nonlin = 50
+        az_nonlin = -120
+        colors = (grey_col,)*(len(rads) - 1) + (grey_col,)
+        alphas = (alpha,)*(len(rads) - 1) + (1,)
+        
+        for i, r in enumerate(rads):
+            if i == len(rads) - 1:
+                corners_p = r*corners
+            else:
+                corners_p = None
+            self._plot_schem(r*pts, lin_func, ax_lin, corners=corners_p, 
+                             color=colors[i], corner_color=pt_color,
+                             alpha=alphas[i], markersize=ms)
+            self._plot_schem(r*pts, nonlin_func, ax_nonlin, corners=corners_p,
+                             color=colors[i], corner_color=pt_color,
+                             alpha=alphas[i], markersize=ms)
+            self._plot_schem(r*pts_h1, lin_func, ax_lin_h, corners=corners_p,
+                             color=h1_color, corner_color=pt_color,
+                             alpha=alphas[i], markersize=ms)
+            self._plot_schem(r*pts_h2, lin_func, ax_lin_h, corners=None,
+                             color=h2_color, corner_color=pt_color,
+                             alpha=alphas[i], markersize=ms)
+            self._plot_schem(r*pts_h1, nonlin_func, ax_nonlin_h,
+                             corners=corners_p,
+                             color=h1_color, corner_color=pt_color,
+                             alpha=alphas[i], markersize=ms)
+            self._plot_schem(r*pts_h2, nonlin_func, ax_nonlin_h,
+                             corners=None,
+                             color=h2_color, corner_color=pt_color,
+                             alpha=alphas[i], markersize=ms)
+        ax_lin.view_init(elev_lin, az_lin)
+        ax_nonlin.view_init(elev_nonlin, az_nonlin)
+        ax_lin_h.view_init(elev_lin, az_lin)
+        ax_nonlin_h.view_init(elev_nonlin, az_nonlin)
+        gpl.set_3d_background(ax_nonlin)
+        gpl.set_3d_background(ax_lin)
+        gpl.remove_ticks_3d(ax_nonlin)
+        gpl.remove_ticks_3d(ax_lin)
+        gpl.set_3d_background(ax_nonlin_h)
+        gpl.set_3d_background(ax_lin_h)
+        gpl.remove_ticks_3d(ax_nonlin_h)
+        gpl.remove_ticks_3d(ax_lin_h)
+
     def panel_encoder_visualization(self):
-        key = self.panel_keys[2]
+        key = self.panel_keys[3]
         axs = self.gss[key]
         vis_axs = axs[0]
         class_ax, regr_ax = axs[1]
@@ -289,7 +402,7 @@ class Figure1(DisentangledFigure):
         gpl.add_hlines(0, regr_ax)
         class_ax.set_ylim([.5, 1])
         regr_ax.set_ylim([0, 1])
-            
+
 class Figure2(DisentangledFigure):
     
     def __init__(self, fig_key='figure2', colors=colors, **kwargs):
@@ -600,7 +713,7 @@ class Figure3(DisentangledFigure):
 
         rep_scale_mag = 3
 
-        pv_mask = np.array([False, True, False])
+        pv_mask = np.array([False, False, True])
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
                              rep_scale_mag=rep_scale_mag, colors=colors)
@@ -626,11 +739,15 @@ class Figure3(DisentangledFigure):
 
         part_color = self.params.getcolor('partition_color')
         context_color = self.params.getcolor('contextual_color')
-        colors = (part_color, context_color)
+        context_offset_color = self.params.getcolor('contextual_color')
+        colors = (part_color, context_color, context_offset_color)
         
-        labels = ('full partitions', 'contextual partitions')
-        pv_mask = np.array([False, False, False, False, True, False, False,
-                            False])
+        labels = ('full partitions', 'contextual partitions',
+                  'offset contextual partitions')
+        # pv_mask = np.array([False, False, False, False, True, False, False,
+        #                     False])
+        pv_mask = np.array([False, False, True])
+        
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
                              rep_scale_mag=rep_scale_mag, colors=colors)
@@ -661,7 +778,8 @@ class Figure3(DisentangledFigure):
         colors = (part_color, partial_color1, partial_color2)
         
         labels = ('full information', '50% missing', '90% missing')
-        pv_mask = np.array([False, False, False, True, False])
+        # pv_mask = np.array([False, False, False, True, False])
+        pv_mask = np.array([False, False, True])
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
                              rep_scale_mag=rep_scale_mag, colors=colors)

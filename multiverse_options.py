@@ -1,8 +1,13 @@
 import itertools as it
 import pickle
 import os
+import re
 
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+import disentangled.aux as da
 
 def make_common_multi_dict(multi_dict=None):
     if multi_dict is None:
@@ -28,7 +33,7 @@ def make_fd_multi_dict():
     multi_dict['use_orthog_partitions'] = (False,)
     multi_dict['offset_distr_var'] = (.4,)
     multi_dict['contextual_partitions'] = (True,)
-    multi_dict['no_autoencoder'] = (False,)
+    multi_dict['no_autoencoder'] = (True,)
     multi_dict['nan_salt'] = (0,)
     multi_dict = make_common_multi_dict(multi_dict)
     return multi_dict
@@ -59,6 +64,66 @@ def save_option_dicts(d, folder, file_base='mvo_{}.pkl',
     manifest_path = os.path.join(folder, manifest_name)
     pickle.dump(dict_dict, open(manifest_path, 'wb'))
     return dict_dict
+
+def _find_fl(fls, fl):
+    candidates = []
+    inds = []
+    for i, fli in enumerate(fls):
+        m = re.match(fl, fli)
+        if m is not None:
+            ind = m.group(1)
+            candidates.append(fli)
+            inds.append(ind)
+    use_ind = np.argmax(inds)
+    return candidates[use_ind]
+
+def load_multiverse(folder, manifests, f_template='{abbrev}-mv_{ind}_([0-9]+)',
+                    min_regr=0):
+    fls = os.listdir(folder)
+    for abbrev, v in manifests.items():
+        ind_dict = pickle.load(open(v, 'rb'))
+        for i, (k, args) in enumerate(ind_dict.items()):
+            fl = f_template.format(abbrev=abbrev, ind=k)
+            fl_use = _find_fl(fls, fl)
+            full_folder = os.path.join(folder, fl_use)
+            dat = da.load_generalization_output(full_folder)
+            _, _, _, pk, _, _, lk, _, args_ns = dat
+            train_egs = np.logspace(*(args_ns.n_train_bounds
+                                      + (args_ns.n_train_diffs,)))
+            for j, te in enumerate(train_egs):
+                args['train_eg'] = te
+                args['class_std'] = np.mean(pk[j, ..., 0])
+                args['class_gen'] = np.mean(pk[j, ..., 1])
+                args['regr_gen'] = np.max((np.mean(lk[0][j]), min_regr))
+                if i == 0 and j == 0:
+                    args_all = {k:[] for k in args.keys()}
+                for k in args.keys():
+                    ak = args[k]
+                    if k == 'partitions' or k == 'betas':
+                        ak = ak[0]
+                    args_all[k].append(ak)
+    df = pd.DataFrame(data=args_all)            
+    return df
+
+def plot_multiverse_split(data, plot_x, plot_y, split, ax=None):
+    if ax is None:
+        f, ax = plt.subplots(1, 1)
+    split_cats = np.unique(data[split])
+    for i, sc in enumerate(split_cats):
+        data_i = data[data[split] == sc]
+        plot_multiverse(data_i, plot_x, plot_y, ax=ax)
+    return ax
+
+def plot_multiverse(data, plot_x, plot_y, ax=None):
+    if ax is None:
+        f, ax = plt.subplots(1, 1)
+    l = ax.plot(data[plot_x], data[plot_y], 'o')
+    col = l[0].get_color()
+    xs_u = np.unique(data[plot_x])
+    ys_m = []
+    for xi in xs_u:
+        ys_m.append(np.mean(data[data[plot_x] == xi][plot_y]))
+    ax.plot(xs_u, ys_m, color=col)
 
 def generate_and_save_dicts(folder, file_base='mvo_{}.pkl'):
     fd = save_option_dicts(make_fd_multi_dict(), folder, 'fd-' + file_base,

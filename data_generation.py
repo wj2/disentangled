@@ -5,6 +5,7 @@ import numpy as np
 import scipy.stats as sts
 import sklearn.decomposition as skd
 import sklearn.kernel_approximation as skka
+import sklearn.preprocessing as skp
 import functools as ft
 import matplotlib.pyplot as plt
 
@@ -483,6 +484,34 @@ class RFDataGenerator(DataGenerator):
     def fit(*args, **kwargs):
         return tf.keras.callbacks.History()
 
+class GaussianKernel():
+
+    def __init__(self, n_components=100, min_wid=.01,
+                 max_wid=1.5):
+        self.n_components = n_components
+        self.min_wid = min_wid
+        self.max_wid = max_wid
+
+    def fit(self, x):
+        self.ss = skp.StandardScaler()
+        x = self.ss.fit_transform(x)
+        rand = np.random.default_rng()
+        cents = rand.standard_normal(size=(self.n_components, x.shape[1]))
+        wid = x.shape[1]
+        self.cents = np.expand_dims(cents, 0)
+        dists = np.sqrt(np.sum(cents**2, axis=1))
+        md = np.max(dists)
+        self.wids = self.min_wid + self.max_wid**(dists/md) - 1
+        self.dists = dists
+        return self
+
+    def transform(self, x):
+        x = self.ss.transform(x)
+        x = np.expand_dims(x, 1)
+        arg = np.sum((x - self.cents)**2, axis=2)/(2*self.wids)
+        rs = np.exp(-arg)
+        return rs        
+    
 class KernelDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim,

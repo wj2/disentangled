@@ -399,6 +399,21 @@ def load_generalization_output(folder, manifest='manifest.pkl',
         
     return dg, models, th, p, c, ld, sc, gd, args
 
+def rename_files(folder, fl_templ1, fl_templ2, dry=True):
+    fls = os.listdir(folder)
+    for fl in fls:
+        m = re.match(fl_templ1, fl)
+        if m is not None:
+            gd = m.groupdict()
+            new_fl = fl_templ2.format(**gd)
+            old_fl = os.path.join(folder, fl)
+            new_fl = os.path.join(folder, new_fl)
+            if not dry:
+                os.rename(old_fl, new_fl)
+            else:
+                print('{} -> {}'.format(old_fl, new_fl))
+        
+
 def _interpret_foldername(fl, td_pattern='-td([0-9]+)-',
                           ld_pattern='-ld([0-9]+)-',
                           bd_pattern='-bd([0-9.]+)-([0-9.]+)-([0-9]+)-',
