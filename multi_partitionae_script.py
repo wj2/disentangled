@@ -174,11 +174,12 @@ if __name__ == '__main__':
         dg_use = dg.ShiftMapDataGenerator(true_inp_dim, None, args.dg_dim,
                                           source_distribution=sd)
     elif args.use_prf_dg:
+        prf_train_epochs = 5
         dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
                                             args.dg_dim,
                                             source_distribution=sd,
                                             noise=.01, use_pr_reg=True)
-        dg_use.fit(epochs=dg_train_epochs,
+        dg_use.fit(epochs=prf_train_epochs,
                    batch_size=args.batch_size)
     else:
         dg_use = None
