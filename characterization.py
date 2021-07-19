@@ -263,7 +263,17 @@ def _model_pca(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
     mod_distrib_reps = model.get_representation(distrib_reps)
     p = skd.PCA(**pca_args)
     p.fit(mod_distrib_reps)
-    return p
+    return p.transform
+
+def _model_linreg(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
+                  use_circ_dim=False, supply_range=1, set_inds=(0, 1),
+                  start_vals=(0,), linmod=sklm.Ridge, **pca_args):
+    x, y = dg_use.sample_reps(n_dim_red)
+    r = model.get_representation(y)
+    p = linmod()
+    p.fit(r, x[:, set_inds])
+    print(p.score(r, x[:, set_inds]))
+    return p.predict
 
 def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
                              rad_eps=.05, near_eps=.5, ax=None,
@@ -374,7 +384,8 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      fwid=2.5, set_inds=(0, 1), plot_partitions=False,
                      plot_source=False, square=True, start_vals=(0,),
                      supply_range=1, plot_3d=False, dim_red_func=None,
-                     compute_pr=False, ret_dim_red=False, buff=1, **pca_args):
+                     compute_pr=False, ret_dim_red=False, buff=1,
+                     model_trs=_model_pca, **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
         
@@ -405,14 +416,14 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
     
     if dim_red:
         if dim_red_func is None:
-            p = _model_pca(dg_use, model, n_dim_red=n_dim_red,
-                           use_arc_dim=use_arc_dim, use_circ_dim=use_circ_dim,
-                           set_inds=set_inds, start_vals=start_vals,
-                           supply_range=supply_range, **pca_args)
-            ptrs = p.transform
+            ptrs = model_trs(dg_use, model, n_dim_red=n_dim_red,
+                             use_arc_dim=use_arc_dim, use_circ_dim=use_circ_dim,
+                             set_inds=set_inds, start_vals=start_vals,
+                             supply_range=supply_range, **pca_args)
             if compute_pr:
-                pd = p.explained_variance_ratio_
-                pr = np.sum(pd)**2/np.sum(pd**2)
+                # pd = p.explained_variance_ratio_
+                # pr = np.sum(pd)**2/np.sum(pd**2)
+                pr = None
         else:
             ptrs = dim_red_func
         
@@ -1458,8 +1469,10 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
 
 def print_thresh_exceed(xs, ys, thresh, label, super_label='',
                         s='{} exceeded {} at {} x-axis',
-                        prefix='{}: '):
-    inds = np.where(np.nanmean(ys, axis=0) > thresh)[0]
+                        prefix='{}: ', y_ind=0):
+    if ys.shape[0] > 1:
+        print('multiple ys, taking {} ind'.format(y_ind))
+    inds = np.where(np.nanmean(ys[y_ind], axis=1) > thresh)[0]
     if len(inds) > 0:
         pt = xs[inds[0]]
         sp = s.format(label, thresh, pt)
