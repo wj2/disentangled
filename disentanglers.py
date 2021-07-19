@@ -723,7 +723,7 @@ class BetaVAE(da.TFModel):
     def make_decoder(self, input_shape, layer_shapes, encoded_size,
                      act_func=tf.nn.relu, strides=1,
                      transform_layer=None, layer_type=tfkl.Dense,
-                     conv=False, out_eps=.01, **layer_params):
+                     conv=False, out_eps=.0001, **layer_params):
         layer_list = []
         layer_list.append(tfkl.InputLayer(input_shape=[encoded_size]))
 
