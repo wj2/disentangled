@@ -642,7 +642,7 @@ class BetaVAE(da.TFModel):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
                  act_func=tf.nn.relu, beta=1, dropout_rate=0,
-                 full_cov=False, **layer_params):
+                 full_cov=False, rescaler=True, **layer_params):
         enc, prior = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                        act_func=act_func, beta=beta,
                                        full_cov=full_cov, **layer_params)
@@ -658,6 +658,8 @@ class BetaVAE(da.TFModel):
         self.encoded_size = encoded_size
         self.compiled = False
         self.loaded = False
+        self.rescaler = rescaler
+        self.rescale_factor = None
 
     def save(self, path):
         tf_entries = ('encoder', 'decoder', 'vae')
@@ -767,8 +769,18 @@ class BetaVAE(da.TFModel):
         if train_y is None:
             train_y = train_x
             
+        if self.rescaler and self.rescale_factor is None:
+            avg_max = np.median(np.max(train_x, axis=0))
+            self.rescale_factor = 1/avg_max
+        if self.rescaler:
+            train_x = self.rescale_factor*train_x
+            train_y = self.rescale_factor*train_y
+            
         if eval_x is not None and eval_y is None:
             eval_y = eval_x
+            if self.rescaler:
+                eval_x = self.rescale_factor*eval_x
+                eval_y = self.rescale_factor*eval_y
             eval_set = (eval_x, eval_y)
         else:
             eval_set = None
@@ -794,6 +806,8 @@ class BetaVAE(da.TFModel):
         return outs
 
     def get_representation(self, samples, use_loaded=False, use_mean=True):
+        if self.rescaler:
+            samples = self.rescale_factor*samples
         if self.loaded and use_loaded:
             rep = self.encoder(samples)
         else:
@@ -816,6 +830,8 @@ class BetaVAE(da.TFModel):
                 recon = self.decoder(reps).mean()
             else:
                 recon = self.decoder(reps).sample()
+        if self.rescaler:
+            samples = samples/self.rescale_factor
         return recon
 
 class BetaVAEConv(BetaVAE):

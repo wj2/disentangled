@@ -1128,8 +1128,6 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     # test dimensionality
     pdims = dg_use.representation_dimensionality()[0]
     print('participation ratio', np.sum(pdims)**2/np.sum(pdims**2))
-    if plot:
-        plot_representation_dimensionality(dg_use, source_distr=source_distr)
 
     if train_models_blind:
         train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), dg_source_var)
