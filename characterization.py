@@ -636,7 +636,7 @@ def get_model_dimensionality(dg_use, models, cutoff=.95, **pca_args):
         for j, m_ij in enumerate(m_i):
             for k, m_ijk in enumerate(m_ij):
                 p = _model_pca(dg_use, m_ijk, n_components=cutoff, **pca_args)
-                model_dims[i, j, k] = p.n_components_
+                model_dims[i, j, k] = 1 # p.n_components_
     return model_dims, inp_dim
 
 

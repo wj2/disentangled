@@ -77,6 +77,8 @@ def create_parser():
                         help='distribution to sample from (normal or uniform)')
     parser.add_argument('--no_data', default=False, action='store_true',
                         help='do not save representation samples')
+    parser.add_argument('--use_prf_dg', default=False, action='store_true',
+                        help='use participation ratio-optimized data generator')
     return parser
 
 if __name__ == '__main__':
@@ -113,6 +115,14 @@ if __name__ == '__main__':
     elif args.use_rf_dg:
         dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True,
                                     sd=sd)
+    elif args.use_prf_dg:
+        prf_train_epochs = 5
+        dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
+                                            args.dg_dim,
+                                            source_distribution=sd,
+                                            noise=.01, use_pr_reg=True)
+        dg_use.fit(epochs=prf_train_epochs,
+                   batch_size=args.batch_size)
     else:
         dg_use = None
 
