@@ -53,6 +53,7 @@ def create_parser():
     parser.add_argument('--use_rf_dg', default=False,
                         action='store_true',
                         help='use an RF-based data generator')
+    
     parser.add_argument('--dg_dim', default=200, type=int,
                         help='dimensionality of the data generator')
     parser.add_argument('--batch_size', default=30, type=int,
@@ -79,6 +80,14 @@ def create_parser():
                         help='do not save representation samples')
     parser.add_argument('--use_prf_dg', default=False, action='store_true',
                         help='use participation ratio-optimized data generator')
+    parser.add_argument('--rf_width', default=4, type=float,
+                        help='scaling of RFs for RF data generator')
+    parser.add_argument('--rf_input_noise', default=0, type=float,
+                        help='noise applied to latent variables before '
+                        'they are passed to the RF functions (default 0)')
+    parser.add_argument('--rf_output_noise', default=0, type=float,
+                        help='noise applied to the output of the RF '
+                        'functions (default 0)')
     return parser
 
 if __name__ == '__main__':
@@ -114,7 +123,10 @@ if __name__ == '__main__':
         inp_dim = dg_use.input_dim
     elif args.use_rf_dg:
         dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True,
-                                    sd=sd)
+                                    width_scaling=args.rf_width,
+                                    noise=args.rf_output_noise,
+                                    input_noise=args.rf_input_noise,
+                                    source_distribution=sd)
     elif args.use_prf_dg:
         prf_train_epochs = 5
         dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
