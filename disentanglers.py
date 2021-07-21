@@ -831,7 +831,7 @@ class BetaVAE(da.TFModel):
             else:
                 recon = self.decoder(reps).sample()
         if self.rescaler:
-            samples = samples/self.rescale_factor
+            recon = recon/self.rescale_factor
         return recon
 
 class BetaVAEConv(BetaVAE):

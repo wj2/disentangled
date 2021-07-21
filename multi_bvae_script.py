@@ -53,7 +53,8 @@ def create_parser():
     parser.add_argument('--use_rf_dg', default=False,
                         action='store_true',
                         help='use an RF-based data generator')
-    
+    parser.add_argument('--dg_layer_spec', default=None, type=int, nargs='*',
+                        help='the layer sizes to use')
     parser.add_argument('--dg_dim', default=200, type=int,
                         help='dimensionality of the data generator')
     parser.add_argument('--batch_size', default=30, type=int,
@@ -113,12 +114,19 @@ if __name__ == '__main__':
     if not args.train_dg:
         dg_train_epochs = 0
 
+    if args.dg_layer_spec is None and dg_train_epochs > 0:
+        dg_layers = (100, 200)
+    elif args.dg_layer_spec is None:
+        dg_layers = (100, 200, 300, 100)
+    else:
+        dg_layers = args.dg_layer_spec
+        
     save_tf_models = not args.no_models
     if args.source_distr == 'uniform':
         sd = da.MultivariateUniform(true_inp_dim, (-1, 1))
     else:
         sd = None
-    
+
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
@@ -130,6 +138,7 @@ if __name__ == '__main__':
                                     source_distribution=sd)
     elif args.use_prf_dg:
         prf_train_epochs = 5
+        dg_layers = (100, 200)
         dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
                                             args.dg_dim,
                                             source_distribution=sd,
