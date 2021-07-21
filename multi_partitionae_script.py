@@ -175,6 +175,7 @@ if __name__ == '__main__':
                                           source_distribution=sd)
     elif args.use_prf_dg:
         prf_train_epochs = 5
+        dg_layers = (100, 200)
         dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
                                             args.dg_dim,
                                             source_distribution=sd,
