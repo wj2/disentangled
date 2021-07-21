@@ -61,7 +61,7 @@ def create_parser():
     parser.add_argument('--dropout', default=0, type=float,
                         help='amount of dropout to include during model '
                         'training')
-    parser.add_argument('--model_epochs', default=60, type=int,
+    parser.add_argument('--model_epochs', default=200, type=int,
                         help='the number of epochs to train each model for')
     parser.add_argument('--full_cov', default=False, action='store_true',
                         help='fit the full covariance matrix')
@@ -104,6 +104,7 @@ if __name__ == '__main__':
         n_reps = 1
         n_train_diffs = 1
         dg_train_epochs = 10
+        args.model_epochs = 1
     else:
         n_reps = args.n_reps
         n_train_diffs = args.n_train_diffs
