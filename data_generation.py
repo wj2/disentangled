@@ -59,12 +59,11 @@ class DataGenerator(da.TFModel):
 
         samples = source_distribution.rvs(sample_size)
         rep = self.get_representation(samples)
-        p = skd.PCA(**pca_args)
-        p.fit(rep)
         if participation_ratio:
-            pd = p.explained_variance_ratio_
-            out = np.sum(pd)**2/np.sum(pd**2)
+            out = u.participation_ratio(rep)
         else:
+            p = skd.PCA(**pca_args)
+            p.fit(rep)
             out = (p.explained_variance_ratio_, p.components_)
         return out
 
@@ -350,7 +349,8 @@ class ImageDatasetGenerator(DataGenerator):
         return np.stack(out)
 
     def representation_dimensionality(self, source_distribution=None,
-                                      sample_size=10**1, participation_ratio=False,
+                                      sample_size=10**3,
+                                      participation_ratio=False,
                                       **pca_args):
         if source_distribution is None and self.source_distribution is not None:
             source_distribution = self.source_distribution
@@ -359,12 +359,11 @@ class ImageDatasetGenerator(DataGenerator):
 
         samples = source_distribution.rvs(sample_size)
         rep = self.get_representation(samples, flat=True)
-        p = skd.PCA(**pca_args)
-        p.fit(rep)
         if participation_ratio:
-            pd = p.explained_variance_ratio_
-            out = np.sum(pd)**2/np.sum(pd**2)
+            out = u.participation_ratio(rep)
         else:
+            p = skd.PCA(**pca_args)
+            p.fit(rep)
             out = (p.explained_variance_ratio_, p.components_)
         return out        
     

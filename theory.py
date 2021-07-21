@@ -100,3 +100,21 @@ def compute_binary_diags(dims, n_parts, **kwargs):
     p = skcd.PLSCanonical(n_components=min(dims, n_parts))
     trs = p.fit_transform(targs, samps)
     return trs
+
+def opt_loss(d, p, n):
+    sig_o = d*p*(n**(1/d) - 1)/12
+    ft = np.log(sig_o + 1)
+    st = sig_o/(sig_o + 1)
+    tt = 1/(sig_o + 1)
+    out = d*(1 - ft - st - tt)
+    return out
+
+def sig_o(d, p, n):
+    pwr = d*p*(n**(1/d) - 1)/12
+    return np.sqrt(1/(pwr + 1))
+    
+
+def l_kl(d, sig, p, n):
+    pwr = d*p*(n**(1/d) - 1)/12
+    out = d*(1 + np.log(sig**2) - pwr*sig**2 - sig**2)
+    return out

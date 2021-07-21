@@ -71,7 +71,7 @@ def _find_fl(fls, fl):
     for i, fli in enumerate(fls):
         m = re.match(fl, fli)
         if m is not None:
-            ind = m.group(1)
+            ind = int(m.group(1))
             candidates.append(fli)
             inds.append(ind)
     use_ind = np.argmax(inds)
@@ -90,6 +90,7 @@ def load_multiverse(folder, manifests, f_template='{abbrev}-mv_{ind}_([0-9]+)',
             _, _, _, pk, _, _, lk, _, args_ns = dat
             train_egs = np.logspace(*(args_ns.n_train_bounds
                                       + (args_ns.n_train_diffs,)))
+            print(args_ns)
             for j, te in enumerate(train_egs):
                 args['train_eg'] = te
                 args['class_std'] = np.mean(pk[j, ..., 0])

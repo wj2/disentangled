@@ -200,15 +200,18 @@ class DisentangledFigure(pu.Figure):
             dg_layers = self.params.getlist('dg_layers', typefunc=int)
             dg_source_var = self.params.getfloat('dg_source_var')
             dg_train_egs = self.params.getint('dg_train_egs')
-            
+            dg_pr_reg = self.params.getboolean('dg_pr_reg')
+            dg_bs = self.params.getint('dg_batch_size')
+
             source_distr = sts.multivariate_normal(np.zeros(inp_dim),
                                                    dg_source_var)
             
             fdg = dg.FunctionalDataGenerator(inp_dim, dg_layers, dg_dim,
                                              noise=dg_noise,
+                                             use_pr_reg=dg_pr_reg,
                                              l2_weight=dg_regweight)
             fdg.fit(source_distribution=source_distr, epochs=dg_epochs,
-                    train_samples=dg_train_egs)
+                    train_samples=dg_train_egs, batch_size=dg_bs)
             self.fdg = fdg 
         return fdg
     
@@ -221,10 +224,11 @@ class DisentangledFigure(pu.Figure):
         manifold_axs = axs[:2]
         res_axs = np.expand_dims(axs[2:], 0)
         rs = self.params.getlist('manifold_radii', typefunc=float)
-        n_arcs = self.params.getint('manifold_arcs')        
+        n_arcs = self.params.getint('manifold_arcs')
+        print(characterize_generalization(fdg, model, 10))
         dc.plot_source_manifold(fdg, model, rs, n_arcs, 
                                 source_scale_mag=source_scale_mag,
-                                rep_scale_mag=rep_scale_mag,
+                                rep_scale_mag=.1, # rep_scale_mag,
                                 markers=False, axs=manifold_axs,
                                 titles=False)
         if colors is None:
@@ -268,10 +272,13 @@ class Figure1(DisentangledFigure):
         encoder_schem_grid = self.gs[:40, 70:]
         gss[self.panel_keys[2]] = self.get_axs((encoder_schem_grid,))
 
+        plot_3d_axs = np.zeros((2, 2), dtype=bool)
+        plot_3d_axs[0, 1] = True
         encoder_vis_grid = pu.make_mxn_gridspec(self.gs, 2, 2,
                                                 50, 100, 65, 100,
                                                 8, 15)
-        gss[self.panel_keys[3]] = self.get_axs(encoder_vis_grid)
+        gss[self.panel_keys[3]] = self.get_axs(encoder_vis_grid,
+                                               plot_3ds=plot_3d_axs)
 
         self.gss = gss
 
@@ -385,6 +392,7 @@ class Figure1(DisentangledFigure):
             self.data[key] = (fdg, pass_model, exp_dim, gen_perf)
         fdg, pass_model, exp_dim, gen_perf = self.data[key]
 
+        print('PR = {}'.format(exp_dim))
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
 
@@ -392,7 +400,7 @@ class Figure1(DisentangledFigure):
                                 source_scale_mag=.2,
                                 rep_scale_mag=.01,
                                 markers=False, axs=vis_axs,
-                                titles=False)
+                                titles=False, plot_model_3d=True)
         dg_color = self.params.getcolor('dg_color')
         plot_single_gen(gen_perf[0], class_ax, color=dg_color)
         plot_single_gen(gen_perf[1], regr_ax, color=dg_color)

@@ -494,7 +494,7 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                 np.min(to_plot[2]) - buff)
         var = np.max([np.std(to_plot[0]), np.std(to_plot[1]),
                      np.std(to_plot[2])])
-        gpl.make_3d_bars(ax, center=cent, bar_len=var)
+        # gpl.make_3d_bars(ax, center=cent, bar_len=var)
         # gpl.clean_3d_plot(ax)
     else:
         ax.set_aspect('equal')
