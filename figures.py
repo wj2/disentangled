@@ -3,6 +3,8 @@ import numpy as np
 import scipy.stats as sts
 import functools as ft
 import sklearn.decomposition as skd
+import sklearn.svm as skc
+import scipy.linalg as spla
 
 import general.plotting as gpl
 import general.plotting_styles as gps
@@ -24,6 +26,36 @@ colors = np.array([(127,205,187),
                    (8,29,88)])/256
 
 tuple_int = lambda x: (int(x),)
+
+def _make_cgp_ax(ax):
+    ax.set_yticks([.5, 1])
+    ax.set_ylabel('classifier')
+    gpl.add_hlines(.5, ax)
+    ax.set_ylim([.5, 1])
+
+def _make_rgp_ax(ax):
+    ax.set_yticks([0, .5, 1])
+    ax.set_ylabel('regression')
+    gpl.add_hlines(0, ax)
+    ax.set_ylim([0, 1])
+
+def plot_cgp(results, ax, **kwargs):
+    plot_single_gen(results, ax, **kwargs)
+    _make_cgp_ax(ax)
+
+def plot_rgp(results, ax, **kwargs):
+    plot_single_gen(results, ax, **kwargs)
+    _make_rgp_ax(ax)
+
+def plot_bgp(res_c, res_r, ax_c, ax_r, **kwargs):
+    plot_cgp(res_c, ax_c, **kwargs)
+    plot_rgp(res_r, ax_r, **kwargs)
+
+def plot_multi_bgp(res_list_c, res_list_r, ax_c, ax_r, **kwargs):
+    plot_multi_gen(res_list_c, ax_c, **kwargs)
+    plot_multi_gen(res_list_r, ax_r, **kwargs)
+    _make_cgp_ax(ax_c)
+    _make_rgp_ax(ax_r)
 
 def plot_single_gen(results, ax, xs=None, color=None,
                     labels=('standard', 'gen')):
@@ -202,10 +234,9 @@ class DisentangledFigure(pu.Figure):
             dg_train_egs = self.params.getint('dg_train_egs')
             dg_pr_reg = self.params.getboolean('dg_pr_reg')
             dg_bs = self.params.getint('dg_batch_size')
-
+            
             source_distr = sts.multivariate_normal(np.zeros(inp_dim),
                                                    dg_source_var)
-            
             fdg = dg.FunctionalDataGenerator(inp_dim, dg_layers, dg_dim,
                                              noise=dg_noise,
                                              use_pr_reg=dg_pr_reg,
@@ -216,8 +247,9 @@ class DisentangledFigure(pu.Figure):
         return fdg
     
     def _standard_panel(self, fdg, model, run_inds, f_pattern, folder, axs,
-                        labels=None, rep_scale_mag=.2, source_scale_mag=.2,
-                        x_label=True, y_label=True, colors=None, **kwargs):
+                        labels=None, rep_scale_mag=5, source_scale_mag=.5,
+                        x_label=True, y_label=True, colors=None, view_init=None,
+                        **kwargs):
         model = model[0, 0]
         if labels is None:
             labels = ('',)*len(run_inds)
@@ -225,12 +257,15 @@ class DisentangledFigure(pu.Figure):
         res_axs = np.expand_dims(axs[2:], 0)
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
-        print(characterize_generalization(fdg, model, 10))
+        vis_3d = self.params.getboolean('vis_3d')
+
+        # print(characterize_generalization(fdg, model, 10))
         dc.plot_source_manifold(fdg, model, rs, n_arcs, 
                                 source_scale_mag=source_scale_mag,
-                                rep_scale_mag=.1, # rep_scale_mag,
+                                rep_scale_mag=rep_scale_mag,
                                 markers=False, axs=manifold_axs,
-                                titles=False)
+                                titles=False, plot_model_3d=vis_3d,
+                                view_init=view_init)
         if colors is None:
             colors = (None,)*len(run_inds)
         for i, ri in enumerate(run_inds):
@@ -238,7 +273,10 @@ class DisentangledFigure(pu.Figure):
                                       collapse_plots=False, folder=folder,
                                       axs=res_axs, legend=labels[i],
                                       print_args=False, set_title=False,
-                                      color=colors[i], **kwargs)
+                                      color=colors[i],
+                                      **kwargs)
+        res_axs[0, 0].set_yticks([.5, 1])
+        res_axs[0, 1].set_yticks([0, .5, 1])
 
 class Figure1(DisentangledFigure):
     
@@ -273,11 +311,15 @@ class Figure1(DisentangledFigure):
         gss[self.panel_keys[2]] = self.get_axs((encoder_schem_grid,))
 
         plot_3d_axs = np.zeros((2, 2), dtype=bool)
-        plot_3d_axs[0, 1] = True
-        encoder_vis_grid = pu.make_mxn_gridspec(self.gs, 2, 2,
-                                                50, 100, 65, 100,
-                                                8, 15)
-        gss[self.panel_keys[3]] = self.get_axs(encoder_vis_grid,
+        plot_3d_axs[0, 1] = self.params.getboolean('vis_3d')
+        ev1_grid = pu.make_mxn_gridspec(self.gs, 1, 2,
+                                        50, 70, 65, 100,
+                                        8, 0)
+        ev2_grid = pu.make_mxn_gridspec(self.gs, 1, 2,
+                                        79, 100, 65, 100,
+                                        8, 15)
+        ev_grid = np.concatenate((ev1_grid, ev2_grid), axis=0)
+        gss[self.panel_keys[3]] = self.get_axs(ev_grid,
                                                plot_3ds=plot_3d_axs)
 
         self.gss = gss
@@ -302,8 +344,26 @@ class Figure1(DisentangledFigure):
             corners_trs = f(corners)
             ax.plot(corners_trs[:, 0], corners_trs[:, 1],
                     corners_trs[:, 2], 'o', **kwargs)
+            
+    def _plot_hyperplane(self, pts, lps, f, ax):
+        pts_f = f(pts)
+        lps_f = f(lps)
 
-    
+        cats = [0, 1]
+        c = skc.SVC(kernel='linear', C=1000)
+        c.fit(lps_f, cats)
+        n_vecs = spla.null_space(c.coef_)
+        v1 = np.linspace(-1, 1, 2)
+        v2 = np.linspace(-1, 1, 2)
+        x, y = np.meshgrid(v1, v2)
+        x_ns = np.expand_dims(x, 0)*np.expand_dims(n_vecs[:, 0], (1, 2))
+        y_ns = np.expand_dims(y, 0)*np.expand_dims(n_vecs[:, 1], (1, 2))
+        offset = np.expand_dims(c.coef_[0]*c.intercept_,
+                                (1, 2))
+        proj_pts = x_ns + y_ns
+        proj_pts = proj_pts - offset
+        ax.plot_surface(*proj_pts, alpha=1)
+            
     def panel_representation_schematic(self):
         key = self.panel_keys[1]
         ax_lin, ax_nonlin = self.gss[key][0]
@@ -312,7 +372,6 @@ class Figure1(DisentangledFigure):
         lpt = -1
         pts, corners = dc.make_square(100, lpt=lpt, rpt=rpt)
 
-        ## plot half and half in different colors
         pts_h1, corners_h1 = dc.make_half_square(100, lpt=lpt, rpt=rpt)
         pts_h2, corners_h2 = dc.make_half_square(100, lpt=rpt, rpt=lpt)
         trs = u.make_unit_vector(np.array([[1, 1],
@@ -348,12 +407,14 @@ class Figure1(DisentangledFigure):
             self._plot_schem(r*pts, nonlin_func, ax_nonlin, corners=corners_p,
                              color=colors[i], corner_color=pt_color,
                              alpha=alphas[i], markersize=ms)
+            
             self._plot_schem(r*pts_h1, lin_func, ax_lin_h, corners=corners_p,
                              color=h1_color, corner_color=pt_color,
                              alpha=alphas[i], markersize=ms)
             self._plot_schem(r*pts_h2, lin_func, ax_lin_h, corners=None,
                              color=h2_color, corner_color=pt_color,
                              alpha=alphas[i], markersize=ms)
+            
             self._plot_schem(r*pts_h1, nonlin_func, ax_nonlin_h,
                              corners=corners_p,
                              color=h1_color, corner_color=pt_color,
@@ -362,6 +423,12 @@ class Figure1(DisentangledFigure):
                              corners=None,
                              color=h2_color, corner_color=pt_color,
                              alpha=alphas[i], markersize=ms)
+            
+        self._plot_hyperplane(r*pts_h1, corners_p[:2], lin_func,
+                              ax_lin_h)
+        self._plot_hyperplane(r*pts_h1, corners_p[:2], nonlin_func,
+                              ax_nonlin_h)
+
         ax_lin.view_init(elev_lin, az_lin)
         ax_nonlin.view_init(elev_nonlin, az_nonlin)
         ax_lin_h.view_init(elev_lin, az_lin)
@@ -395,21 +462,23 @@ class Figure1(DisentangledFigure):
         print('PR = {}'.format(exp_dim))
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
-
+        vis_3d = self.params.getboolean('vis_3d')
+        
         dc.plot_source_manifold(fdg, pass_model, rs, n_arcs, 
-                                source_scale_mag=.2,
-                                rep_scale_mag=.01,
+                                source_scale_mag=.5,
+                                rep_scale_mag=.03,
                                 markers=False, axs=vis_axs,
-                                titles=False, plot_model_3d=True)
+                                titles=False, plot_model_3d=vis_3d)
         dg_color = self.params.getcolor('dg_color')
-        plot_single_gen(gen_perf[0], class_ax, color=dg_color)
-        plot_single_gen(gen_perf[1], regr_ax, color=dg_color)
-        class_ax.set_ylabel('classifier\ngeneralization')
-        regr_ax.set_ylabel('regression\ngeneralization')
-        gpl.add_hlines(.5, class_ax)
-        gpl.add_hlines(0, regr_ax)
-        class_ax.set_ylim([.5, 1])
-        regr_ax.set_ylim([0, 1])
+        plot_bgp(gen_perf[0], gen_perf[1], class_ax, regr_ax, color=dg_color)
+        # plot_single_gen(gen_perf[0], class_ax, color=dg_color)
+        # plot_single_gen(gen_perf[1], regr_ax, color=dg_color)
+        # class_ax.set_ylabel('classifier\ngeneralization')
+        # regr_ax.set_ylabel('regression\ngeneralization')
+        # gpl.add_hlines(.5, class_ax)
+        # gpl.add_hlines(0, regr_ax)
+        # class_ax.set_ylim([.5, 1])
+        # regr_ax.set_ylim([0, 1])
 
 class Figure2(DisentangledFigure):
     
@@ -449,9 +518,9 @@ class Figure2(DisentangledFigure):
         n_parts = len(self.params.getlist('n_parts'))
         rep_grids = pu.make_mxn_gridspec(self.gs, n_parts, 2,
                                          0, 65, 60, 100,
-                                         5, 8)
+                                         5, 0)
         plot_3d_axs = np.zeros((n_parts, 2), dtype=bool)
-        plot_3d_axs[:, 1] = True
+        plot_3d_axs[:, 1] = self.params.getboolean('vis_3d')
         rep_axs = self.get_axs(rep_grids, sharex='vertical',
                                sharey='vertical', plot_3ds=plot_3d_axs)
         gss[self.panel_keys[1]] = train_ax, rep_axs
@@ -573,6 +642,7 @@ class Figure2(DisentangledFigure):
         n_arcs = self.params.getint('manifold_arcs')
         npart_signifier = self.params.get('npart_signifier')
         mid_i = np.floor(len(n_parts)/2)
+        vis_3d = self.params.getboolean('vis_3d')
         for i, num_p in enumerate(n_parts):
             hist = th[0, i, 0].history['loss']
             epochs = np.arange(1, len(hist) + 1)
@@ -580,8 +650,8 @@ class Figure2(DisentangledFigure):
                           label='r${} = {}$'.format(npart_signifier,
                                                     num_p))
             dc.plot_source_manifold(fdg, models[0, i, 0], rs, n_arcs, 
-                                    source_scale_mag=.2,
-                                    rep_scale_mag=5, plot_model_3d=True,
+                                    source_scale_mag=.5,
+                                    rep_scale_mag=10, plot_model_3d=vis_3d,
                                     markers=False, axs=rep_axs[i],
                                     titles=False)
             if mid_i != i:
@@ -626,10 +696,16 @@ class Figure4Beta(DisentangledFigure):
 
         bvae_schematic_grid = self.gs[:, :45]
         
-        bvae_perf = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100, 55, 100,
-                                         8, 10)
+        bv1_perf = pu.make_mxn_gridspec(self.gs, 1, 2, 0, 44, 55, 100,
+                                        8, 0)
+        bv2_perf = pu.make_mxn_gridspec(self.gs, 1, 2, 56, 100, 55, 100,
+                                        8, 15)
+        bv_perf = np.concatenate((bv1_perf, bv2_perf), axis=0)
+        vis_3d = self.params.getboolean('vis_3d')
+        axs_3ds = np.zeros((2, 2), dtype=bool)
+        axs_3ds[0, 1] = vis_3d
         gss[self.panel_keys[0]] = self.get_axs((bvae_schematic_grid,))
-        gss[self.panel_keys[1]] = self.get_axs(bvae_perf)
+        gss[self.panel_keys[1]] = self.get_axs(bv_perf, plot_3ds=axs_3ds)
 
         self.gss = gss
 
@@ -646,7 +722,6 @@ class Figure4Beta(DisentangledFigure):
             gen_perf = characterize_generalization(fdg, m[0, 0], c_reps)
             self.data[key] = (fdg, m, gen_perf)
         fdg, m, gen_perf = self.data[key]
-        print(gen_perf)
 
         run_inds = (self.params.get('beta_eg_ind'),)
         f_pattern = self.params.get('beta_f_pattern')
@@ -668,7 +743,7 @@ class Figure4Beta(DisentangledFigure):
         
 class Figure3(DisentangledFigure):
     
-    def __init__(self, fig_key='figure3', colors=colors, **kwargs):
+    def __init__(self, fig_key='figure3prf', colors=colors, **kwargs):
         fsize = (5.5, 3.5)
         cf = u.ConfigParserColor()
         cf.read(config_path)
@@ -686,16 +761,21 @@ class Figure3(DisentangledFigure):
         unbalanced_class_grid = self.gs[:30, 55:70]
         unbalanced_regress_grid = self.gs[:30, 80:]
 
+        axs_3d = np.zeros(4, dtype=bool)
+        axs_3d[1] = self.params.getboolean('vis_3d')
         axs_left = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 0, 40,
-                                        3, 10)
+                                        3, 0)
         axs_right = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 54, 100,
                                          5, 15)
         gss[self.panel_keys[0]] = self.get_axs(np.concatenate((axs_left[0],
-                                                              axs_right[0])))
+                                                               axs_right[0])),
+                                               plot_3ds=axs_3d)
         gss[self.panel_keys[1]] = self.get_axs(np.concatenate((axs_left[1],
-                                                               axs_right[1])))
+                                                               axs_right[1])),
+                                               plot_3ds=axs_3d)
         gss[self.panel_keys[2]] = self.get_axs(np.concatenate((axs_left[2],
-                                                               axs_right[2])))
+                                                               axs_right[2])),
+                                               plot_3ds=axs_3d)
 
         self.gss = gss
 
@@ -719,11 +799,11 @@ class Figure3(DisentangledFigure):
         unbal2_color = self.params.getcolor('unbalance_color2')
         colors = (part_color, unbal1_color, unbal2_color)
 
-        rep_scale_mag = 3
+        rep_scale_mag = 20
 
         pv_mask = np.array([False, False, True])
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
-                             labels=labels, pv_mask=pv_mask,
+                             labels=labels, pv_mask=pv_mask, 
                              rep_scale_mag=rep_scale_mag, colors=colors)
         for ax in axs:
             ax.set_xlabel('')
@@ -743,11 +823,11 @@ class Figure3(DisentangledFigure):
         run_inds = self.params.getlist('contextual_eg_inds')
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
-        rep_scale_mag = 3
+        rep_scale_mag = 20
 
         part_color = self.params.getcolor('partition_color')
         context_color = self.params.getcolor('contextual_color')
-        context_offset_color = self.params.getcolor('contextual_color')
+        context_offset_color = self.params.getcolor('contextual_offset_color')
         colors = (part_color, context_color, context_offset_color)
         
         labels = ('full partitions', 'contextual partitions',
@@ -758,7 +838,8 @@ class Figure3(DisentangledFigure):
         
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
-                             rep_scale_mag=rep_scale_mag, colors=colors)
+                             rep_scale_mag=rep_scale_mag, colors=colors,
+                             view_init=(45, -30))
         for ax in axs[:2]:
             ax.set_xlabel('')
 
@@ -778,11 +859,11 @@ class Figure3(DisentangledFigure):
         run_inds = self.params.getlist('partial_eg_inds')
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
-        rep_scale_mag = 3
+        rep_scale_mag = 20
 
         part_color = self.params.getcolor('partition_color')
         partial_color1 = self.params.getcolor('partial_color1')
-        partial_color2 = self.params.getcolor('partial_color1')
+        partial_color2 = self.params.getcolor('partial_color2')
         colors = (part_color, partial_color1, partial_color2)
         
         labels = ('full information', '50% missing', '90% missing')
@@ -839,14 +920,20 @@ class Figure4(DisentangledFigure):
         rf_projection_grid = self.gs[:50, 28:45]
         rf_dec_grid = pu.make_mxn_gridspec(self.gs, 1, 2, 60, 100,
                                            0, 45, 5, 14)
+        axs_3ds = np.zeros(4, dtype=bool)
+        axs_3ds[1] = self.params.getboolean('vis_3d')
         gss[self.panel_keys[0]] = self.get_axs((rf_schematic_grid,
                                                 rf_projection_grid,
                                                 rf_dec_grid[0, 0],
-                                                rf_dec_grid[0, 1]))
+                                                rf_dec_grid[0, 1]),
+                                               plot_3ds=axs_3ds)
 
         rep_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100,
                                          55, 100, 5, 5)
-        gss[self.panel_keys[1]] = self.get_axs(rep_grids)
+        axs_3ds = np.zeros((2, 2), dtype=bool)
+        axs_3ds[0, :] = self.params.getboolean('vis_3d')
+
+        gss[self.panel_keys[1]] = self.get_axs(rep_grids, plot_3ds=axs_3ds)
         
         self.gss = gss
 
@@ -862,8 +949,10 @@ class Figure4(DisentangledFigure):
         pass_model = dd.IdentityModel()
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
+        vis_3d = self.params.getboolean('vis_3d')
         dc.plot_diagnostics(rfdg, pass_model, rs, n_arcs,
-                            scale_mag=.2, markers=False, ax=proj_ax)
+                            scale_mag=.5, markers=False, ax=proj_ax,
+                            plot_3d=vis_3d)
 
         if not key in self.data.keys():
             c_reps = self.params.getint('dg_classifier_reps')
@@ -873,12 +962,14 @@ class Figure4(DisentangledFigure):
         results_class, results_regr = self.data[key]
 
         color = self.params.getcolor('dg_color')
-        plot_single_gen(results_class, dec_c_ax, color=color)
-        dec_c_ax.set_ylim([.5, 1])
-        plot_single_gen(results_regr, dec_r_ax, color=color)
-        dec_r_ax.set_ylim([0, 1])
-        dec_c_ax.set_ylabel('classifier\ngeneralization')
-        dec_r_ax.set_ylabel('regression\ngeneralization')
+        plot_bgp(results_class, results_regr, dec_c_ax, dec_r_ax,
+                 color=color)
+        # plot_single_gen(results_class, dec_c_ax, color=color)
+        # dec_c_ax.set_ylim([.5, 1])
+        # plot_single_gen(results_regr, dec_r_ax, color=color)
+        # dec_r_ax.set_ylim([0, 1])
+        # dec_c_ax.set_ylabel('classifier\ngeneralization')
+        # dec_r_ax.set_ylabel('regression\ngeneralization')
 
     def panel_disentangling_comparison(self, kernel=None):
         key = self.panel_keys[1]
@@ -888,19 +979,24 @@ class Figure4(DisentangledFigure):
         if not key in self.data.keys():
             out_fd = train_eg_fd(rfdg, self.params)
             out_bvae = train_eg_bvae(rfdg, self.params)
-            self.data[key] = (out_fd, out_bvae)
-        out_fd, out_bvae = self.data[key]
+            fd_gen = characterize_generalization(rfdg, m_fd, 10)
+            bvae_gen = characterize_generalization(rfdg, m_bvae, 10)
+            self.data[key] = (out_fd, out_bvae, fd_gen, bvae_gen)
+        if len(self.data[key]) > 2:
+            out_fd, out_bvae, fd_gen, bvae_gen = self.data[key]
+        else:
+            out_fd, out_bvae = self.data[key]
         m_fd = out_fd[0][0, 0]
         m_bvae = out_bvae[0][0, 0]
 
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
-        fd_gen = characterize_generalization(rfdg, m_fd, 10)
-        bvae_gen = characterize_generalization(rfdg, m_bvae, 10)
-        print(np.mean(fd_gen[0], axis=0)) 
-        print(np.mean(fd_gen[1], axis=0))
-        print(np.mean(bvae_gen[0], axis=0))
-        print(np.mean(bvae_gen[1], axis=0))
+        vis_3d = self.params.getboolean('vis_3d')
+
+        # print(np.mean(fd_gen[0], axis=0)) 
+        # print(np.mean(fd_gen[1], axis=0))
+        # print(np.mean(bvae_gen[0], axis=0))
+        # print(np.mean(bvae_gen[1], axis=0))
 
         run_ind_fd = self.params.get('run_ind_fd')  
         run_ind_beta = self.params.get('run_ind_beta')
@@ -910,26 +1006,29 @@ class Figure4(DisentangledFigure):
         beta_folder = self.params.get('beta_simulations_path')
         dc.plot_diagnostics(rfdg, m_fd, rs, n_arcs, 
                             scale_mag=20, markers=False,
-                            ax=axs[0, 0])
+                            ax=axs[0, 0], plot_3d=vis_3d)
         dc.plot_diagnostics(rfdg, m_bvae, rs, n_arcs, 
                             scale_mag=.01, markers=False,
-                            ax=axs[0, 1])
+                            ax=axs[0, 1], plot_3d=vis_3d)
         res_axs = axs[1:]
         pv_mask = np.array([False, True, False])
 
         part_color = self.params.getcolor('partition_color')
         bvae_color = self.params.getcolor('bvae_color')
+        xlab = r'partition / $\beta$'
         
         dc.plot_recon_gen_summary(run_ind_fd, f_pattern, log_x=False, 
                                   collapse_plots=False, folder=folder,
                                   axs=res_axs, legend='partition',
                                   print_args=False, pv_mask=pv_mask,
-                                  set_title=False, color=part_color)
+                                  set_title=False, color=part_color,
+                                  xlab=xlab)
         dc.plot_recon_gen_summary(run_ind_beta, beta_f_pattern, log_x=False, 
                                   collapse_plots=False, folder=beta_folder,
                                   axs=res_axs, legend=r'$\beta$VAE',
                                   print_args=False, pv_mask=pv_mask,
-                                  set_title=False, color=bvae_color)
+                                  set_title=False, color=bvae_color,
+                                  xlab=xlab)
 
 class Figure5(DisentangledFigure):
 
@@ -966,9 +1065,12 @@ class Figure5(DisentangledFigure):
         rep_geom_bvae = self.gs[30:70, 22:40]
         rep_geom_class_perf = self.gs[75:, :15]
         rep_geom_regr_perf = self.gs[75:, 25:40]
+        axs_3d = np.zeros(4, dtype=bool)
+        axs_3d[0:2] = self.params.getboolean('vis_3d')
         gss[self.panel_keys[1]] = self.get_axs((rep_geom_fd, rep_geom_bvae,
                                                 rep_geom_class_perf,
-                                                rep_geom_regr_perf))
+                                                rep_geom_regr_perf),
+                                               plot_3ds=axs_3d)
 
         recon_grids = pu.make_mxn_gridspec(self.gs, 5, 6, 0, 100,
                                            45, 100, 3, 1)        
@@ -1030,15 +1132,17 @@ class Figure5(DisentangledFigure):
 
         if 'dr' in self.data[key].keys():
             fd_red_func, bvae_red_func = self.data[key]['dr']
-        
+
+        vis_3d = self.params.getboolean('vis_3d')
         out_f = dc.plot_diagnostics(shape_dg, m_fd, rs, n_arcs, n_dim_red=100,
                                     ax=rep_fd_ax, set_inds=(3, 4),
                                     scale_mag=20,
-                                    dim_red_func=fd_red_func, ret_dim_red=True)
+                                    dim_red_func=fd_red_func, ret_dim_red=True,
+                                    plot_3d=vis_3d)
         out_b = dc.plot_diagnostics(shape_dg, m_bvae, rs, n_arcs, n_dim_red=100,
                                     ax=rep_bvae_ax, set_inds=(3, 4),
                                     dim_red_func=bvae_red_func, scale_mag=.2,
-                                    ret_dim_red=True)
+                                    ret_dim_red=True, plot_3d=vis_3d, view_init=(60, 20))
         if 'dr' not in self.data[key].keys():
             self.data[key]['dr'] = (out_f[1], out_b[1])
         res_ident, res_fd, res_bvae = self.data[key]['gen']
@@ -1046,15 +1150,10 @@ class Figure5(DisentangledFigure):
         bvae_col = self.params.getcolor('bvae_color')
         fd_col = self.params.getcolor('partition_color')
         colors = (dg_col, fd_col, bvae_col)
-        
-        plot_multi_gen((res_ident[0], res_fd[0], res_bvae[0]), class_ax,
-                       colors=colors)
-        gpl.add_hlines(.5, class_ax)
-        class_ax.set_ylim([.5, 1])
-        plot_multi_gen((res_ident[1], res_fd[1], res_bvae[1]), regr_ax,
-                       colors=colors)
-        gpl.add_hlines(0, regr_ax)
-        regr_ax.set_ylim([0, 1])
+
+        plot_multi_bgp((res_ident[0], res_fd[0], res_bvae[0]),
+                       (res_ident[1], res_fd[1], res_bvae[1]),
+                       class_ax, regr_ax, colors=colors)
 
     def _get_img_traversal(self, dg, dim, n):
         cent = dg.get_center()
@@ -1102,3 +1201,71 @@ class Figure5(DisentangledFigure):
         dc.plot_img_series(dr, title='', axs=axs[3], cmap=cm)
         dc.plot_img_series(recs, title='', axs=axs[4], cmap=cm)
         
+class SIFigureDim(DisentangledFigure):
+
+    def __init__(self, fig_key='sifigure_dim', colors=colors, **kwargs):
+        fsize = (4, 5)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = ('dim_dependence',)
+        super().__init__(fsize, params, colors=colors, **kwargs)
+    
+    def make_gss(self):
+        gss = {}
+        dims = self.params.getlist('dims', typefunc=int)
+        dims_grid = pu.make_mxn_gridspec(self.gs, len(dims), 2,
+                                         0, 100, 0, 100,
+                                         5, 20)
+        gss[self.panel_keys[0]] = self.get_axs(dims_grid)
+        self.gss = gss
+
+    def panel_dim_dependence(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        dims = self.params.getlist('dims', typefunc=int)
+        fd_inds = self.params.getlist('fd_dims_inds')
+        bv_inds = self.params.getlist('bv_dims_inds')
+
+        f_pattern = self.params.get('f_pattern')
+        beta_f_pattern = self.params.get('beta_f_pattern')
+
+        folder = self.params.get('mp_simulations_path')
+        beta_folder = self.params.get('beta_simulations_path')
+
+        part_color = self.params.getcolor('partition_color')
+        bvae_color = self.params.getcolor('bvae_color')
+        xlab = r'partition / $\beta$'
+
+        pv_mask = np.array([False, True, False])
+
+        for i, dim in enumerate(dims):
+            fd_ri = fd_inds[i]
+            bv_ri = bv_inds[i]
+            if i == 0:
+                fd_legend = 'partition'
+                bv_legend = r'$\beta$VAE'
+            else:
+                fd_legend = ''
+                bv_legend = ''
+            dc.plot_recon_gen_summary(fd_ri, f_pattern, log_x=False, 
+                                      collapse_plots=False, folder=folder,
+                                      axs=axs[i:i+1], legend=fd_legend,
+                                      print_args=False, pv_mask=pv_mask,
+                                      set_title=False, color=part_color,
+                                      xlab=xlab)
+            dc.plot_recon_gen_summary(bv_ri, beta_f_pattern, log_x=False, 
+                                      collapse_plots=False, folder=beta_folder,
+                                      axs=axs[i:i+1], legend=bv_legend,
+                                      print_args=False, pv_mask=pv_mask,
+                                      set_title=False, color=bvae_color,
+                                      xlab=xlab, plot_hline=False)
+            axs[i, 0].text(35, .8, r'$D = {}$'.format(dim))
+            if i < len(dims) - 1:
+                axs[i, 0].set_xlabel('')
+                axs[i, 1].set_xlabel('')
+                axs[i, 0].set_xticklabels([])
+                axs[i, 1].set_xticklabels([])

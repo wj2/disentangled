@@ -31,14 +31,12 @@ class DataGenerator(da.TFModel):
         if (source_distribution is None
             and self.source_distribution is not None):
             source_distribution = self.source_distribution
-
         if source_distribution is not None and train_x is None:
             train_x = source_distribution.rvs(train_samples)
             train_y = train_x
             eval_x = source_distribution.rvs(eval_samples)
             eval_y = eval_x
             self.source_distribution = source_distribution
-            
         if train_y is None:
             train_y = train_x
             
@@ -340,12 +338,12 @@ class ImageDatasetGenerator(DataGenerator):
                 out_ind = np.random.choice(range(s.shape[0]))
                 samp = s[out_ind]
                 if self.position_distr is not None:
-                    samp = self._move_img(samp, xi[self.n_img_params:])
-                if flat:
-                    samp = samp.flatten()
-                out[i] = samp
+                    samp = self._move_img(samp, xi[self.n_img_params:])                    
             else:
-                out[i] = self.data_dict[tuple(xi_img)]
+                samp = self.data_dict[tuple(xi_img)]
+            if flat:
+                samp = samp.flatten()
+            out[i] = samp
         return np.stack(out)
 
     def representation_dimensionality(self, source_distribution=None,
@@ -359,6 +357,7 @@ class ImageDatasetGenerator(DataGenerator):
 
         samples = source_distribution.rvs(sample_size)
         rep = self.get_representation(samples, flat=True)
+        print(rep.shape)
         if participation_ratio:
             out = u.participation_ratio(rep)
         else:
@@ -513,7 +512,29 @@ class GaussianKernel():
         arg = np.sum((x - self.cents)**2, axis=2)/(2*self.wids)
         rs = np.exp(-arg)
         return rs        
+
+class LinearDataGenerator(DataGenerator):
+
+    def __init__(self, inp_dim, out_dim, source_distribution=None,
+                 distrib_variance=1):
+        self.w = sts.norm(0, 1).rvs((out_dim, inp_dim))
+        self.input_dim = inp_dim
+        self.output_dim = out_dim
+        if source_distribution is None:
+            source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
+                                                          distrib_variance)
+        self.source_distribution = source_distribution
+
+    def fit(self, *args, **kwargs):
+        pass
+
+    def generator(self, x):
+        out = np.dot(x, self.w.T)
+        return out
     
+    def get_representation(self, x):
+        return self.generator(x)
+        
 class KernelDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim,

@@ -4,6 +4,7 @@ import pickle
 import os
 import itertools as it
 import tensorflow as tf
+import scipy.linalg as spla
 
 import sklearn.decomposition as skd
 import sklearn.svm as skc
@@ -267,13 +268,15 @@ def _model_pca(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
 
 def _model_linreg(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
                   use_circ_dim=False, supply_range=1, set_inds=(0, 1),
-                  start_vals=(0,), linmod=sklm.Ridge, **pca_args):
+                  linmod=sklm.Ridge, **pca_args):
     x, y = dg_use.sample_reps(n_dim_red)
     r = model.get_representation(y)
     p = linmod()
     p.fit(r, x[:, set_inds])
-    print(p.score(r, x[:, set_inds]))
-    return p.predict
+    ob = spla.orth(p.coef_.T)
+    exp_inter = np.expand_dims(p.intercept_, 1)
+    f = lambda x: (np.dot(x, ob).T + exp_inter).T
+    return f # p.predict
 
 def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
                              rad_eps=.05, near_eps=.5, ax=None,
@@ -384,8 +387,8 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      fwid=2.5, set_inds=(0, 1), plot_partitions=False,
                      plot_source=False, square=True, start_vals=(0,),
                      supply_range=1, plot_3d=False, dim_red_func=None,
-                     compute_pr=False, ret_dim_red=False, buff=1,
-                     model_trs=_model_pca, **pca_args):
+                     compute_pr=False, ret_dim_red=False, buff=0,
+                     model_trs=_model_pca, view_init=None, **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
         
@@ -483,7 +486,7 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
         for i, v in enumerate(vs):
             v_unit = u.make_unit_vector(v)
             v_o = os[i]*v_unit
-            orth_v = u.generate_orthonormal_vectors(v_unit, 1)/(3.5*rs[-1])
+            orth_v = u.generate_orthonormal_vectors(v_unit, 1)/(1*rs[-1])
             xs = np.array([-orth_v[0], orth_v[0]]) 
             ys = np.array([-orth_v[1], orth_v[1]]) 
             ax.plot(xs + v_o[0], ys + v_o[1], color='r')
@@ -494,8 +497,10 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                 np.min(to_plot[2]) - buff)
         var = np.max([np.std(to_plot[0]), np.std(to_plot[1]),
                      np.std(to_plot[2])])
-        # gpl.make_3d_bars(ax, center=cent, bar_len=var)
-        # gpl.clean_3d_plot(ax)
+        gpl.make_3d_bars(ax, center=cent, bar_len=var)
+        gpl.clean_3d_plot(ax)
+        if view_init is not None:
+            ax.view_init(*view_init)
     else:
         ax.set_aspect('equal')
         gpl.make_xaxis_scale_bar(ax, scale_mag)
@@ -1371,7 +1376,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            ret_info=False, collapse_plots=False,  pv_mask=None,
                            xlab='partitions', ret_fig=False, legend='',
                            print_args=True, set_title=True, color=None,
-                           **kwargs):
+                           plot_hline=True, **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
@@ -1399,7 +1404,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       axs=axs, collapse_plots=collapse_plots,
                                       ret_fig=ret_fig, label=legend,
                                       fwid=fwid, set_title=set_title,
-                                      color=color)
+                                      color=color, plot_hline=plot_hline)
     if ret_info:
         out_all = (out, info)
     else:
@@ -1412,7 +1417,8 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 panel_labels='train egs = {}',
                                 xlab='partitions', axs=None, ct=np.nanmedian,
                                 collapse_plots=False, ret_fig=False,
-                                set_title=True, color=None, thresh=.9):
+                                set_title=True, color=None, thresh=.9,
+                                plot_hline=True):
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -1433,7 +1439,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                   squeeze=False)
 
     for i, qp in enumerate(quants_plot):
-        if info is not None:
+        if info is not None and plot_hline:
             if 'args' in info.keys() and  'betas' in info['args'][0].keys():
                 nd = 1
             else:

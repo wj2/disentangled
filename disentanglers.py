@@ -836,6 +836,9 @@ class BetaVAE(da.TFModel):
 
 class BetaVAEConv(BetaVAE):
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, rescaler=False, **kwargs)
+    
     @classmethod
     def load(cls, path):
         dummy = BetaVAEConv((32, 32, 1), ((10, 1, 1), (10,)), 2)
@@ -848,6 +851,7 @@ class BetaVAEConv(BetaVAE):
             model.encoder.layers[-1].activity_regularizer = rep_reg
         model.var = tfk.Model(inputs=model.encoder.inputs,
                               outputs=model.decoder(model.encoder.outputs[0]))
+        model.rescale_factor = 1
         model.loaded = True
         model._compile()
         return model
