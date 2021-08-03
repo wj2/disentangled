@@ -319,7 +319,7 @@ def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
 def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
                          source_scale_mag=.2, rep_scale_mag=10,
                          titles=True, plot_source_3d=False, plot_model_3d=False,
-                         **kwargs):
+                         source_view_init=None, model_view_init=None, **kwargs):
     if axs is None:
         fsize = (fwid*2, fwid)
         f, axs = plt.subplots(1, 2, figsize=fsize)
@@ -328,9 +328,10 @@ def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
         out = axs
     plot_diagnostics(*args, plot_partitions=True, plot_source=True,
                      dim_red=False, ax=axs[0], scale_mag=source_scale_mag,
-                     plot_3d=plot_source_3d, **kwargs)
+                     plot_3d=plot_source_3d, view_init=source_view_init, **kwargs)
     plot_diagnostics(*args, dim_red=dim_red, ax=axs[1], scale_mag=rep_scale_mag,
-                     compute_pr=True, plot_3d=plot_model_3d, **kwargs)
+                     compute_pr=True, plot_3d=plot_model_3d,
+                     view_init=model_view_init, **kwargs)
     if titles:
         axs[0].set_title('latent variables')
         axs[1].set_title('representation')

@@ -265,7 +265,7 @@ class DisentangledFigure(pu.Figure):
                                 rep_scale_mag=rep_scale_mag,
                                 markers=False, axs=manifold_axs,
                                 titles=False, plot_model_3d=vis_3d,
-                                view_init=view_init)
+                                model_view_init=view_init)
         if colors is None:
             colors = (None,)*len(run_inds)
         for i, ri in enumerate(run_inds):
@@ -643,6 +643,7 @@ class Figure2(DisentangledFigure):
         npart_signifier = self.params.get('npart_signifier')
         mid_i = np.floor(len(n_parts)/2)
         vis_3d = self.params.getboolean('vis_3d')
+        view_inits = (None, (50, 30), (40, -20))
         for i, num_p in enumerate(n_parts):
             hist = th[0, i, 0].history['loss']
             epochs = np.arange(1, len(hist) + 1)
@@ -653,7 +654,7 @@ class Figure2(DisentangledFigure):
                                     source_scale_mag=.5,
                                     rep_scale_mag=10, plot_model_3d=vis_3d,
                                     markers=False, axs=rep_axs[i],
-                                    titles=False)
+                                    titles=False, model_view_init=view_inits[i])
             if mid_i != i:
                 rep_axs[i, 0].set_ylabel('')
                 rep_axs[i, 1].set_ylabel('')
@@ -866,7 +867,7 @@ class Figure3(DisentangledFigure):
         partial_color2 = self.params.getcolor('partial_color2')
         colors = (part_color, partial_color1, partial_color2)
         
-        labels = ('full information', '50% missing', '90% missing')
+        labels = ('full information', '50% missing', 'single task')
         # pv_mask = np.array([False, False, False, True, False])
         pv_mask = np.array([False, False, True])
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
