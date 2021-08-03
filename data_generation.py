@@ -258,6 +258,9 @@ class ImageDatasetGenerator(DataGenerator):
         self.max_move = max_move
         self.x_uniques = None
 
+    def save(self, path):
+        pass
+        
     def _make_dict(self):
         data_dict = {}
         for i, row in self.data_table.iterrows():
