@@ -270,7 +270,9 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  offset_distr=None, contextual_partitions=False,
                  no_autoenc=False, loss_ratio=10, dropout_rate=0,
                  regularizer_type=tfk.regularizers.l2,
-                 noise=0, context_offset=False, nan_salt=None, **layer_params):
+                 noise=0, context_offset=False, nan_salt=None,
+                 grid_coloring=False, n_granules=2, granule_sparseness=.5,
+                 **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
@@ -285,14 +287,24 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         model, rep_model, autoenc_model, class_model = out
         self.branch_names = branch_names
         self.model = model
-        out = da.generate_partition_functions(true_inp_dim,
-                                              n_funcs=n_partitions,
-                                              orth_basis=orthog_partitions,
-                                              offset_distribution=offset_distr,
-                                              contextual=contextual_partitions)
+        if grid_coloring:
+            out = da.generate_grid_functions(true_inp_dim,
+                                             n_funcs=n_partitions,
+                                             n_granules=n_granules,
+                                             sparseness=granule_sparseness)
+            self.p_funcs = out
+            self.p_vectors = None
+            self.p_offsets = None
+        else:
+            out = da.generate_partition_functions(
+                true_inp_dim,
+                n_funcs=n_partitions,
+                orth_basis=orthog_partitions,
+                offset_distribution=offset_distr,
+                contextual=contextual_partitions)
+            self.p_funcs, self.p_vectors, self.p_offsets = out
         self.contextual_partitions = contextual_partitions
         self.n_partitions = n_partitions
-        self.p_funcs, self.p_vectors, self.p_offsets = out
         self.rep_model = rep_model
         self.input_shape = input_shape
         self.encoded_size = encoded_size

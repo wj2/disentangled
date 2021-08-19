@@ -11,6 +11,7 @@ import pandas as pd
 import h5py
 
 import general.utility as u
+import mixedselectivity_theory.nms_discrete as nmd
 
 float_cast_center = lambda x: tf.cast(x, tf.float32) - .5
 negloglik = lambda x, rv_x: -rv_x.log_prob(x)
@@ -132,6 +133,34 @@ def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
                               context=plane_vec_context[i:i+1],
                               context_off=offsets_context[i])
     return funcs, plane_vec, offsets
+
+def _grid_word(xs, coloring=None, bin_dict=None, trs=None, digit_bins=None):
+    targ = np.zeros(len(xs))
+    xs = np.digitize(xs, digit_bins)
+    for i, x in enumerate(xs):
+        word = trs(bin_dict[tuple(x)])[0].astype(bool)
+        targ[i] = np.any(word & coloring)
+    return targ
+
+def generate_grid_functions(inp_dim, n_funcs=5, n_granules=2,
+                            input_distrib='normal', sparseness=.5):
+    if input_distrib == 'normal':
+        pts = sts.norm(0, 1).ppf(np.linspace(0, 1, n_granules + 1))
+    elif input_distrib == 'uniform':
+        pts = sts.uniform(-1, 2).ppf(np.linspace(0, 1, n_granules + 1))
+    else:
+        msg = 'distribution {} is not implemented'.format(input_distr)
+        raise NotImplementedError(msg)
+    n_bins = n_granules**inp_dim
+    colorings = sts.uniform(0, 1).rvs((n_funcs, n_bins)) < sparseness
+    out = nmd.generate_types((n_granules,)*inp_dim, order=inp_dim, excl=True)
+    ts, bts, trs, _ = out
+    t_dict = dict(zip(ts, bts))
+    funcs = np.zeros(n_funcs, dtype=object)
+    for i, coloring in enumerate(colorings):
+        funcs[i] = ft.partial(_grid_word, coloring=coloring,
+                              bin_dict=t_dict, trs=trs, digit_bins=pts[1:-1])
+    return funcs
 
 class MultivariateUniform(object):
 

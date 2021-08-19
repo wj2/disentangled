@@ -120,6 +120,12 @@ def create_parser():
     parser.add_argument('--config_path', default=None, type=str,
                         help='path to config file to use, will override other '
                         'params')
+    parser.add_argument('--use_granularity', default=False, action='store_true',
+                        help='use grid for tasks instead of partitions')
+    parser.add_argument('--n_granules', default=2, type=int,
+                        help='number of grid points to use')
+    parser.add_argument('--granule_sparseness', default=.5, type=float,
+                        help='sparseness of granule coloring')
     return parser
 
 if __name__ == '__main__':
@@ -229,7 +235,10 @@ if __name__ == '__main__':
                                   noise=args.rep_noise,
                                   context_offset=context_offset,
                                   act_func=act_func,
-                                  nan_salt=nan_salt)
+                                  nan_salt=nan_salt,
+                                  grid_coloring=args.use_granularity,
+                                  n_granules=args.n_granules,
+                                  granule_sparseness=args.granule_sparseness)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
