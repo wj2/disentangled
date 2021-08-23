@@ -272,7 +272,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  regularizer_type=tfk.regularizers.l2,
                  noise=0, context_offset=False, nan_salt=None,
                  grid_coloring=False, n_granules=2, granule_sparseness=.5,
-                 **layer_params):
+                 n_grids=0, **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
@@ -287,22 +287,30 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         model, rep_model, autoenc_model, class_model = out
         self.branch_names = branch_names
         self.model = model
-        if grid_coloring:
+        
+        out = da.generate_partition_functions(
+            true_inp_dim,
+            n_funcs=n_partitions,
+            orth_basis=orthog_partitions,
+            offset_distribution=offset_distr,
+            contextual=contextual_partitions)
+        self.p_funcs, self.p_vectors, self.p_offsets = out
+        if grid_coloring or n_grids > 0:
+            if grid_coloring:
+                n_g = n_partitions
+            else:
+                n_g = n_grids
             out = da.generate_grid_functions(true_inp_dim,
-                                             n_funcs=n_partitions,
+                                             n_funcs=n_g,
                                              n_granules=n_granules,
                                              sparseness=granule_sparseness)
-            self.p_funcs = out
+            p_fs_g, p_vs_g, p_os_g = out, (None,)*n_g, (None,)*n_g
+        if grid_coloring and n_grids > 0:
+            self.p_funcs = p_fs_g
             self.p_vectors = None
             self.p_offsets = None
-        else:
-            out = da.generate_partition_functions(
-                true_inp_dim,
-                n_funcs=n_partitions,
-                orth_basis=orthog_partitions,
-                offset_distribution=offset_distr,
-                contextual=contextual_partitions)
-            self.p_funcs, self.p_vectors, self.p_offsets = out
+        elif n_grids > 0:
+            self.p_funcs = np.concatenate((self.p_funcs, p_fs_g))
         self.contextual_partitions = contextual_partitions
         self.n_partitions = n_partitions
         self.rep_model = rep_model
