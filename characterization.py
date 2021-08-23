@@ -1199,8 +1199,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         n_test_samples = 10**3
         n_save_samps = int(n_save_samps/10)
     else:
-        n_train_samples = 2*10**4
-        n_test_samples = 10**4
+        n_train_samples = 2*10**3
+        n_test_samples = 10**3
         
     if p_c is None:
         p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
