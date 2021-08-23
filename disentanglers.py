@@ -277,17 +277,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
         self.nan_salt = nan_salt
-        out = self.make_encoder(input_shape, layer_shapes, encoded_size,
-                                n_partitions, act_func=act_func,
-                                regularizer_weight=regularizer_weight,
-                                branch_names=branch_names,
-                                dropout_rate=dropout_rate,
-                                regularizer_type=regularizer_type,
-                                noise=noise, **layer_params)
-        model, rep_model, autoenc_model, class_model = out
-        self.branch_names = branch_names
-        self.model = model
-        
+
         out = da.generate_partition_functions(
             true_inp_dim,
             n_funcs=n_partitions,
@@ -311,6 +301,18 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             self.p_offsets = None
         elif n_grids > 0:
             self.p_funcs = np.concatenate((self.p_funcs, p_fs_g))
+        
+        out = self.make_encoder(input_shape, layer_shapes, encoded_size,
+                                len(self.p_funcs), act_func=act_func,
+                                regularizer_weight=regularizer_weight,
+                                branch_names=branch_names,
+                                dropout_rate=dropout_rate,
+                                regularizer_type=regularizer_type,
+                                noise=noise, **layer_params)
+        model, rep_model, autoenc_model, class_model = out
+        self.branch_names = branch_names
+        self.model = model
+        
         self.contextual_partitions = contextual_partitions
         self.n_partitions = n_partitions
         self.rep_model = rep_model
