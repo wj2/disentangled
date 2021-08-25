@@ -138,7 +138,7 @@ def _grid_word(xs, coloring=None, bin_dict=None, trs=None, digit_bins=None):
     targ = np.zeros(len(xs))
     xs = np.digitize(xs, digit_bins)
     for i, x in enumerate(xs):
-        word = trs(bin_dict[tuple(x)])[0].astype(bool)
+        word = bin_dict[tuple(x)].astype(bool)
         targ[i] = np.any(word & coloring)
     return targ
 
@@ -155,12 +155,29 @@ def generate_grid_functions(inp_dim, n_funcs=5, n_granules=2,
     colorings = sts.uniform(0, 1).rvs((n_funcs, n_bins)) < sparseness
     out = nmd.generate_types((n_granules,)*inp_dim, order=inp_dim, excl=True)
     ts, bts, trs, _ = out
-    t_dict = dict(zip(ts, bts))
+    outs = np.identity(len(ts))
+    t_dict = dict(zip(ts, outs))
     funcs = np.zeros(n_funcs, dtype=object)
     for i, coloring in enumerate(colorings):
         funcs[i] = ft.partial(_grid_word, coloring=coloring,
-                              bin_dict=t_dict, trs=trs, digit_bins=pts[1:-1])
+                              bin_dict=t_dict, digit_bins=pts[1:-1])
     return funcs
+
+# def _curved_bound(xs, bounds=None, offs=None):
+#     np.dot(bounds, xs)
+
+# def generate_curved_function(inp_dim, n_funcs=5, order=2,
+#                              offset_distribution=None):
+#     bounds = sts.norm(0, 1).rvs((n_funcs, order, inp_dim))
+#     if offset_distribution is not None:
+#         offsets = offset_distribution.rvs(n_funcs)
+#     else:
+#         offsets = np.zeros(n_funcs)
+#     funcs = np.zeros(n_funcs, dtype=object)
+#     for i, b in enumerate(bounds):
+#         b_norm = u.make_unit_vector(b)
+#         funcs[i] = ft.partial(_curved_bound, bounds=b_norm, offs=offsets[i])
+#     return funcs
 
 class MultivariateUniform(object):
 

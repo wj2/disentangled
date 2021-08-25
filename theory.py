@@ -8,6 +8,7 @@ import itertools as it
 import sklearn.decomposition as skd
 import sklearn.cross_decomposition as skcd
 
+import general.utility as u
 import disentangled.aux as da
 
 def generate_2d_rep(n_pts, stds, rows=1, std_factor=1):
@@ -111,10 +112,38 @@ def opt_loss(d, p, n):
 
 def sig_o(d, p, n):
     pwr = d*p*(n**(1/d) - 1)/12
-    return np.sqrt(1/(pwr + 1))
-    
+    return np.sqrt(1/(pwr + 1))    
 
 def l_kl(d, sig, p, n):
     pwr = d*p*(n**(1/d) - 1)/12
     out = d*(1 + np.log(sig**2) - pwr*sig**2 - sig**2)
     return out
+
+def dichotomies(d):
+    total = sps.comb(2**d, 2**(d - 1))
+    aligned = sum(sps.comb(2**d - 1, k) for k in range(0, d))
+    return total, aligned
+
+def norm_dot_product(d, n_samps=1000):
+    rng = np.random.default_rng()
+    v1s = rng.normal(size=(n_samps, d))
+    v1s = u.make_unit_vector(v1s)
+    
+    v2s = rng.normal(size=(n_samps, d))
+    v2s = u.make_unit_vector(v2s)
+    return np.sum(v1s*v2s, axis=1)
+
+def binary_dot_product(n, d, p=.5, n_samps=1000):
+    rng = np.random.default_rng()
+    v1s = rng.uniform(size=(n_samps, n**d))
+    m1 = v1s < p
+    v1s[m1] = 1
+    v1s[np.logical_not(m1)] = -1
+    v1s = u.make_unit_vector(v1s)
+    
+    v2s = rng.uniform(size=(n_samps, n**d))
+    m2 = v2s < p
+    v2s[m2] = 1
+    v2s[np.logical_not(m2)] = -1
+    v2s = u.make_unit_vector(v2s)
+    return np.sum(v1s*v2s, axis=1)

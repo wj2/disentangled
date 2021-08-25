@@ -18,17 +18,17 @@ def make_common_multi_dict(multi_dict=None):
     multi_dict['n_train_bounds'] = ((3, 4),)
     multi_dict['n_train_diffs'] = (2,)
     multi_dict['dg_dim'] = (500,)
+    multi_dict['use_prf_dg'] = (True,)
 
     multi_dict['use_tanh'] = (True, False)
-    multi_dict['layer_spec'] = ((100, 50), (200, 100, 100),
-                                (200, 100, 100, 50))
-    multi_dict['train_dg'] = (True, False)
+    multi_dict['layer_spec'] = ((250, 100, 100), (250, 150, 100, 100),
+                                (250, 150, 100, 100, 100))
     multi_dict['source_distr'] = ('normal', 'uniform')
     return multi_dict
 
 def make_fd_multi_dict():
     multi_dict = {}
-    ps = (0, 2, 4, 6, 8, 10, 12, 14, 20)
+    ps = (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20)
     multi_dict['partitions'] = tuple((x,) for x in ps)
     multi_dict['use_orthog_partitions'] = (False,)
     multi_dict['offset_distr_var'] = (.4,)
@@ -40,7 +40,7 @@ def make_fd_multi_dict():
 
 def make_bvae_multi_dict():
     multi_dict = {}
-    bs = (0, .5, 1, 1.5, 2, 2.5, 3, 5, 10)
+    bs = (0, .5, 1, 1.5, 2, 2.5, 3, 5, 10, 15, 20)
     multi_dict['betas'] = tuple((x,) for x in bs)
     multi_dict = make_common_multi_dict(multi_dict)
     return multi_dict

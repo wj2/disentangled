@@ -253,8 +253,12 @@ class DisentangledFigure(pu.Figure):
         model = model[0, 0]
         if labels is None:
             labels = ('',)*len(run_inds)
-        manifold_axs = axs[:2]
-        res_axs = np.expand_dims(axs[2:], 0)
+        if len(axs) == 3:
+            ax_break = 1
+        else:
+            ax_break = 2
+        manifold_axs = axs[:ax_break]
+        res_axs = np.expand_dims(axs[ax_break:], 0)
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
         vis_3d = self.params.getboolean('vis_3d')
@@ -876,6 +880,99 @@ class Figure3(DisentangledFigure):
         for ax in axs[:2]:
             ax.set_xlabel('')
             
+class Figure3Grid(DisentangledFigure):
+
+    def __init__(self, fig_key='figure3grid', colors=colors, **kwargs):
+        fsize = (6, 4)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+
+        params = cf[fig_key]
+        self.panel_keys = ('grid_schem', 'grid_only', 'mixed')
+        super().__init__(fsize, params, colors=colors, **kwargs)
+        self.fdg = self.data.get('fdg')
+
+    def make_gss(self):
+        gss = {}
+        
+        gs_schem = pu.make_mxn_gridspec(self.gs, 2, 1, 0, 100, 0, 30,
+                                        3, 0)
+        axs_schem = self.get_axs(gs_schem)
+        
+        gs_res = pu.make_mxn_gridspec(self.gs, 2, 3, 0, 100, 40, 100,
+                                       3, 0)
+        axs_3d = np.zeros((2, 3), dtype=bool)
+        axs_3d[:, 0] = self.params.getboolean('vis_3d')
+        axs_res = self.get_axs(gs_res, plot_3ds=axs_3d)
+        
+        gss[self.panel_keys[0]] = axs_schem
+        gss[self.panel_keys[1]] = axs_res[0]
+        gss[self.panel_keys[2]] = axs_res[1]
+        self.gss = gss
+
+    def panel_grid_only(self):
+        key = self.panel_keys[1]
+        axs = self.gss[key]
+        if not key in self.data.keys():
+            fdg = self.make_fdg()
+            n_grids = self.params.getint('n_grid_eg')
+            out = train_eg_fd(fdg, self.params, offset_var=False,
+                              grid_coloring=True, n_granules=3)
+            self.data[key] = (fdg, out)
+        fdg, out = self.data[key]
+        m, _ = out
+
+        run_inds = self.params.getlist('grid_eg_inds')
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        rep_scale_mag = 20
+
+        grid2_color = self.params.getcolor('grid2_color')
+        grid3_color = self.params.getcolor('grid3_color')
+        colors = (grid2_color, grid3_color)
+        
+        labels = ('grid = 2', 'grid = 3')
+        pv_mask = np.array([False, False, True])
+        
+        self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
+                             labels=labels, pv_mask=pv_mask,
+                             rep_scale_mag=rep_scale_mag, colors=colors,
+                             view_init=(45, -30))
+        for ax in axs[:2]:
+            ax.set_xlabel('')
+
+
+    def panel_mixed(self):
+        key = self.panel_keys[2]
+        axs = self.gss[key]
+        if not key in self.data.keys():
+            fdg = self.make_fdg()
+            n_grids = self.params.getint('n_grid_eg')
+            out = train_eg_fd(fdg, self.params, n_grids=n_grids)
+            self.data[key] = (fdg, out)
+        fdg, out = self.data[key]
+        m, _ = out
+
+        run_inds = self.params.getlist('mixed_eg_inds')
+        f_pattern = self.params.get('f_mixed_pattern')
+        folder = self.params.get('mp_simulations_path')
+        rep_scale_mag = 20
+
+        mixed2_color = self.params.getcolor('mixed2_color')
+        mixed3_color = self.params.getcolor('mixed3_color')
+        colors = (mixed2_color, mixed3_color)
+        
+        labels = ('grid = 2', 'grid = 3')
+        pv_mask = np.array([False, False, True])
+        
+        self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
+                             labels=labels, pv_mask=pv_mask,
+                             rep_scale_mag=rep_scale_mag, colors=colors,
+                             view_init=(45, -30))
+        for ax in axs[:2]:
+            ax.set_xlabel('')
+        
+
 class Figure4(DisentangledFigure):
 
     def __init__(self, fig_key='figure4', colors=colors, **kwargs):

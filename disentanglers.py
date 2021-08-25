@@ -295,7 +295,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                                              n_granules=n_granules,
                                              sparseness=granule_sparseness)
             p_fs_g, p_vs_g, p_os_g = out, (None,)*n_g, (None,)*n_g
-        if grid_coloring and n_grids > 0:
+        if grid_coloring:
             self.p_funcs = p_fs_g
             self.p_vectors = None
             self.p_offsets = None

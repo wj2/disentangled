@@ -326,19 +326,26 @@ def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
         out = f, axs
     else:
         out = axs
-    plot_diagnostics(*args, plot_partitions=True, plot_source=True,
-                     dim_red=False, ax=axs[0], scale_mag=source_scale_mag,
-                     plot_3d=plot_source_3d, view_init=source_view_init, **kwargs)
-    plot_diagnostics(*args, dim_red=dim_red, ax=axs[1], scale_mag=rep_scale_mag,
+    if len(axs) > 1:
+        plot_diagnostics(*args, plot_partitions=True, plot_source=True,
+                         dim_red=False, ax=axs[0], scale_mag=source_scale_mag,
+                         plot_3d=plot_source_3d, view_init=source_view_init,
+                         **kwargs)
+        ind = 1
+    else:
+        ind = 0
+    plot_diagnostics(*args, dim_red=dim_red, ax=axs[ind], scale_mag=rep_scale_mag,
                      compute_pr=True, plot_3d=plot_model_3d,
                      view_init=model_view_init, **kwargs)
     if titles:
-        axs[0].set_title('latent variables')
-        axs[1].set_title('representation')
-    axs[0].set_xlabel('feature 1 (au)')
-    axs[0].set_ylabel('feature 2 (au)')
-    axs[1].set_xlabel('PCA 1 (au)')
-    axs[1].set_ylabel('PCA 2 (au)')
+        if len(axs) > 1:
+            axs[0].set_title('latent variables')
+        axs[ind].set_title('representation')
+    if len(axs) > 1:
+        axs[0].set_xlabel('feature 1 (au)')
+        axs[0].set_ylabel('feature 2 (au)')
+    axs[ind].set_xlabel('PCA 1 (au)')
+    axs[ind].set_ylabel('PCA 2 (au)')
     return out
 
 def make_half_square(n_pts_per_side, lpt=0, rpt=1):
@@ -1377,7 +1384,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            ret_info=False, collapse_plots=False,  pv_mask=None,
                            xlab='partitions', ret_fig=False, legend='',
                            print_args=True, set_title=True, color=None,
-                           plot_hline=True, **kwargs):
+                           plot_hline=True, distr_parts=None, **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
@@ -1390,6 +1397,9 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         n_parts = np.array(n_parts)*info['args'][0]['l2pr_weights_mult']*100
     if print_args:
         print(info['args'][0])
+    if distr_parts is not None:
+        n_parts = list(info_i[distr_parts] for info_i in info['args'])
+        
     p = p[..., 1]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
     if pv_mask is not None:
