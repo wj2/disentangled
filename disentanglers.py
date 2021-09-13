@@ -272,14 +272,20 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  regularizer_type=tfk.regularizers.l2,
                  noise=0, context_offset=False, nan_salt=None,
                  grid_coloring=False, n_granules=2, granule_sparseness=.5,
-                 n_grids=0, **layer_params):
+                 n_grids=0, no_learn_lvs=None, **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
         self.nan_salt = nan_salt
 
+        if no_learn_lvs is not None:
+            true_learn_dim = true_inp_dim - np.sum(no_learn_lvs)
+            self.learn_lvs = np.logical_not(no_learn_lvs)
+        else:
+            true_learn_dim = true_inp_dim
+            self.learn_lvs = np.ones(true_inp_dim, dtype=bool)
         out = da.generate_partition_functions(
-            true_inp_dim,
+            true_learn_dim,
             n_funcs=n_partitions,
             orth_basis=orthog_partitions,
             offset_distribution=offset_distr,
@@ -290,7 +296,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                 n_g = n_partitions
             else:
                 n_g = n_grids
-            out = da.generate_grid_functions(true_inp_dim,
+            out = da.generate_grid_functions(true_learn_dim,
                                              n_funcs=n_g,
                                              n_granules=n_granules,
                                              sparseness=granule_sparseness)
@@ -301,7 +307,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             self.p_offsets = None
         elif n_grids > 0:
             self.p_funcs = np.concatenate((self.p_funcs, p_fs_g))
-        
+
         out = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                 len(self.p_funcs), act_func=act_func,
                                 regularizer_weight=regularizer_weight,
@@ -324,6 +330,10 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.recon_model = autoenc_model
         self.layer_shapes = layer_shapes
 
+    def generate_target(self, inps):
+        inps_reduced = inps[:, self.learn_lvs]
+        return super().generate_target(inps_reduced)
+        
     def save(self, path):
         tf_entries = ('model', 'rep_model', 'recon_model')
         self._save_wtf(path, tf_entries)
@@ -813,6 +823,8 @@ class BetaVAE(da.TFModel):
             eval_data = data_generator.rvs(10*5)
             eval_set = (eval_data, eval_data)
 
+        print(eval_set[0].dtype, eval_set[1].dtype)
+        print(train_x.dtype, train_y.dtype)
         out = self.vae.fit(x=train_x, y=train_y, epochs=epochs,
                            validation_data=eval_set, batch_size=batch_size,
                            **kwargs)

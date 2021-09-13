@@ -128,6 +128,8 @@ def create_parser():
                         help='number of grid points to use')
     parser.add_argument('--granule_sparseness', default=.5, type=float,
                         help='sparseness of granule coloring')
+    parser.add_argument('--task_subset', default=None, type=int,
+                        help='number of latent variables to learn for tasks')
     return parser
 
 if __name__ == '__main__':
@@ -215,6 +217,15 @@ if __name__ == '__main__':
     else:
         layer_spec = tuple((i,) for i in args.layer_spec)
         
+    if args.task_subset is not None:
+        no_learn_lvs = np.zeros(true_inp_dim, dtype=int)
+        miss_dims = true_inp_dim - args.task_subset
+        no_learn_lvs[-miss_dims:] = 1
+        compute_train_lvs = True
+    else:
+        no_learn_lvs = None
+        compute_train_lvs = False
+        
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
@@ -241,7 +252,8 @@ if __name__ == '__main__':
                                   n_grids=args.n_grids,
                                   n_granules=args.n_granules,
                                   granule_sparseness=args.granule_sparseness,
-                                  grid_coloring=args.use_grids_only)
+                                  grid_coloring=args.use_grids_only,
+                                  no_learn_lvs=no_learn_lvs)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
@@ -257,7 +269,9 @@ if __name__ == '__main__':
                                      model_n_epochs=args.model_epochs,
                                      layer_spec=layer_spec,
                                      generate_data=not args.no_data,
-                                     distr_type=args.source_distr)
+                                     distr_type=args.source_distr,
+                                     compute_trained_lvs=compute_train_lvs,
+                                     plot=False)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,

@@ -26,18 +26,38 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               n_train_samples=5*10**3, n_test_samples=10**3,
                               classifier=skc.LinearSVC, kernel='linear',
                               n_iters=2, mean=True,
-                              shuffle=False, use_orthogonal=True, 
+                              shuffle=False, use_orthogonal=True,
+                              learn_lvs='ignore',
                               repl_mean=None, **classifier_params):
     if train_func is None:
+        lv_mask = np.ones(gen.input_dim, dtype=bool)
         if use_orthogonal and hasattr(train_distrib, 'partition'):
             orth_vec = train_distrib.partition
             orth_off = train_distrib.offset
-            out = da.generate_partition_functions(gen.input_dim, n_funcs=n_iters,
-                                                  orth_vec=orth_vec,
-                                                  orth_off=orth_off)
+            if learn_lvs == 'ignore':
+                out = da.generate_partition_functions(gen.input_dim,
+                                                      n_funcs=n_iters,
+                                                      orth_vec=orth_vec,
+                                                      orth_off=orth_off)
+            elif learn_lvs == 'trained':
+                lv_mask = vae.learn_lvs
+                out = da.generate_partition_functions(
+                    sum(vae.learn_lvs), n_funcs=n_iters,
+                    orth_vec=orth_vec[lv_mask], orth_off=orth_off)
+            elif learn_lvs == 'untrained':
+                n_untrained = gen.input_dim - sum(vae.learn_lvs)
+                lv_mask = np.logical_not(vae.learn_lvs)
+                out = da.generate_partition_functions(
+                    n_untrained, n_funcs=n_iters, orth_vec=orth_vec[lv_mask],
+                    orth_off=orth_off)
+            else:
+                raise IOError('{} is not an understood option for '
+                              'learn_lvs'.format(learn_lvs))
         else:
             out = da.generate_partition_functions(gen.input_dim, n_funcs=n_iters)
         train_func, _, _ = out
+    print(vae.learn_lvs)
+    print(lv_mask)
     if train_distrib is None:
         train_distrib = gen.source_distribution
     if test_distrib is None:
@@ -50,7 +70,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         train_samples = train_distrib.rvs(n_train_samples)
         if repl_mean is not None:
             train_samples[:, repl_mean] = train_distrib.mean[repl_mean]
-        train_labels = train_func[i](train_samples)
+        train_labels = train_func[i](train_samples[:, lv_mask])
         inp_reps = gen.generator(train_samples)
         train_rep = vae.get_representation(inp_reps)
         c = classifier(max_iter=100000, **classifier_params)
@@ -60,7 +80,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         test_samples = test_distrib.rvs(n_test_samples)
         if repl_mean is not None:
             test_samples[:, repl_mean] = test_distrib.mean[repl_mean]
-        test_labels = test_func[i](test_samples)
+        test_labels = test_func[i](test_samples[:, lv_mask])
         if shuffle:
             snp.random.shuffle(test_labels)
 
@@ -963,7 +983,8 @@ def plot_recon_accuracy_partition(scores, mks=None, ax=None, indiv_pts=True,
         l = gpl.plot_trace_werr(mks, scores.T, ax=ax, log_x=log_x, **kwargs)
     else:
         l = ax.plot(mks, np.nanmedian(scores.T, axis=0),
-                    label=kwargs['label'], color=kwargs.get('color'))
+                    label=kwargs['label'], color=kwargs.get('color'),
+                    linestyle=kwargs.get('linestyle'))
         gpl.clean_plot(ax, 0)
         ax.legend(frameon=False)
     if indiv_pts:
@@ -1103,7 +1124,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             plot=True, gpu_samples=False, dg_dim=500,
                             generate_data=True, n_save_samps=10**4,
                             model_batch_size=30, p_mean=True,
-                            distr_type='normal', dg_layers=None):
+                            distr_type='normal', dg_layers=None,
+                            compute_trained_lvs=False):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1210,12 +1232,25 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         n_test_samples = 10**3
         
     if p_c is None:
-        p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
-                                             train_distributions=train_ds,
-                                             n_iters=eval_n_iters,
-                                             n_train_samples=n_train_samples,
-                                             n_test_samples=n_test_samples,
-                                             mean=p_mean)
+        if compute_trained_lvs:
+            pt, ct = evaluate_multiple_models_dims(
+                dg_use, models, None, test_ds, train_distributions=train_ds,
+                n_iters=eval_n_iters, n_train_samples=n_train_samples,
+                n_test_samples=n_test_samples, mean=p_mean, learn_lvs='trained')
+            pu, cu = evaluate_multiple_models_dims(
+                dg_use, models, None, test_ds, train_distributions=train_ds,
+                n_iters=eval_n_iters, n_train_samples=n_train_samples,
+                n_test_samples=n_test_samples, mean=p_mean,
+                learn_lvs='untrained')
+            p = np.stack((pt, pu), axis=0)
+            c = np.stack((ct, cu), axis=0)
+        else:
+            p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
+                                                 train_distributions=train_ds,
+                                                 n_iters=eval_n_iters,
+                                                 n_train_samples=n_train_samples,
+                                                 n_test_samples=n_test_samples,
+                                                 mean=p_mean)
     else:
         p, c = p_c
 
@@ -1384,7 +1419,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            ret_info=False, collapse_plots=False,  pv_mask=None,
                            xlab='partitions', ret_fig=False, legend='',
                            print_args=True, set_title=True, color=None,
-                           plot_hline=True, distr_parts=None, **kwargs):
+                           plot_hline=True, distr_parts=None, linestyle='solid',
+                           **kwargs):
     data, info = da.load_full_run(folder, run_ind, 
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
@@ -1397,10 +1433,13 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         n_parts = np.array(n_parts)*info['args'][0]['l2pr_weights_mult']*100
     if print_args:
         print(info['args'][0])
-    if distr_parts is not None:
-        n_parts = list(info_i[distr_parts] for info_i in info['args'])
-        
     p = p[..., 1]
+    if distr_parts is not None:
+        n_parts = np.array(list(info_i[distr_parts] for info_i in info['args']))
+        sort_inds = np.argsort(n_parts)
+        n_parts = n_parts[sort_inds]
+        p = p[:, sort_inds]
+        sc = sc[:, sort_inds]
     panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
     if pv_mask is not None:
         panel_vals = panel_vals[pv_mask]
@@ -1415,7 +1454,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       axs=axs, collapse_plots=collapse_plots,
                                       ret_fig=ret_fig, label=legend,
                                       fwid=fwid, set_title=set_title,
-                                      color=color, plot_hline=plot_hline)
+                                      color=color, plot_hline=plot_hline,
+                                      linestyle=linestyle)
     if ret_info:
         out_all = (out, info)
     else:
@@ -1429,7 +1469,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 xlab='partitions', axs=None, ct=np.nanmedian,
                                 collapse_plots=False, ret_fig=False,
                                 set_title=True, color=None, thresh=.9,
-                                plot_hline=True):
+                                plot_hline=True, **kwargs):
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -1474,7 +1514,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                              label=use_label, color=color,
                                              collapse_plots=collapse_plots,
                                              plot_labels=panel_labels,
-                                             set_title=set_title)
+                                             set_title=set_title, **kwargs)
         print_thresh_exceed(x_vals, qp, thresh, labels[i], super_label=label)
     if ret_fig:
         out = f, axs

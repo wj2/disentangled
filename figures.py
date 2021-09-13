@@ -15,6 +15,7 @@ import disentangled.disentanglers as dd
 import disentangled.characterization as dc
 import disentangled.aux as da
 import disentangled.theory as dt
+import disentangled.multiverse_options as dmo
 
 config_path = 'disentangled/figures.conf'
 
@@ -883,33 +884,58 @@ class Figure3(DisentangledFigure):
 class Figure3Grid(DisentangledFigure):
 
     def __init__(self, fig_key='figure3grid', colors=colors, **kwargs):
-        fsize = (6, 4)
+        fsize = (5.5, 2.4)
         cf = u.ConfigParserColor()
         cf.read(config_path)
 
         params = cf[fig_key]
-        self.panel_keys = ('grid_schem', 'grid_only', 'mixed')
+        self.panel_keys = ('correlation_decay', 'grid_only', 'mixed')
         super().__init__(fsize, params, colors=colors, **kwargs)
         self.fdg = self.data.get('fdg')
 
     def make_gss(self):
         gss = {}
         
-        gs_schem = pu.make_mxn_gridspec(self.gs, 2, 1, 0, 100, 0, 30,
+        gs_schem = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100, 0, 40,
                                         3, 0)
-        axs_schem = self.get_axs(gs_schem)
+        axs_3d = np.zeros((2, 2), dtype=bool)
+        axs_3d[:, 1] = self.params.getboolean('vis_3d')
+        axs_schem = self.get_axs(gs_schem, plot_3ds=axs_3d)
         
-        gs_res = pu.make_mxn_gridspec(self.gs, 2, 3, 0, 100, 40, 100,
-                                       3, 0)
-        axs_3d = np.zeros((2, 3), dtype=bool)
-        axs_3d[:, 0] = self.params.getboolean('vis_3d')
-        axs_res = self.get_axs(gs_res, plot_3ds=axs_3d)
+        gs_res = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100, 54, 100,
+                                       8, 12)
+        axs_res = self.get_axs(gs_res)
+        axs_res2 = np.concatenate((axs_schem[:, 1:], axs_res), axis=1)
+        axs_schem2 = axs_schem[1, 0]
         
-        gss[self.panel_keys[0]] = axs_schem
-        gss[self.panel_keys[1]] = axs_res[0]
-        gss[self.panel_keys[2]] = axs_res[1]
+        gss[self.panel_keys[0]] = axs_schem2
+        gss[self.panel_keys[1]] = axs_res2[0]
+        gss[self.panel_keys[2]] = axs_res2[1]
         self.gss = gss
 
+    def panel_correlation_decay(self):
+        key = self.panel_keys[0]
+        ax = self.gss[key]
+
+        eg_dim = self.params.getint('inp_dim')
+        n_samples = self.params.getint('n_corr_samples')
+        partition_color = self.params.getcolor('partition_color')
+        grid2_color = self.params.getcolor('grid2_color')
+        grid3_color = self.params.getcolor('grid3_color')
+        
+        part_corr = dt.norm_dot_product(eg_dim)
+        grid2_corr = dt.binary_dot_product(2, eg_dim)
+        grid3_corr = dt.binary_dot_product(3, eg_dim)
+        ax.hist(part_corr, histtype='step', color=partition_color,
+                label='partitions')
+        ax.hist(grid2_corr, histtype='step', color=grid2_color,
+                label=r'$N_{C} = 2^{D}$')
+        ax.hist(grid3_corr, histtype='step', color=grid3_color,
+                label=r'$N_{C} = 3^{D}$')
+        ax.legend(frameon=False)
+        gpl.clean_plot(ax, 0)
+        ax.set_xlabel('task alignment')
+        
     def panel_grid_only(self):
         key = self.panel_keys[1]
         axs = self.gss[key]
@@ -929,6 +955,7 @@ class Figure3Grid(DisentangledFigure):
 
         grid2_color = self.params.getcolor('grid2_color')
         grid3_color = self.params.getcolor('grid3_color')
+        grid_style = self.params.get('grid_style')
         colors = (grid2_color, grid3_color)
         
         labels = ('grid = 2', 'grid = 3')
@@ -937,9 +964,10 @@ class Figure3Grid(DisentangledFigure):
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
                              rep_scale_mag=rep_scale_mag, colors=colors,
-                             view_init=(45, -30))
-        for ax in axs[:2]:
+                             view_init=(45, -30), linestyle=grid_style)
+        for ax in axs:
             ax.set_xlabel('')
+            ax.set_xticks([])
 
 
     def panel_mixed(self):
@@ -958,19 +986,24 @@ class Figure3Grid(DisentangledFigure):
         folder = self.params.get('mp_simulations_path')
         rep_scale_mag = 20
 
-        mixed2_color = self.params.getcolor('mixed2_color')
-        mixed3_color = self.params.getcolor('mixed3_color')
+        mixed2_color = self.params.getcolor('grid2_color')
+        mixed3_color = self.params.getcolor('grid3_color')
         colors = (mixed2_color, mixed3_color)
+
+        marker_color = self.params.getcolor('marker_color')
         
-        labels = ('grid = 2', 'grid = 3')
+        labels = (r'$N_{C} = 2^{D}$',
+                  r'$N_{C} = 3^{D}$')
         pv_mask = np.array([False, False, True])
-        
+
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
                              rep_scale_mag=rep_scale_mag, colors=colors,
-                             view_init=(45, -30))
-        for ax in axs[:2]:
-            ax.set_xlabel('')
+                             view_init=(45, -30), distr_parts='n_grids',
+                             plot_hline=False)
+        for ax in axs[1:]:
+            ax.set_xlabel('grid tasks')
+            gpl.add_vlines(15, ax=ax, linestyle='dashed')
         
 
 class Figure4(DisentangledFigure):
@@ -1298,6 +1331,106 @@ class Figure5(DisentangledFigure):
         recs, di, dl, dr, lr = out
         dc.plot_img_series(dr, title='', axs=axs[3], cmap=cm)
         dc.plot_img_series(recs, title='', axs=axs[4], cmap=cm)
+
+class SIFigureMultiverse(DisentangledFigure):
+    
+    def __init__(self, fig_key='sifigure_multi', colors=colors, **kwargs):
+        fsize = (5.5, 5)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = ('panel_multiverse',)
+        super().__init__(fsize, params, colors=colors, **kwargs)
+    
+    def make_gss(self):
+        gss = {}
+        m1_grid = pu.make_mxn_gridspec(self.gs, 1, 8,
+                                       0, 48, 0, 100,
+                                       20, 3)
+        m1_axs = self.get_axs(m1_grid, sharey=True)
+        m2_grid = pu.make_mxn_gridspec(self.gs, 1, 8,
+                                       52, 100, 0, 100,
+                                       20, 3)
+        m2_axs = self.get_axs(m2_grid, sharey=True)
+        gss[self.panel_keys[0]] = (m1_axs[0], m2_axs[0])
+        self.gss = gss
+
+    def panel_multiverse(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        fd_manifest_path = self.params.get('fd_manifest_path')
+        fd_pattern = self.params.get('fd_pattern')
+        
+        bv_manifest_path = self.params.get('bv_manifest_path')
+        bv_pattern = self.params.get('bv_pattern')
+
+        results_folder = self.params.get('results_folder')
+        fd_color = self.params.getcolor('partition_color')
+        bv_color = self.params.getcolor('bvae_color')
+        colors = (fd_color, bv_color)
+
+        if self.data.get(key) is None:
+            fd_manifest = {'fd':fd_manifest_path}
+            mv_fd = dmo.load_multiverse(results_folder, fd_manifest,
+                                        run_pattern=fd_pattern)
+            bv_manifest = {'bv':bv_manifest_path}
+            mv_bv = dmo.load_multiverse(results_folder, bv_manifest,
+                                        run_pattern=bv_pattern)  
+
+            out_fd1 = dmo.model_explanation(mv_fd, 'class_gen')
+            out_fd2 = dmo.model_explanation(mv_fd, 'regr_gen')
+            out_bv1 = dmo.model_explanation(mv_bv, 'class_gen')
+            out_bv2 = dmo.model_explanation(mv_bv, 'regr_gen')
+            self.data[key] = (mv_fd, mv_bv, (out_fd1, out_fd2), (out_bv1,
+                                                                 out_bv2))
+        mv_fd, mv_bv, out_fd, out_bv = self.data[key]
+
+        title_dict = {'layer_spec':'depth', 'train_eg':'training data',
+                      'use_tanh':'act function',
+                      'input_dims':'latent variables',
+                      'no_autoencoder':'autoencoder',
+                      'betas':r'partition / $\beta$',
+                      'source_distr':'latent variable\ndistribution',
+                      'partitions':r'partitions / $\beta$',
+                      'latent_dims':'rep width'}
+        for i, (r_fd_i, s_fd_i, lh_fd_i, l_fd_i, lv_fd_i) in enumerate(out_fd):
+            r_bv_i, s_bv_i, lh_bv_i, l_bv_i, lv_bv_i = out_bv[i]
+            axs_i = axs[i]
+            axd_i = {'partitions':axs_i[0], 'betas':axs_i[0],
+                     'layer_spec':axs_i[1], 'train_eg':axs_i[2],
+                     'use_tanh':axs_i[3], 'input_dims':axs_i[4],
+                     'source_distr':axs_i[5], 'latent_dims':axs_i[6],
+                     'no_autoencoder':axs_i[7]}
+            if i == len(out_fd) - 1:
+                labels = True
+            else:
+                labels = False
+            model_names = ('multi-tasking model', r'$\beta$VAE')
+            dmo.plot_multiple_model_coefs((l_fd_i, l_bv_i), (r_fd_i, r_bv_i),
+                                          (lh_fd_i, lh_bv_i), ax_dict=axd_i,
+                                          title_dict=title_dict, colors=colors,
+                                          labels=labels, model_names=model_names,
+                                          v_dicts=(lv_fd_i, lv_bv_i))
+            for i, ax in enumerate(axs_i):
+                gpl.clean_plot(ax, i)
+        axd_i['no_autoencoder'].set_xticks([0, 1])
+        axd_i['no_autoencoder'].set_xticklabels(['with', 'without'],
+                                                rotation='vertical')
+        axd_i['use_tanh'].set_xticks([0, 1])
+        axd_i['use_tanh'].set_xticklabels(['ReLU', 'tanh'],
+                                          rotation='vertical')
+        axd_i['layer_spec'].set_xticklabels([3, 4, 5])
+        axd_i['source_distr'].set_xticklabels(['normal', 'uniform'],
+                                              rotation='vertical')
+        axd_i['train_eg'].set_xticks([10000, 100000])
+        axd_i['train_eg'].set_xticklabels([r'$10^{4}$', r'$10^{5}$'])
+        axd_i['input_dims'].set_xticks([2, 5, 8])
+        axd_i['partitions'].legend(frameon=False)
+        axs[0][0].set_ylabel('classifier generalization\ninfluence')
+        axs[1][0].set_ylabel('regression generalization\ninfluence')
         
 class SIFigureDim(DisentangledFigure):
 
