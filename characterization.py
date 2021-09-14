@@ -1060,7 +1060,17 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                test_labels=None, feat_mask=None,
                                lr_type=sklm.Ridge,
                                correct=False, repl_mean=None,
-                               partition_vec=None, **kwargs):
+                               partition_vec=None, learn_lvs='ignore',
+                               **kwargs):
+    if learn_lvs == 'trained':
+        feat_mask = model.learn_lvs
+    elif learn_lvs == 'untrained':
+        feat_mask = np.logical_not(model.learn_lvs)
+    elif learn_lvs == 'ignore':
+        pass
+    else:
+        raise IOError('{} is not an understood option for '
+                      'learn_lvs'.format(learn_lvs))
     if train_stim_set is not None and test_stim_set is not None:
         enc_pts = model.get_representation(train_stim_set)
         test_enc_pts = model.get_representation(test_stim_set)
@@ -1261,8 +1271,18 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         plot_model_manifolds(dg_use, models)
 
     if lts_scores is None:
-        lts_scores = find_linear_mappings(dg_use, models, half=True,
-                                          n_samps=n_test_samples)
+        if compute_trained_lvs:
+            lts_t = find_linear_mappings(dg_use, models, half=True,
+                                         n_samps=n_test_samples,
+                                         learn_lvs='trained')
+            lts_u = find_linear_mappings(dg_use, models, half=True,
+                                         n_samps=n_test_samples,
+                                         learn_lvs='untrained')
+            lts_scores = list(np.stack((lts_ti, lts_u[i]), axis=0)
+                              for i, lts_ti in enumerate(lts_t))
+        else:
+            lts_scores = find_linear_mappings(dg_use, models, half=True,
+                                              n_samps=n_test_samples)
     print(lts_scores[1])
     print(np.mean(lts_scores[1]))
     if plot:
