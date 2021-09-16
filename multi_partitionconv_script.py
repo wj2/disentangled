@@ -168,9 +168,11 @@ if __name__ == '__main__':
     if args.exclude_rotation:
         no_learn_lvs = [False, False, True, False, False]
         compute_train_lvs = True
+        compute_untrained = False
     else:
         no_learn_lvs = [False, False, False, False, False]
         compute_train_lvs = False
+        compute_untrained = True
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
@@ -208,7 +210,8 @@ if __name__ == '__main__':
                                      model_batch_size=args.batch_size,
                                      model_n_epochs=args.model_epochs,
                                      plot=False, gpu_samples=True,
-                                     compute_trained_lvs=compute_train_lvs)
+                                     compute_trained_lvs=compute_train_lvs,
+                                     compute_untrained=compute_untrained)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
