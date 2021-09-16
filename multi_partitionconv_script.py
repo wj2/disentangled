@@ -208,7 +208,7 @@ if __name__ == '__main__':
                                      model_batch_size=args.batch_size,
                                      model_n_epochs=args.model_epochs,
                                      plot=False, gpu_samples=True,
-                                     compute_train_lvs=compute_train_lvs)
+                                     compute_trained_lvs=compute_train_lvs)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
