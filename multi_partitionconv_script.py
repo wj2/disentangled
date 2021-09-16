@@ -107,6 +107,8 @@ def create_parser():
     parser.add_argument('--config_path', default=None, type=str,
                         help='path to config file to use, will override other '
                         'params')
+    parser.add_argument('--exclude_rotation', default=False, action='store_true',
+                        help='exclude periodic variable rotation')
     return parser
 
 if __name__ == '__main__':
@@ -150,7 +152,7 @@ if __name__ == '__main__':
         reg_weight = np.array(args.l2pr_weights)*args.l2pr_weights_mult
     else:
         reg = tfk.regularizers.l2
-        reg_weight = 0
+        reg_weight = 0.001
         
     if args.use_tanh:
         act_func = tf.nn.tanh
@@ -158,11 +160,15 @@ if __name__ == '__main__':
         act_func = tf.nn.relu
 
     if args.layer_spec is None:
-        layer_spec = ((128, 2, 2), (64, 2, 2), (256,),
-                      (128,), (128,))
+        layer_spec = ((64, 2, 2), (128, 2, 2), (256,),
+                      (256,), (128,))
     else:
         layer_spec = tuple((i,) for i in args.layer_spec)
-        
+
+    if args.exclude_rotation:
+        no_learn_lvs = [False, False, True, False, False]
+    else:
+        no_learn_lvs = [False, False, False, False, False]
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
@@ -185,7 +191,7 @@ if __name__ == '__main__':
                                   noise=args.rep_noise,
                                   context_offset=context_offset,
                                   act_func=act_func,
-                                  nan_salt=nan_salt)
+                                  nan_salt=nan_salt, no_learn_lvs=no_learn_lvs)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing

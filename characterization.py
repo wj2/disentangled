@@ -1440,8 +1440,12 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            xlab='partitions', ret_fig=False, legend='',
                            print_args=True, set_title=True, color=None,
                            plot_hline=True, distr_parts=None, linestyle='solid',
-                           **kwargs):
-    data, info = da.load_full_run(folder, run_ind, 
+                           double_ind=None, **kwargs):
+    if double_ind is not None:
+        merge_axis = 2
+    else:
+        merge_axis = 1
+    data, info = da.load_full_run(folder, run_ind, merge_axis=merge_axis,
                                   dg_type=dg_type, model_type=model_type,
                                   file_template=f_pattern, analysis_only=True,
                                   **kwargs) 
@@ -1454,6 +1458,10 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     if print_args:
         print(info['args'][0])
     p = p[..., 1]
+    print(p.shape, sc.shape)
+    if double_ind is not None:
+        p = p[double_ind]
+        sc = sc[double_ind]
     if distr_parts is not None:
         n_parts = np.array(list(info_i[distr_parts] for info_i in info['args']))
         sort_inds = np.argsort(n_parts)
