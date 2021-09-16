@@ -1280,11 +1280,14 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             lts_t = find_linear_mappings(dg_use, models, half=True,
                                          n_samps=n_test_samples,
                                          learn_lvs='trained')
-            lts_u = find_linear_mappings(dg_use, models, half=True,
-                                         n_samps=n_test_samples,
-                                         learn_lvs='untrained')
-            lts_scores = list(np.stack((lts_ti, lts_u[i]), axis=0)
-                              for i, lts_ti in enumerate(lts_t))
+            if compute_untrained:
+                lts_u = find_linear_mappings(dg_use, models, half=True,
+                                             n_samps=n_test_samples,
+                                             learn_lvs='untrained')
+                lts_scores = list(np.stack((lts_ti, lts_u[i]), axis=0)
+                                  for i, lts_ti in enumerate(lts_t))
+            else:
+                lts_scores = lts_t
         else:
             lts_scores = find_linear_mappings(dg_use, models, half=True,
                                               n_samps=n_test_samples)
