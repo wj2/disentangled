@@ -167,10 +167,10 @@ if __name__ == '__main__':
 
     if args.exclude_rotation:
         no_learn_lvs = [False, False, True, False, False]
-        compute_train_lvs = False
+        compute_train_lvs = True
     else:
         no_learn_lvs = [False, False, False, False, False]
-        compute_train_lvs = True
+        compute_train_lvs = False
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
