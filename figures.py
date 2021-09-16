@@ -250,7 +250,7 @@ class DisentangledFigure(pu.Figure):
     def _standard_panel(self, fdg, model, run_inds, f_pattern, folder, axs,
                         labels=None, rep_scale_mag=5, source_scale_mag=.5,
                         x_label=True, y_label=True, colors=None, view_init=None,
-                        **kwargs):
+                        multi_num=1, **kwargs):
         model = model[0, 0]
         if labels is None:
             labels = ('',)*len(run_inds)
@@ -273,12 +273,20 @@ class DisentangledFigure(pu.Figure):
                                 model_view_init=view_init)
         if colors is None:
             colors = (None,)*len(run_inds)
+        if multi_num > 1:
+            double_inds = np.concatenate(list((i,)*len(run_inds)
+                                              for i in range(multi_num)))
+            run_inds = run_inds*multi_num
+            labels = labels*multi_num
+            colors=colors*multi_num
+        else:
+            double_inds = (None,)*len(run_inds)
         for i, ri in enumerate(run_inds):
             dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
                                       collapse_plots=False, folder=folder,
                                       axs=res_axs, legend=labels[i],
                                       print_args=False, set_title=False,
-                                      color=colors[i],
+                                      color=colors[i], double_ind=double_inds[i],
                                       **kwargs)
         res_axs[0, 0].set_yticks([.5, 1])
         res_axs[0, 1].set_yticks([0, .5, 1])
@@ -884,37 +892,76 @@ class Figure3(DisentangledFigure):
 class Figure3Grid(DisentangledFigure):
 
     def __init__(self, fig_key='figure3grid', colors=colors, **kwargs):
-        fsize = (5.5, 2.4)
+        fsize = (5.5, 3.6)
         cf = u.ConfigParserColor()
         cf.read(config_path)
 
         params = cf[fig_key]
-        self.panel_keys = ('correlation_decay', 'grid_only', 'mixed')
+        self.panel_keys = ('irrel_variables', 'correlation_decay', 'grid_only',
+                           'mixed')
         super().__init__(fsize, params, colors=colors, **kwargs)
         self.fdg = self.data.get('fdg')
 
     def make_gss(self):
         gss = {}
         
-        gs_schem = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100, 0, 40,
+        gs_schem = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 0, 40,
                                         3, 0)
-        axs_3d = np.zeros((2, 2), dtype=bool)
+        axs_3d = np.zeros((3, 2), dtype=bool)
         axs_3d[:, 1] = self.params.getboolean('vis_3d')
         axs_schem = self.get_axs(gs_schem, plot_3ds=axs_3d)
         
-        gs_res = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100, 54, 100,
+        gs_res = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 54, 100,
                                        8, 12)
         axs_res = self.get_axs(gs_res)
         axs_res2 = np.concatenate((axs_schem[:, 1:], axs_res), axis=1)
-        axs_schem2 = axs_schem[1, 0]
-        
-        gss[self.panel_keys[0]] = axs_schem2
-        gss[self.panel_keys[1]] = axs_res2[0]
+        axs_schem2 = axs_schem[2, 0]
+
+        gss[self.panel_keys[0]] = axs_res2[0]
+        gss[self.panel_keys[1]] = axs_schem2
         gss[self.panel_keys[2]] = axs_res2[1]
+        gss[self.panel_keys[3]] = axs_res2[2]
         self.gss = gss
 
-    def panel_correlation_decay(self):
+    def panel_irrel_variables(self):
         key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        if not key in self.data.keys():
+            fdg = self.make_fdg()
+            irrel_dims = self.params.getlist('irrel_dims', typefunc=int)
+            irrel_dims = np.array(irrel_dims).astype(bool)
+            out = train_eg_fd(fdg, self.params, offset_var=False,
+                              no_learn_lvs=irrel_dims)
+            self.data[key] = (fdg, out)
+        fdg, out = self.data[key]
+        m, _ = out
+
+        run_inds = self.params.getlist('no_learn_eg_ind')
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        multi_num = self.params.getint('multi_num')
+        rep_scale_mag = 20
+
+        grid2_color = self.params.getcolor('partition_color')
+        grid3_color = self.params.getcolor('untrained_color')
+        colors = (grid2_color, grid3_color)
+        
+        labels = ('trained dimensions', 'untrained dimensions')
+        pv_mask = np.array([False, False, True])
+        
+        self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
+                             labels=labels, pv_mask=pv_mask,
+                             rep_scale_mag=rep_scale_mag, colors=colors,
+                             multi_num=multi_num,
+                             view_init=(45, -30))
+        # for ax in axs:
+        #     ax.set_xlabel('')
+        #     ax.set_xticks([])
+        
+        
+    def panel_correlation_decay(self):
+        key = self.panel_keys[1]
         ax = self.gss[key]
 
         eg_dim = self.params.getint('inp_dim')
@@ -937,8 +984,9 @@ class Figure3Grid(DisentangledFigure):
         ax.set_xlabel('task alignment')
         
     def panel_grid_only(self):
-        key = self.panel_keys[1]
+        key = self.panel_keys[2]
         axs = self.gss[key]
+        
         if not key in self.data.keys():
             fdg = self.make_fdg()
             n_grids = self.params.getint('n_grid_eg')
@@ -967,11 +1015,11 @@ class Figure3Grid(DisentangledFigure):
                              view_init=(45, -30), linestyle=grid_style)
         for ax in axs:
             ax.set_xlabel('')
-            ax.set_xticks([])
+            # ax.set_xticks([])
 
 
     def panel_mixed(self):
-        key = self.panel_keys[2]
+        key = self.panel_keys[3]
         axs = self.gss[key]
         if not key in self.data.keys():
             fdg = self.make_fdg()
