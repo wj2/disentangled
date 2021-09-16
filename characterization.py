@@ -1135,7 +1135,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             generate_data=True, n_save_samps=10**4,
                             model_batch_size=30, p_mean=True,
                             distr_type='normal', dg_layers=None,
-                            compute_trained_lvs=False):
+                            compute_trained_lvs=False,
+                            compute_untrained=True):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1247,13 +1248,17 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                 dg_use, models, None, test_ds, train_distributions=train_ds,
                 n_iters=eval_n_iters, n_train_samples=n_train_samples,
                 n_test_samples=n_test_samples, mean=p_mean, learn_lvs='trained')
-            pu, cu = evaluate_multiple_models_dims(
-                dg_use, models, None, test_ds, train_distributions=train_ds,
-                n_iters=eval_n_iters, n_train_samples=n_train_samples,
-                n_test_samples=n_test_samples, mean=p_mean,
-                learn_lvs='untrained')
-            p = np.stack((pt, pu), axis=0)
-            c = np.stack((ct, cu), axis=0)
+            if compute_untrained:
+                pu, cu = evaluate_multiple_models_dims(
+                    dg_use, models, None, test_ds, train_distributions=train_ds,
+                    n_iters=eval_n_iters, n_train_samples=n_train_samples,
+                    n_test_samples=n_test_samples, mean=p_mean,
+                    learn_lvs='untrained')
+                p = np.stack((pt, pu), axis=0)
+                c = np.stack((ct, cu), axis=0)
+            else:
+                p = pt
+                c = ct
         else:
             p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
                                                  train_distributions=train_ds,
