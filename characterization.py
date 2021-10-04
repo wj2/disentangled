@@ -56,8 +56,8 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         else:
             out = da.generate_partition_functions(gen.input_dim, n_funcs=n_iters)
         train_func, _, _ = out
-    print(vae.learn_lvs)
-    print(lv_mask)
+    # print(vae.learn_lvs)
+    # print(lv_mask)
     if train_distrib is None:
         train_distrib = gen.source_distribution
     if test_distrib is None:
