@@ -75,6 +75,8 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         train_rep = vae.get_representation(inp_reps)
         c = classifier(max_iter=100000, **classifier_params)
         ops = [skp.StandardScaler(), c]
+        print('tr', train_rep)
+        print('tl', train_labels)
         pipe = sklpipe.make_pipeline(*ops)
         pipe.fit(train_rep, train_labels)
         test_samples = test_distrib.rvs(n_test_samples)

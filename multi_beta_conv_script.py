@@ -126,8 +126,10 @@ if __name__ == '__main__':
         act_func = tf.nn.relu
 
     if args.layer_spec is None:
-        layer_spec = ((128, 2, 2), (64, 2, 2), (256,),
+        layer_spec = ((128, 2, 2), (128, 2, 2), (256,),
                       (128,), (128,))
+        layer_spec = ((128, 2, 2), (128, 2, 2), (512,),
+                      (256,), (128,), (128,))
     else:
         layer_spec = tuple((i,) for i in args.layer_spec)
         
