@@ -181,7 +181,6 @@ class FlexibleDisentangler(da.TFModel):
             eval_set = (eval_x, eval_y)
         else:
             eval_set = None
-
         out = self.model.fit(x=train_x, y=train_y, epochs=epochs,
                              validation_data=eval_set, batch_size=batch_size,
                              **kwargs)
