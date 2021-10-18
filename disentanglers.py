@@ -181,7 +181,6 @@ class FlexibleDisentangler(da.TFModel):
             eval_set = (eval_x, eval_y)
         else:
             eval_set = None
-
         out = self.model.fit(x=train_x, y=train_y, epochs=epochs,
                              validation_data=eval_set, batch_size=batch_size,
                              **kwargs)
@@ -425,6 +424,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             self._compile(**comp_kwargs)
 
         train_y = self.generate_target(train_y)
+        print(train_y)
         if nan_salt is not None and nan_salt != 'single':
             mask = np.random.random_sample(train_y.shape) < nan_salt
             train_y[mask] = np.nan

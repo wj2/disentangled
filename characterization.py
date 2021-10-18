@@ -73,23 +73,27 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         train_labels = train_func[i](train_samples[:, lv_mask])
         inp_reps = gen.generator(train_samples)
         train_rep = vae.get_representation(inp_reps)
-        c = classifier(max_iter=100000, **classifier_params)
-        ops = [skp.StandardScaler(), c]
-        pipe = sklpipe.make_pipeline(*ops)
-        pipe.fit(train_rep, train_labels)
-        test_samples = test_distrib.rvs(n_test_samples)
-        if repl_mean is not None:
-            test_samples[:, repl_mean] = test_distrib.mean[repl_mean]
-        test_labels = test_func[i](test_samples[:, lv_mask])
-        if shuffle:
-            snp.random.shuffle(test_labels)
+        if np.any(np.isnan(train_rep)):
+            c = classifier(max_iter=100000, **classifier_params)
+            ops = [skp.StandardScaler(), c]
+            pipe = sklpipe.make_pipeline(*ops)
+            pipe.fit(train_rep, train_labels)
+            test_samples = test_distrib.rvs(n_test_samples)
+            if repl_mean is not None:
+                test_samples[:, repl_mean] = test_distrib.mean[repl_mean]
+            test_labels = test_func[i](test_samples[:, lv_mask])
+            if shuffle:
+                snp.random.shuffle(test_labels)
 
-        test_rep = vae.get_representation(gen.generator(test_samples))
-        scores[i] = pipe.score(test_rep, test_labels)
-        chances[i] = .5
+            test_rep = vae.get_representation(gen.generator(test_samples))
+            scores[i] = pipe.score(test_rep, test_labels)
+            chances[i] = .5
+        else:
+            scores[i] = np.nan
+            chances[i] = np.nan
     if mean:
-        scores = np.mean(scores)
-        chances = np.mean(chances)
+        scores = np.nanmean(scores)
+        chances = np.nanmean(chances)
     return scores, chances
 
 def lr_pts_dist(stim, reps, targ_dist, neighbor_rad, eps=.05, same_prob=True,
@@ -1102,20 +1106,23 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
     if feat_mask is None:
         feat_mask = np.ones(stim.shape[1], dtype=bool)
     lr = lr_type(**kwargs)
-    lr.fit(enc_pts, stim[:, feat_mask])
-    score = lr.score(test_enc_pts, test_stim[:, feat_mask])
-    params = lr.get_params()
-    if get_parallelism:
-        lr2 = lr_type(**kwargs)
-        lr2.fit(test_enc_pts, test_stim[:, feat_mask])
-        sim = u.cosine_similarity(lr.coef_, lr2.coef_)
+    if np.any(np.isnan(enc_pts)):
+        lr.fit(enc_pts, stim[:, feat_mask])
+        score = lr.score(test_enc_pts, test_stim[:, feat_mask])
+        params = lr.get_params()
+        if get_parallelism:
+            lr2 = lr_type(**kwargs)
+            lr2.fit(test_enc_pts, test_stim[:, feat_mask])
+            sim = u.cosine_similarity(lr.coef_, lr2.coef_)
+        else:
+            lr2 = None
+            sim = None
+        out = (lr, lr2), score, sim
+        if correct:
+            pred_stim = lr.predict(test_enc_pts)
+            out = out + ((test_stim[:, feat_mask], pred_stim),)
     else:
-        lr2 = None
-        sim = None
-    out = (lr, lr2), score, sim
-    if correct:
-        pred_stim = lr.predict(test_enc_pts)
-        out = out + ((test_stim[:, feat_mask], pred_stim),)
+        out = (None, None), np.nan, np.nan
     return out
 
 def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
@@ -1189,7 +1196,6 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             layer_spec = ((50,), (50,), (50,))
             # layer_spec = ()
         models_args = (input_dims, dg_use, model_kinds, layer_spec)
-    print(layer_spec)
     if models_kwargs is None:
         batch_size = model_batch_size
         epochs = model_n_epochs
@@ -1445,7 +1451,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            model_type=dd.FlexibleDisentanglerAE, axs=None,
                            folder='disentangled/simulation_data/partition/',
                            ret_info=False, collapse_plots=False,  pv_mask=None,
-                           xlab='partitions', ret_fig=False, legend='',
+                           xlab='tasks', ret_fig=False, legend='',
                            print_args=True, set_title=True, color=None,
                            plot_hline=True, distr_parts=None, linestyle='solid',
                            double_ind=None, **kwargs):
@@ -1482,6 +1488,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         p = p[pv_mask]
         sc = sc[pv_mask]
     ylims = ((.5, 1), (0, 1))
+    thresh = (.9, .8)
     out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=ylims,
                                       labels=('classifier\ngeneralization',
                                               'regression\ngeneralization'),
@@ -1491,7 +1498,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       ret_fig=ret_fig, label=legend,
                                       fwid=fwid, set_title=set_title,
                                       color=color, plot_hline=plot_hline,
-                                      linestyle=linestyle)
+                                      linestyle=linestyle, thresh=thresh)
     if ret_info:
         out_all = (out, info)
     else:
@@ -1504,8 +1511,10 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                 panel_labels='train egs = {}',
                                 xlab='partitions', axs=None, ct=np.nanmedian,
                                 collapse_plots=False, ret_fig=False,
-                                set_title=True, color=None, thresh=.9,
+                                set_title=True, color=None, thresh=(.9,),
                                 plot_hline=True, **kwargs):
+    if len(thresh) < len(quants_plot):
+        thresh = (thresh[0],)*len(quants_plot)
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
@@ -1551,7 +1560,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
                                              collapse_plots=collapse_plots,
                                              plot_labels=panel_labels,
                                              set_title=set_title, **kwargs)
-        print_thresh_exceed(x_vals, qp, thresh, labels[i], super_label=label)
+        print_thresh_exceed(x_vals, qp, thresh[i], labels[i], super_label=label)
     if ret_fig:
         out = f, axs
     else:
