@@ -75,7 +75,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         train_rep = vae.get_representation(inp_reps)
         print('tr', train_rep)
         print('tl', train_labels)
-        if np.any(np.isnan(train_rep)):
+        if not np.any(np.isnan(train_rep)):
             c = classifier(max_iter=100000, **classifier_params)
             ops = [skp.StandardScaler(), c]
             pipe = sklpipe.make_pipeline(*ops)
@@ -1108,7 +1108,7 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
     if feat_mask is None:
         feat_mask = np.ones(stim.shape[1], dtype=bool)
     lr = lr_type(**kwargs)
-    if np.any(np.isnan(enc_pts)):
+    if not np.any(np.isnan(enc_pts)):
         lr.fit(enc_pts, stim[:, feat_mask])
         score = lr.score(test_enc_pts, test_stim[:, feat_mask])
         params = lr.get_params()
