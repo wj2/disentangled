@@ -73,6 +73,8 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         train_labels = train_func[i](train_samples[:, lv_mask])
         inp_reps = gen.generator(train_samples)
         train_rep = vae.get_representation(inp_reps)
+        print('tr', train_rep)
+        print('tl', train_labels)
         if not np.any(np.isnan(train_rep)):
             c = classifier(max_iter=100000, **classifier_params)
             ops = [skp.StandardScaler(), c]

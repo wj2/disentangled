@@ -425,6 +425,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
 
         train_y = self.generate_target(train_y)
         print(train_y)
+        print(np.any(np.isnan(train_y), axis=0))
+        # print('orig x', self.model(train_x[:10]))
         if nan_salt is not None and nan_salt != 'single':
             mask = np.random.random_sample(train_y.shape) < nan_salt
             train_y[mask] = np.nan
