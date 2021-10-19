@@ -78,10 +78,11 @@ def plot_multi_gen(res_list, ax, xs=None, labels=('standard', 'gen'),
     if colors is None:
         colors = (None,)*len(res_list)
     start_xs = xs - len(res_list)*sep/4
+    n_seps = (len(res_list) - 1)/2
+    use_xs = np.linspace(-sep*n_seps, sep*n_seps, len(res_list))
 
     for i, rs in enumerate(res_list):
-        plot_single_gen(rs, ax, xs=start_xs + i*sep, color=colors[i])
-        print(start_xs + i*sep)
+        plot_single_gen(rs, ax, xs=xs + use_xs[i], color=colors[i])
     ax.set_xticks(xs)
     ax.set_xticklabels(labels)
     gpl.clean_plot(ax, 0)
@@ -566,14 +567,19 @@ class Figure2(DisentangledFigure):
         targs_dim = p.transform(targs)
         p_scal = skd.PCA()
         p_scal.fit(targs_scal)
-        ax_inp[0, 0].plot(p.explained_variance_ratio_, 'o', label='actual')
+        
+        partition_color = self.params.getcolor('partition_color')
+        theory_color = self.params.getcolor('theory_color')
+        ax_inp[0, 0].plot(p.explained_variance_ratio_, 'o', label='actual',
+                          color=partition_color)
         ax_inp[0, 0].plot(p_scal.explained_variance_ratio_, 'o',
-                          label='linear theory')
+                          label='linear theory', color=theory_color)
         ax_inp[0, 0].legend(frameon=False)
         ax_inp[0, 0].set_xlabel('PC number')
         ax_inp[0, 0].set_ylabel('proportion\nexplained')
         gpl.clean_plot(ax_inp[0, 0], 0)
-        ax_inp[0, 1].plot(targs_dim[:, 0], targs_dim[:, 1], 'o')
+        ax_inp[0, 1].plot(targs_dim[:, 0], targs_dim[:, 1], 'o',
+                          color=partition_color)
         gpl.clean_plot(ax_inp[0, 1], 0)
         gpl.make_yaxis_scale_bar(ax_inp[0, 1], .8)
         gpl.make_xaxis_scale_bar(ax_inp[0, 1], .8)
@@ -844,8 +850,8 @@ class Figure3(DisentangledFigure):
         context_offset_color = self.params.getcolor('contextual_offset_color')
         colors = (part_color, context_color, context_offset_color)
         
-        labels = ('full partitions', 'contextual partitions',
-                  'offset contextual partitions')
+        labels = ('full tasks', 'contextual tasks',
+                  'offset contextual tasks')
         # pv_mask = np.array([False, False, False, False, True, False, False,
         #                     False])
         pv_mask = np.array([False, False, True])
@@ -892,12 +898,13 @@ class Figure3(DisentangledFigure):
 class Figure3Grid(DisentangledFigure):
 
     def __init__(self, fig_key='figure3grid', colors=colors, **kwargs):
-        fsize = (5.5, 3.6)
+        fsize = (5.5, 4.8)
         cf = u.ConfigParserColor()
         cf.read(config_path)
 
         params = cf[fig_key]
-        self.panel_keys = ('irrel_variables', 'correlation_decay', 'grid_only',
+        self.panel_keys = ('task_manipulations', 'irrel_variables',
+                           'correlation_decay', 'grid_only',
                            'mixed')
         super().__init__(fsize, params, colors=colors, **kwargs)
         self.fdg = self.data.get('fdg')
@@ -905,26 +912,63 @@ class Figure3Grid(DisentangledFigure):
     def make_gss(self):
         gss = {}
         
-        gs_schem = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 0, 40,
+        gs_schem = pu.make_mxn_gridspec(self.gs, 4, 2, 0, 100, 0, 40,
                                         3, 0)
-        axs_3d = np.zeros((3, 2), dtype=bool)
+        axs_3d = np.zeros((4, 2), dtype=bool)
         axs_3d[:, 1] = self.params.getboolean('vis_3d')
         axs_schem = self.get_axs(gs_schem, plot_3ds=axs_3d)
         
-        gs_res = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 54, 100,
+        gs_res = pu.make_mxn_gridspec(self.gs, 4, 2, 0, 100, 54, 100,
                                        8, 12)
         axs_res = self.get_axs(gs_res)
         axs_res2 = np.concatenate((axs_schem[:, 1:], axs_res), axis=1)
-        axs_schem2 = axs_schem[2, 0]
+        axs_schem2 = axs_schem[3, 0]
 
         gss[self.panel_keys[0]] = axs_res2[0]
-        gss[self.panel_keys[1]] = axs_schem2
-        gss[self.panel_keys[2]] = axs_res2[1]
+        gss[self.panel_keys[1]] = axs_res2[1]
+        gss[self.panel_keys[2]] = axs_schem2
         gss[self.panel_keys[3]] = axs_res2[2]
+        gss[self.panel_keys[4]] = axs_res2[3]
         self.gss = gss
 
-    def panel_irrel_variables(self):
+    def panel_task_manipulations(self):
         key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        if not key in self.data.keys():
+            fdg = self.make_fdg()
+            out = train_eg_fd(fdg, self.params, contextual_partitions=True,
+                              offset_var=True)
+            self.data[key] = (fdg, out)
+        fdg, out = self.data[key]
+        m, _ = out
+
+        run_inds = self.params.getlist('manip_eg_inds')
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        rep_scale_mag = 20
+
+        unbal_color = self.params.getcolor('unbalance_color1')
+        context_color = self.params.getcolor('contextual_color')
+        partial_color = self.params.getcolor('partial_color2')
+        colors = (unbal_color, context_color, partial_color)
+        
+        labels = ('unbalanced tasks', 'contextual tasks',
+                  'single task examples')
+        # pv_mask = np.array([False, False, False, False, True, False, False,
+        #                     False])
+        pv_mask = np.array([False, False, True])
+        
+        self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
+                             labels=labels, pv_mask=pv_mask,
+                             rep_scale_mag=rep_scale_mag, colors=colors,
+                             view_init=(45, -30))
+        for ax in axs[:2]:
+            ax.set_xlabel('')
+
+        
+    def panel_irrel_variables(self):
+        key = self.panel_keys[1]
         axs = self.gss[key]
 
         if not key in self.data.keys():
@@ -961,7 +1005,7 @@ class Figure3Grid(DisentangledFigure):
         
         
     def panel_correlation_decay(self):
-        key = self.panel_keys[1]
+        key = self.panel_keys[2]
         ax = self.gss[key]
 
         eg_dim = self.params.getint('inp_dim')
@@ -974,7 +1018,7 @@ class Figure3Grid(DisentangledFigure):
         grid2_corr = dt.binary_dot_product(2, eg_dim)
         grid3_corr = dt.binary_dot_product(3, eg_dim)
         ax.hist(part_corr, histtype='step', color=partition_color,
-                label='partitions')
+                label='partition tasks')
         ax.hist(grid2_corr, histtype='step', color=grid2_color,
                 label=r'$N_{C} = 2^{D}$')
         ax.hist(grid3_corr, histtype='step', color=grid3_color,
@@ -984,7 +1028,7 @@ class Figure3Grid(DisentangledFigure):
         ax.set_xlabel('task alignment')
         
     def panel_grid_only(self):
-        key = self.panel_keys[2]
+        key = self.panel_keys[3]
         axs = self.gss[key]
         
         if not key in self.data.keys():
@@ -1019,7 +1063,7 @@ class Figure3Grid(DisentangledFigure):
 
 
     def panel_mixed(self):
-        key = self.panel_keys[3]
+        key = self.panel_keys[4]
         axs = self.gss[key]
         if not key in self.data.keys():
             fdg = self.make_fdg()
@@ -1158,6 +1202,8 @@ class Figure4(DisentangledFigure):
         if not key in self.data.keys():
             out_fd = train_eg_fd(rfdg, self.params)
             out_bvae = train_eg_bvae(rfdg, self.params)
+            m_fd = out_fd[0][0, 0]
+            m_bvae = out_bvae[0][0, 0]
             fd_gen = characterize_generalization(rfdg, m_fd, 10)
             bvae_gen = characterize_generalization(rfdg, m_bvae, 10)
             self.data[key] = (out_fd, out_bvae, fd_gen, bvae_gen)
@@ -1194,11 +1240,11 @@ class Figure4(DisentangledFigure):
 
         part_color = self.params.getcolor('partition_color')
         bvae_color = self.params.getcolor('bvae_color')
-        xlab = r'partition / $\beta$'
+        xlab = r'tasks / $\beta$'
         
         dc.plot_recon_gen_summary(run_ind_fd, f_pattern, log_x=False, 
                                   collapse_plots=False, folder=folder,
-                                  axs=res_axs, legend='partition',
+                                  axs=res_axs, legend='multi-tasking model',
                                   print_args=False, pv_mask=pv_mask,
                                   set_title=False, color=part_color,
                                   xlab=xlab)
@@ -1313,12 +1359,12 @@ class Figure5(DisentangledFigure):
             fd_red_func, bvae_red_func = self.data[key]['dr']
 
         vis_3d = self.params.getboolean('vis_3d')
-        out_f = dc.plot_diagnostics(shape_dg, m_fd, rs, n_arcs, n_dim_red=100,
+        out_f = dc.plot_diagnostics(shape_dg, m_fd, rs, n_arcs, n_dim_red=1000,
                                     ax=rep_fd_ax, set_inds=(3, 4),
                                     scale_mag=20,
                                     dim_red_func=fd_red_func, ret_dim_red=True,
                                     plot_3d=vis_3d)
-        out_b = dc.plot_diagnostics(shape_dg, m_bvae, rs, n_arcs, n_dim_red=100,
+        out_b = dc.plot_diagnostics(shape_dg, m_bvae, rs, n_arcs, n_dim_red=1000,
                                     ax=rep_bvae_ax, set_inds=(3, 4),
                                     dim_red_func=bvae_red_func, scale_mag=.2,
                                     ret_dim_red=True, plot_3d=vis_3d, view_init=(60, 20))
@@ -1440,9 +1486,9 @@ class SIFigureMultiverse(DisentangledFigure):
                       'use_tanh':'act function',
                       'input_dims':'latent variables',
                       'no_autoencoder':'autoencoder',
-                      'betas':r'partition / $\beta$',
+                      'betas':r'tasks / $\beta$',
                       'source_distr':'latent variable\ndistribution',
-                      'partitions':r'partitions / $\beta$',
+                      'partitions':r'tasks / $\beta$',
                       'latent_dims':'rep width'}
         for i, (r_fd_i, s_fd_i, lh_fd_i, l_fd_i, lv_fd_i) in enumerate(out_fd):
             r_bv_i, s_bv_i, lh_bv_i, l_bv_i, lv_bv_i = out_bv[i]
@@ -1517,7 +1563,7 @@ class SIFigureDim(DisentangledFigure):
 
         part_color = self.params.getcolor('partition_color')
         bvae_color = self.params.getcolor('bvae_color')
-        xlab = r'partition / $\beta$'
+        xlab = r'tasks / $\beta$'
 
         pv_mask = np.array([False, True, False])
 
