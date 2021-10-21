@@ -73,8 +73,8 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         train_labels = train_func[i](train_samples[:, lv_mask])
         inp_reps = gen.generator(train_samples)
         train_rep = vae.get_representation(inp_reps)
-        print('tr', train_rep)
-        print('tl', train_labels)
+        # print('tr', train_rep)
+        # print('tl', train_labels)
         if not np.any(np.isnan(train_rep)):
             c = classifier(max_iter=100000, **classifier_params)
             ops = [skp.StandardScaler(), c]
@@ -345,7 +345,9 @@ def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
 def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
                          source_scale_mag=.2, rep_scale_mag=10,
                          titles=True, plot_source_3d=False, plot_model_3d=False,
-                         source_view_init=None, model_view_init=None, **kwargs):
+                         source_view_init=None, model_view_init=None, 
+                         l_axlab_str='PC {} (au)', r_axlab_str='PC {} (au)',
+                         **kwargs):
     if axs is None:
         fsize = (fwid*2, fwid)
         f, axs = plt.subplots(1, 2, figsize=fsize)
@@ -368,10 +370,10 @@ def plot_source_manifold(*args, axs=None, fwid=3, dim_red=True,
             axs[0].set_title('latent variables')
         axs[ind].set_title('representation')
     if len(axs) > 1:
-        axs[0].set_xlabel('feature 1 (au)')
-        axs[0].set_ylabel('feature 2 (au)')
-    axs[ind].set_xlabel('PCA 1 (au)')
-    axs[ind].set_ylabel('PCA 2 (au)')
+        axs[0].set_xlabel(l_axlab_str.format(1))
+        axs[0].set_ylabel(l_axlab_str.format(2))
+    axs[ind].set_xlabel(r_axlab_str.format(1))
+    axs[ind].set_ylabel(r_axlab_str.format(2))
     return out
 
 def make_half_square(n_pts_per_side, lpt=0, rpt=1):
@@ -1607,12 +1609,16 @@ def _gen_perturbed(autoenc, center_img, vec, full_perturb, n_perts):
 
 def plot_traversal_plot(gen, autoenc, trav_dim=1, learn_dim=0, full_perturb=1,
                         n_pts=1000, lr=sklm.Ridge, n_perts=5,
-                        leave_const=(2,),
+                        leave_const=(2,), test_shape=0,
                         **kwargs):
     ld = gen.img_params[learn_dim]
     ld_u = np.unique(gen.data_table[ld])
-    np.random.shuffle(ld_u)
-    test_ld = ld_u[0]
+    # np.random.shuffle(ld_u)
+    test_ld = ld_u[test_shape]
+    inds = list(np.arange(len(ld_u), dtype=int))
+    test_ind = inds.pop(test_shape)
+    test_ld = ld_u[test_ind]
+    train_ld = ld_u[np.array(inds)]
     train_ld = ld_u[1:]
     train_xs, train_imgs = gen.sample_reps(sample_size=n_pts)
     center_all = gen.get_center()

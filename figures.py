@@ -52,19 +52,21 @@ def plot_bgp(res_c, res_r, ax_c, ax_r, **kwargs):
     plot_cgp(res_c, ax_c, **kwargs)
     plot_rgp(res_r, ax_r, **kwargs)
 
-def plot_multi_bgp(res_list_c, res_list_r, ax_c, ax_r, **kwargs):
+def plot_multi_bgp(res_list_c, res_list_r, ax_c, ax_r, legend_labels=None,
+                   **kwargs):
     plot_multi_gen(res_list_c, ax_c, **kwargs)
-    plot_multi_gen(res_list_r, ax_r, **kwargs)
+    plot_multi_gen(res_list_r, ax_r, legend_labels=legend_labels, **kwargs)
     _make_cgp_ax(ax_c)
     _make_rgp_ax(ax_r)
 
 def plot_single_gen(results, ax, xs=None, color=None,
-                    labels=('standard', 'gen')):
+                    labels=('standard', 'gen'), legend_label=''):
     if xs is None:
         xs = [0, 1]
     gpl.violinplot(results.T, xs, ax=ax, color=(color, color),
                    showextrema=False)
-    ax.plot(xs, np.mean(results, axis=0), 'o', color=color)
+    ax.plot(xs, np.mean(results, axis=0), 'o', color=color,
+            label=legend_label)
     ax.set_xticks(xs)
     ax.set_xticklabels(labels)
     gpl.clean_plot(ax, 0)
@@ -72,19 +74,23 @@ def plot_single_gen(results, ax, xs=None, color=None,
     return ax
 
 def plot_multi_gen(res_list, ax, xs=None, labels=('standard', 'gen'),
-                   sep=.2, colors=None):
+                   sep=.2, colors=None, legend_labels=None):
     if xs is None:
         xs = np.array([0, 1])
     if colors is None:
         colors = (None,)*len(res_list)
+    if legend_labels is None:
+        legend_labels = ('',)*len(res_list)
     start_xs = xs - len(res_list)*sep/4
     n_seps = (len(res_list) - 1)/2
     use_xs = np.linspace(-sep*n_seps, sep*n_seps, len(res_list))
-
+    
     for i, rs in enumerate(res_list):
-        plot_single_gen(rs, ax, xs=xs + use_xs[i], color=colors[i])
+        plot_single_gen(rs, ax, xs=xs + use_xs[i], color=colors[i],
+                        legend_label=legend_labels[i])
     ax.set_xticks(xs)
     ax.set_xticklabels(labels)
+    ax.legend(frameon=False)
     gpl.clean_plot(ax, 0)
     gpl.clean_plot_bottom(ax, keeplabels=True)
     return ax
@@ -482,7 +488,8 @@ class Figure1(DisentangledFigure):
                                 source_scale_mag=.5,
                                 rep_scale_mag=.03,
                                 markers=False, axs=vis_axs,
-                                titles=False, plot_model_3d=vis_3d)
+                                titles=False, plot_model_3d=vis_3d,
+                                l_axlab_str='latent dim {} (au)')
         dg_color = self.params.getcolor('dg_color')
         plot_bgp(gen_perf[0], gen_perf[1], class_ax, regr_ax, color=dg_color)
         # plot_single_gen(gen_perf[0], class_ax, color=dg_color)
@@ -1376,9 +1383,11 @@ class Figure5(DisentangledFigure):
         fd_col = self.params.getcolor('partition_color')
         colors = (dg_col, fd_col, bvae_col)
 
+        labels = ('input', 'multi-tasking model', r'$\beta$VAE')
         plot_multi_bgp((res_ident[0], res_fd[0], res_bvae[0]),
                        (res_ident[1], res_fd[1], res_bvae[1]),
-                       class_ax, regr_ax, colors=colors)
+                       class_ax, regr_ax, colors=colors,
+                       legend_labels=labels)
 
     def _get_img_traversal(self, dg, dim, n):
         cent = dg.get_center()
