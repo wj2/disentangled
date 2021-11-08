@@ -86,6 +86,10 @@ def create_parser():
                         help='the weights for L2-PR regularization')
     parser.add_argument('--l2pr_weights_mult', default=1, type=float,
                         help='the weight multiplier for L2-PR regularization')
+    parser.add_argument('--l2_weight', default=None, type=float,
+                        help='the weight for L2 regularization')
+    parser.add_argument('--l1_weight', default=None, type=float,
+                        help='the weight for L1 regularization')
     parser.add_argument('--rep_noise', default=0, type=float,
                         help='std of noise to use in representation layer '
                         'during training')
@@ -203,6 +207,12 @@ if __name__ == '__main__':
     if args.l2pr_weights is not None:
         reg = dr.L2PRRegularizer
         reg_weight = np.array(args.l2pr_weights)*args.l2pr_weights_mult
+    elif args.l1_weight is not None:
+        reg = tfk.regularizers.l1
+        reg_weight = args.l1_weight
+    elif args.l2_weight is not None:
+        reg = tfk.regularizers.l2
+        reg_weight = args.l2_weight
     else:
         reg = tfk.regularizers.l2
         reg_weight = 0
