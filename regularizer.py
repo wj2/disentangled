@@ -31,8 +31,9 @@ class L2PRRegularizer(tf.keras.regularizers.Regularizer):
         ev, _ = tf.linalg.eigh(tf.tensordot(tf.transpose(x), x, axes=1))
         pr = tf.math.divide(tf.math.square(tf.math.reduce_sum(ev)),
                             tf.math.reduce_sum(tf.math.square(ev)))
+        pr_ratio = (x.shape[1] - pr)/x.shape[1]
         l2 = tf.math.reduce_sum(tf.math.square(x))
-        return l2*self.weights[0] + pr*self.weights[1]
+        return l2*self.weights[0] + pr_ratio*self.weights[1]
 
 @tf.keras.utils.register_keras_serializable(name='l2pr_inv')
 class L2PRRegularizerInv(tf.keras.regularizers.Regularizer):

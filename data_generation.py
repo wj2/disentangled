@@ -5,6 +5,7 @@ import numpy as np
 import scipy.stats as sts
 import sklearn.decomposition as skd
 import sklearn.kernel_approximation as skka
+import sklearn.gaussian_process as skgp
 import sklearn.preprocessing as skp
 import functools as ft
 import matplotlib.pyplot as plt
@@ -76,6 +77,109 @@ class DataGenerator(da.TFModel):
             inp_samps[:, repl_mean] = source_distribution.mean[repl_mean]
         rep_samps = self.get_representation(inp_samps)
         return inp_samps, rep_samps
+
+class GaussianProcessDataGenerator(DataGenerator):
+
+    def __init__(self, inp_dim, transform_width, out_dim,
+                 kernel_func=skgp.kernels.RBF, l2_weight=(0, .1),
+                 layer=None, distrib_variance=1, low_thr=None,
+                 source_distribution=None, noise=.01, **kernel_kwargs):
+        self.input_dim = inp_dim
+        self.output_dim = out_dim
+        self.compiled=False
+        self.kernel_init = True
+        kernel = kernel_func(**kernel_kwargs)
+        self.model = skgp.GaussianProcessRegressor(kernel)
+        if source_distribution is None:
+            source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
+                                                          distrib_variance)
+        self.source_distribution = source_distribution
+        if layer is not None:
+            self.layer = dd.SingleLayer(out_dim, layer)
+        else:
+            self.layer = dd.IdentityModel()
+        self.low_thr = low_thr
+
+    def fit(self, train_x=None, train_y=None, eval_x=None, eval_y=None,
+            source_distribution=None, epochs=15, train_samples=1000,
+            fit_distribution=None,
+            eval_samples=10**3, batch_size=32, **kwargs):
+        if fit_distribution is None:
+            fit_distribution = sts.multivariate_normal(np.zeros(self.output_dim),
+                                                       1)
+        in_samp = self.source_distribution.rvs(train_samples)
+        samp_proc = self.model.sample_y(in_samp, n_samples=self.output_dim)
+        self.model.fit(in_samp, samp_proc)
+
+    def _compile(self, *args, **kwargs):
+        self.compiled = True
+
+    def generator(self, x):
+        out = self.layer.get_representation(self.model.predict(x))
+        if self.low_thr is not None:
+            out[out < self.low_thr] = 0
+        return out
+
+    def get_representation(self, x):
+        return self.generator(x)
+
+
+# from sklearn import gaussian_process as gp
+# from sklearn import svm
+# import numpy as np
+# import scipy.linalg as la
+# import matplotlib.pyplot as plt
+
+# from tqdm import tqdm
+
+
+# #%%
+
+# dim = 50
+# num_var = 2
+# ndat = 3000
+# num_test = 50 # how many partitions to test
+
+# clf = svm.LinearSVC()
+
+# fake_labels =  2*np.random.rand(ndat,num_var)-1   
+# basis = la.qr(np.random.rand(dim, dim))[0]
+
+# CCG = []
+# CV = []
+# for sigma in tqdm(np.logspace(5,1,100)):
+#     coords = gp.GaussianProcessRegressor(gp.kernels.RBF(1/sigma))
+    
+#     ys = coords.sample_y(fake_labels, n_samples=dim)
+#     ys -= ys.mean(0)
+    
+#     rep = fake_labels@basis[:2,:] + ys
+    
+#     ccg = []
+#     cv = []
+#     for i in range(num_test):
+#         part_dir = np.random.randn(num_var,1)
+#         part_dir /= la.norm(part_dir)
+        
+#         ctx_dir = np.random.randn(num_var,1)
+#         ctx_dir -= (ctx_dir.T@part_dir)*part_dir
+#         ctx_dir /= la.norm(ctx_dir)
+        
+#         labs = np.squeeze((fake_labels-fake_labels.mean(0))@part_dir > 0)
+        
+#         trn_set = np.squeeze((fake_labels-fake_labels.mean(0))@ctx_dir > 0)
+#         tst_set = 1-trn_set
+        
+#         clf.fit(rep[trn_set,:], labs[trn_set])
+#         ccg.append(clf.score(rep[tst_set,:],labs[tst_set]))
+        
+#         trn_set_cv = np.random.permutation(trn_set)
+#         tst_set_cv = 1- trn_set_cv
+#         clf.fit(rep[trn_set_cv,:], labs[trn_set_cv])
+#         cv.append(clf.score(rep[tst_set_cv,:],labs[tst_set_cv]))
+    
+#     CCG.append(ccg)
+#     CV.append(cv)
     
 class VariationalDataGenerator(DataGenerator):
 

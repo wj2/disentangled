@@ -186,6 +186,25 @@ def explore_autodisentangling(dims, inp_dim, layers, latent, n_samps=10000,
         out = (class_m, regr_m)
     return out
 
+def characterize_gaussian_process(inp_dim, out_dim, length_scales, eps=1e-3,
+                                  max_scale=10, n_reps=10, fit_samples=100):
+    prs = np.zeros_like(length_scales)
+    class_perf = np.zeros_like(length_scales)
+    class_gen = np.zeros_like(length_scales)
+    regr_perf = np.zeros_like(length_scales)
+    regr_gen = np.zeros_like(length_scales)
+    for i, ls in enumerate(length_scales):
+        dg_gp = dg.GaussianProcessDataGenerator(inp_dim, 100, out_dim,
+                                                length_scale=ls)
+        dg_gp.fit(train_samples=1000)
+        out = characterize_generalization(dg_gp, dd.IdentityModel(), n_reps)
+        pr = dg_gp.representation_dimensionality(participation_ratio=True)
+        class_res, regr_res = out
+        prs[i] = pr
+        class_perf[i], class_gen[i] = np.mean(class_res, axis=0)
+        regr_perf[i], regr_gen[i] = np.mean(regr_res, axis=0)
+    return prs, class_perf, class_gen, regr_perf, regr_gen        
+
 def characterize_generalization(dg, model, c_reps, train_samples=1000,
                                 test_samples=500, bootstrap_regr=True,
                                 n_boots=1000, norm=True, cut_zero=True,
@@ -257,7 +276,7 @@ class DisentangledFigure(pu.Figure):
     def _standard_panel(self, fdg, model, run_inds, f_pattern, folder, axs,
                         labels=None, rep_scale_mag=5, source_scale_mag=.5,
                         x_label=True, y_label=True, colors=None, view_init=None,
-                        multi_num=1, **kwargs):
+                        multi_num=1, set_lims=True, **kwargs):
         model = model[0, 0]
         if labels is None:
             labels = ('',)*len(run_inds)
@@ -294,7 +313,7 @@ class DisentangledFigure(pu.Figure):
                                       axs=res_axs, legend=labels[i],
                                       print_args=False, set_title=False,
                                       color=colors[i], double_ind=double_inds[i],
-                                      **kwargs)
+                                      set_lims=set_lims, **kwargs)
         res_axs[0, 0].set_yticks([.5, 1])
         res_axs[0, 1].set_yticks([0, .5, 1])
 
@@ -1063,7 +1082,14 @@ class Figure3Grid(DisentangledFigure):
         self._standard_panel(fdg, m, run_inds, f_pattern, folder, axs,
                              labels=labels, pv_mask=pv_mask,
                              rep_scale_mag=rep_scale_mag, colors=colors,
-                             view_init=(45, -30), linestyle=grid_style)
+                             view_init=(45, -30), linestyle=grid_style,
+                             set_lims=False)
+        axs[1].set_ylim([.5, 1])
+        axs[2].set_ylim([-1, 1])
+        axs[2].set_yticks([-1, 0, 1])
+        gpl.add_hlines(0, axs[2], linewidth=1)
+        gpl.add_vlines(fdg.input_dim, axs[1])
+        gpl.add_vlines(fdg.input_dim, axs[2])
         for ax in axs:
             ax.set_xlabel('')
             # ax.set_xticks([])
@@ -1243,24 +1269,34 @@ class Figure4(DisentangledFigure):
                             scale_mag=.01, markers=False,
                             ax=axs[0, 1], plot_3d=vis_3d)
         res_axs = axs[1:]
-        pv_mask = np.array([False, True, False])
 
         part_color = self.params.getcolor('partition_color')
         bvae_color = self.params.getcolor('bvae_color')
         xlab = r'tasks / $\beta$'
         
-        dc.plot_recon_gen_summary(run_ind_fd, f_pattern, log_x=False, 
+        pv_mask = np.array([False, True, False])
+        # pv_mask = np.array([False, False, False, True, False])
+        o = dc.plot_recon_gen_summary(run_ind_fd, f_pattern, log_x=False, 
                                   collapse_plots=False, folder=folder,
                                   axs=res_axs, legend='multi-tasking model',
                                   print_args=False, pv_mask=pv_mask,
                                   set_title=False, color=part_color,
-                                  xlab=xlab)
-        dc.plot_recon_gen_summary(run_ind_beta, beta_f_pattern, log_x=False, 
+                                  xlab=xlab, set_lims=False, ret_info=True)[1]
+        pv_mask = np.array([False, True, False])
+        o2 = dc.plot_recon_gen_summary(run_ind_beta, beta_f_pattern, log_x=False, 
                                   collapse_plots=False, folder=beta_folder,
                                   axs=res_axs, legend=r'$\beta$VAE',
                                   print_args=False, pv_mask=pv_mask,
                                   set_title=False, color=bvae_color,
-                                  xlab=xlab)
+                                  xlab=xlab, set_lims=False, ret_info=True)[1]
+        print(u.dict_diff(o['args'][0], o2['args'][0]))
+        res_axs[0, 0].set_ylim([.5, 1])
+        res_axs[0, 1].set_ylim([-30, 1])
+        res_axs[0, 1].set_yticks([-30, 0])
+        gpl.add_hlines(0, res_axs[0, 1], linewidth=1)
+        gpl.add_vlines(rfdg.input_dim, res_axs[0, 0])
+        gpl.add_vlines(rfdg.input_dim, res_axs[0, 1])
+
 
 class Figure5(DisentangledFigure):
 

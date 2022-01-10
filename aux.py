@@ -9,6 +9,8 @@ import re
 import PIL.Image as pImage
 import pandas as pd
 import h5py
+import sklearn.gaussian_process as skgp
+import sklearn.preprocessing as skp
 
 import general.utility as u
 import mixedselectivity_theory.nms_discrete as nmd
@@ -91,6 +93,39 @@ def generate_target(inps, p_funcs):
     else:
         target = np.zeros((len(inps), 0))
     return target
+
+def _gp_task(x, gp=None, incl_zeros=True, eps=1e-3):
+    out = gp.predict(x) > 0
+    if not incl_zeros:
+        out[np.abs(out) < eps] = np.nan
+    return out
+
+def _make_gp_task(dim, source_distr, offset_distr, length_scale=.5,
+                  train_samples=1000, **kwargs):
+    rb_kern = skgp.kernels.RBF(length_scale=length_scale)
+    if offset_distr is None:
+        kernel = rb_kern
+        ov = 0
+    else:
+        ov = offset_distr.rvs(1)
+        kernel = rb_kern + ov
+    gp_t = skgp.GaussianProcessRegressor(kernel=kernel)
+    in_samps = source_distr.rvs(train_samples)
+    samp_proc = gp_t.sample_y(in_samps)
+    samp_proc = skp.StandardScaler().fit_transform(samp_proc) + ov
+    gp_t.fit(in_samps, samp_proc)
+    return ft.partial(_gp_task, gp=gp_t)    
+
+def generate_gp_task_functions(dim, source_distr=None, offset_distribution=None,
+                               n_funcs=100, length_scale=.5):
+    if source_distr is None:
+        source_distr = sts.multivariate_normal(np.zeros(dim), 1)
+    funcs = []
+    for i in range(n_funcs):
+        f = _make_gp_task(dim, source_distr, offset_distribution,
+                          length_scale=length_scale)
+        funcs.append(f)
+    return np.array(funcs)
 
 def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
                                  orth_vec=None, orth_off=None,

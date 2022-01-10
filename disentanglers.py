@@ -271,7 +271,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  regularizer_type=tfk.regularizers.l2,
                  noise=0, context_offset=False, nan_salt=None,
                  grid_coloring=False, n_granules=2, granule_sparseness=.5,
-                 n_grids=0, no_learn_lvs=None, **layer_params):
+                 n_grids=0, no_learn_lvs=None, use_gp_tasks=False,
+                 gp_tasks=0, gp_task_length_scale=.5, **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
@@ -306,6 +307,22 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             self.p_offsets = None
         elif n_grids > 0:
             self.p_funcs = np.concatenate((self.p_funcs, p_fs_g))
+        if use_gp_tasks or gp_tasks > 0:
+            if use_gp_tasks:
+                n_gp = n_partitions
+            else:
+                n_gp = gp_tasks
+            out = da.generate_gp_task_functions(
+                true_learn_dim, n_funcs=n_gp,
+                length_scale=gp_task_length_scale,
+                offset_distribution=offset_distr)
+            p_fs_gp = out
+        if use_gp_tasks:
+            self.p_funcs = p_fs_gp
+            self.p_vectors = None
+            self.p_offsets = None
+        else:
+            self.p_funcs = np.concatenate((self.p_funcs, p_fs_gp))
 
         out = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                 len(self.p_funcs), act_func=act_func,

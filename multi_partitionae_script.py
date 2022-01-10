@@ -121,11 +121,20 @@ def create_parser():
                         help='use shift map data generator')
     parser.add_argument('--use_prf_dg', default=False, action='store_true',
                         help='use participation ratio-optimized data generator')
+    parser.add_argument('--use_gp_dg', default=False, action='store_true',
+                        help='use GaussianProcess data generator')
+    parser.add_argument('--gp_length_scale', default=.5, type=float,
+                        help='length scale for RBF kernel')
     parser.add_argument('--config_path', default=None, type=str,
                         help='path to config file to use, will override other '
                         'params')
     parser.add_argument('--use_grids_only', default=False, action='store_true',
                         help='use only grid tasks, instead of the partitions')
+    parser.add_argument('--use_gp_tasks_only', default=False, action='store_true',
+                        help='use only Gaussian Process tasks, instead of the '
+                        'partitions')
+    parser.add_argument('--gp_task_length_scale', default=.5, type=float,
+                        help='length scale for Gaussian process tasks')
     parser.add_argument('--n_grids', default=0, type=int,
                         help='use n grid tasks along with the partitions')
     parser.add_argument('--n_granules', default=2, type=int,
@@ -196,6 +205,11 @@ if __name__ == '__main__':
                                             noise=.01, use_pr_reg=True)
         dg_use.fit(epochs=prf_train_epochs,
                    batch_size=args.batch_size)
+    elif args.use_gp_dg:
+        dg_use = dg.GaussianProcessDataGenerator(
+            true_inp_dim, dg_layers, args.dg_dim, source_distribution=sd,
+            length_scale=args.gp_length_scale)
+        dg_use.fit(train_samples=1000)                                                 
     else:
         dg_use = None
 
@@ -263,6 +277,8 @@ if __name__ == '__main__':
                                   n_granules=args.n_granules,
                                   granule_sparseness=args.granule_sparseness,
                                   grid_coloring=args.use_grids_only,
+                                  use_gp_tasks=args.use_gp_tasks_only,
+                                  gp_task_length_scale=args.gp_task_length_scale,
                                   no_learn_lvs=no_learn_lvs)
                        for p in partitions)
         

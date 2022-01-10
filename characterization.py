@@ -20,7 +20,7 @@ import matplotlib.patches as mpatches
 import disentangled.aux as da
 import disentangled.data_generation as dg
 import disentangled.disentanglers as dd
-    
+
 def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               test_distrib=None, test_func=None,
                               n_train_samples=5*10**3, n_test_samples=10**3,
@@ -1458,7 +1458,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            xlab='tasks', ret_fig=False, legend='',
                            print_args=True, set_title=True, color=None,
                            plot_hline=True, distr_parts=None, linestyle='solid',
-                           double_ind=None, **kwargs):
+                           double_ind=None, set_lims=True, **kwargs):
     if double_ind is not None:
         merge_axis = 2
     else:
@@ -1491,7 +1491,10 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         panel_vals = panel_vals[pv_mask]
         p = p[pv_mask]
         sc = sc[pv_mask]
-    ylims = ((.5, 1), (0, 1))
+    if set_lims:
+        ylims = ((.5, 1), (0, 1))
+    else:
+        ylims = None
     thresh = (.9, .8)
     out = plot_recon_gen_summary_data((p, sc), n_parts, ylims=ylims,
                                       labels=('classifier\ngeneralization',
@@ -1522,7 +1525,7 @@ def plot_recon_gen_summary_data(quants_plot, x_vals, panel_vals=None,
     n_plots = len(quants_plot)
     n_panels = quants_plot[0].shape[panel_ax]
     if ylims is None:
-        ylims = ((0, 1),)*n_plots
+        ylims = (None,)*n_plots
     if labels is None:
         labels = ('',)*n_plots
     if panel_vals is None:
