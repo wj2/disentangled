@@ -321,7 +321,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             self.p_funcs = p_fs_gp
             self.p_vectors = None
             self.p_offsets = None
-        else:
+        elif gp_tasks > 0:
             self.p_funcs = np.concatenate((self.p_funcs, p_fs_gp))
 
         out = self.make_encoder(input_shape, layer_shapes, encoded_size,
