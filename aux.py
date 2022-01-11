@@ -108,7 +108,7 @@ def _make_gp_task(dim, source_distr, offset_distr, length_scale=.5,
         ov = 0
     else:
         ov = offset_distr.rvs(1)
-        kernel = rb_kern + ov
+        kernel = rb_kern + skgp.kernels.ConstantKernel()
     gp_t = skgp.GaussianProcessRegressor(kernel=kernel)
     in_samps = source_distr.rvs(train_samples)
     samp_proc = gp_t.sample_y(in_samps)
