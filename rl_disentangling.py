@@ -55,6 +55,14 @@ class RLEnvironment(tfa.environments.PyEnvironment):
     def _reset(self):
         initial_samp, initial_rep = self.dg.sample_reps(1)
         self.current_samp = initial_samp
+        step_type = 0
+        discount = self.discount
+        reward = np.zeros(self.reward_spec().shape)
+        current_step = self.TimeStep(step_type=step_type,
+                                     observation=initial_rep,
+                                     reward=reward,
+                                     discount=discount)
+        return current_step
         
     def _step(self, action):
         ctt = self.current_time_step()
