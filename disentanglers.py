@@ -1,7 +1,9 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import tf_agents as tfa
 import tensorflow_hub as tfhub
 import functools as ft
+from tf_agents.utils import common
 
 import numpy as np
 
@@ -13,6 +15,8 @@ tfk = tf.keras
 tfkl = tf.keras.layers
 tfpl = tfp.layers
 tfd = tfp.distributions
+tfaa = tfa.agents
+
 
 class SupervisedDisentangler(da.TFModel):
 
@@ -259,7 +263,54 @@ class IntermediateLayers():
         if layer_ind is None:
             layer_ind = self.use_i
         return self.i_models[layer_ind](x)
-    
+
+def make_tasks(true_learn_dim, n_partitions, orthog_partitions=False,
+               offset_distr=None, contextual_partitions=False,
+               context_offset=False, grid_coloring=False,
+               n_granules=2, granule_sparseness=.5,
+               n_grids=0, use_gp_tasks=False,
+               gp_tasks=0, gp_task_length_scale=.5):
+    out = da.generate_partition_functions(
+            true_learn_dim,
+            n_funcs=n_partitions,
+            orth_basis=orthog_partitions,
+            offset_distribution=offset_distr,
+            contextual=contextual_partitions)
+    p_funcs, p_vectors, p_offsets = out
+    if grid_coloring or n_grids > 0:
+        if grid_coloring:
+            n_g = n_partitions
+        else:
+            n_g = n_grids
+        out = da.generate_grid_functions(true_learn_dim,
+                                         n_funcs=n_g,
+                                         n_granules=n_granules,
+                                         sparseness=granule_sparseness)
+        p_fs_g, p_vs_g, p_os_g = out, (None,)*n_g, (None,)*n_g
+    if grid_coloring:
+        p_funcs = p_fs_g
+        p_vectors = None
+        p_offsets = None
+    elif n_grids > 0:
+        p_funcs = np.concatenate((p_funcs, p_fs_g))
+    if use_gp_tasks or gp_tasks > 0:
+        if use_gp_tasks:
+            n_gp = n_partitions
+        else:
+            n_gp = gp_tasks
+        out = da.generate_gp_task_functions(
+            true_learn_dim, n_funcs=n_gp,
+            length_scale=gp_task_length_scale,
+            offset_distribution=offset_distr)
+        p_fs_gp = out
+    if use_gp_tasks:
+        p_funcs = p_fs_gp
+        p_vectors = None
+        p_offsets = None
+    elif gp_tasks > 0:
+        p_funcs = np.concatenate((self.p_funcs, p_fs_gp))
+    return p_funcs, p_vectors, p_offsets
+
 class FlexibleDisentanglerAE(FlexibleDisentangler):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
@@ -284,46 +335,14 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         else:
             true_learn_dim = true_inp_dim
             self.learn_lvs = np.ones(true_inp_dim, dtype=bool)
-        out = da.generate_partition_functions(
-            true_learn_dim,
-            n_funcs=n_partitions,
-            orth_basis=orthog_partitions,
-            offset_distribution=offset_distr,
-            contextual=contextual_partitions)
-        self.p_funcs, self.p_vectors, self.p_offsets = out
-        if grid_coloring or n_grids > 0:
-            if grid_coloring:
-                n_g = n_partitions
-            else:
-                n_g = n_grids
-            out = da.generate_grid_functions(true_learn_dim,
-                                             n_funcs=n_g,
-                                             n_granules=n_granules,
-                                             sparseness=granule_sparseness)
-            p_fs_g, p_vs_g, p_os_g = out, (None,)*n_g, (None,)*n_g
-        if grid_coloring:
-            self.p_funcs = p_fs_g
-            self.p_vectors = None
-            self.p_offsets = None
-        elif n_grids > 0:
-            self.p_funcs = np.concatenate((self.p_funcs, p_fs_g))
-        if use_gp_tasks or gp_tasks > 0:
-            if use_gp_tasks:
-                n_gp = n_partitions
-            else:
-                n_gp = gp_tasks
-            out = da.generate_gp_task_functions(
-                true_learn_dim, n_funcs=n_gp,
-                length_scale=gp_task_length_scale,
-                offset_distribution=offset_distr)
-            p_fs_gp = out
-        if use_gp_tasks:
-            self.p_funcs = p_fs_gp
-            self.p_vectors = None
-            self.p_offsets = None
-        elif gp_tasks > 0:
-            self.p_funcs = np.concatenate((self.p_funcs, p_fs_gp))
 
+        out = make_tasks(true_learn_dim, n_partitions, orthog_partitions,
+                         offset_distr, contextual_partitions,
+                         context_offset, grid_coloring, n_granules,
+                         granule_sparseness, n_grids, use_gp_tasks, gp_tasks,
+                         gp_task_length_scale)
+        self.p_funcs, self.p_vectors, self.p_offsets = out
+            
         out = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                 len(self.p_funcs), act_func=act_func,
                                 regularizer_weight=regularizer_weight,
@@ -338,6 +357,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.contextual_partitions = contextual_partitions
         self.n_partitions = n_partitions
         self.rep_model = rep_model
+        self.class_model = class_model
         self.input_shape = input_shape
         self.encoded_size = encoded_size
         self.compiled = False
@@ -480,8 +500,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         reps = self.get_representation(samples)
         recon = self.get_reconstruction(reps)
         return np.mean((samples - recon)**2)
-
-
+    
 class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
     @classmethod

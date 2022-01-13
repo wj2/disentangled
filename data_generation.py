@@ -1,6 +1,8 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import tf_agents as tfa
 
+import collections as c
 import numpy as np
 import scipy.stats as sts
 import sklearn.decomposition as skd
@@ -21,6 +23,7 @@ tfk = tf.keras
 tfkl = tf.keras.layers
 tfpl = tfp.layers
 tfd = tfp.distributions
+tfspec = tfa.specs
 
 class DataGenerator(da.TFModel):
     
@@ -77,7 +80,7 @@ class DataGenerator(da.TFModel):
             inp_samps[:, repl_mean] = source_distribution.mean[repl_mean]
         rep_samps = self.get_representation(inp_samps)
         return inp_samps, rep_samps
-
+    
 class GaussianProcessDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_width, out_dim,
@@ -115,6 +118,8 @@ class GaussianProcessDataGenerator(DataGenerator):
         self.compiled = True
 
     def generator(self, x):
+        if len(x.shape) == 1:
+            x = np.reshape(x, (1, -1))
         out = self.layer.get_representation(self.model.predict(x))
         if self.low_thr is not None:
             out[out < self.low_thr] = 0

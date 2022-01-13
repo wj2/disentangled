@@ -143,6 +143,9 @@ def create_parser():
                         help='sparseness of granule coloring')
     parser.add_argument('--task_subset', default=None, type=int,
                         help='number of latent variables to learn for tasks')
+    parser.add_argument('--use_weight_decay', default=False, action='store_true',
+                        'use AdamW optimizer to train model')
+    ## ADD OPTION TO REGULARIZE WEIGHTS (similar to weight decay)
     return parser
 
 if __name__ == '__main__':
