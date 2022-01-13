@@ -36,6 +36,7 @@ tfa_ddpg = tfa.agents.ddpg
 class RLEnvironment(tfa.environments.PyEnvironment):
 
     def __init__(self, dg, n_tasks, *args, discount=.9, eps=.1, **task_kwargs):
+        self.discount = discount
         self.tasks = dd.make_tasks(dg.input_dim, n_tasks, **task_kwargs)
         self.dg = dg
         self._observation_spec = tfspec.TensorSpec((dg.output_dim,), float)
