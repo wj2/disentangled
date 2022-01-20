@@ -1,6 +1,5 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-import tf_agents as tfa
 
 import collections as c
 import numpy as np
@@ -23,7 +22,6 @@ tfk = tf.keras
 tfkl = tf.keras.layers
 tfpl = tfp.layers
 tfd = tfp.distributions
-tfspec = tfa.specs
 
 class DataGenerator(da.TFModel):
     

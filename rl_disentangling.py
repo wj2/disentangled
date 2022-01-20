@@ -50,7 +50,7 @@ def make_environment(*args, duration=100, convert_tf=True, **kwargs):
 
 class RLEnvironment(tfa.environments.PyEnvironment):
 
-    def __init__(self, dg, n_tasks, *args, discount=.9, eps=1, f_type=np.float32,
+    def __init__(self, dg, n_tasks, *args, discount=.9, eps=.6, f_type=np.float32,
                  i_type=np.int32, episode_length=100, n_tasks_per_samp=None,
                  reward_pos_weight=1, reward_neg_weight=1, **task_kwargs):
         self.n_tasks = n_tasks
@@ -117,6 +117,8 @@ class RLEnvironment(tfa.environments.PyEnvironment):
                       - self.reward_neg_weight*neg_reward_vec.astype(self.f_type))
         if len(self.tasks) > 1:
             reward_vec = reward_vec[self._choose_task()]
+        else:
+            reward_vec = np.expand_dims(reward_vec, 0).astype(self.f_type)
         if no_flatten:
             reward = reward_vec
         else:
@@ -125,7 +127,6 @@ class RLEnvironment(tfa.environments.PyEnvironment):
     
     def _step(self, action):
         reward = self.compute_reward(action)
-        # print(action, reward)
         self.current_samp, observation = self.dg.sample_reps(1)
         discount = self.discount
         if self.step_number < self.episode_length:

@@ -1,9 +1,8 @@
+
 import tensorflow as tf
 import tensorflow_probability as tfp
-import tf_agents as tfa
 import tensorflow_hub as tfhub
 import functools as ft
-from tf_agents.utils import common
 
 import numpy as np
 
@@ -15,7 +14,6 @@ tfk = tf.keras
 tfkl = tf.keras.layers
 tfpl = tfp.layers
 tfd = tfp.distributions
-tfaa = tfa.agents
 
 
 class SupervisedDisentangler(da.TFModel):
