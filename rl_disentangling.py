@@ -5,6 +5,7 @@ import tensorflow_probability as tfp
 import tf_agents as tfa
 import reverb
 
+from tf_agents.agents import tf_agent
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import py_driver
 from tf_agents.drivers import dynamic_episode_driver
@@ -23,12 +24,14 @@ from tf_agents.replay_buffers import reverb_utils
 from tf_agents.trajectories import trajectory
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
+from tf_agents.utils import nest_utils
 
 import general.utility as u
 import general.plotting as gpl
 import disentangled.aux as da
 import disentangled.regularizer as dr
 import disentangled.disentanglers as dd
+import collections
 
 tfk = tf.keras
 tfkl = tf.keras.layers
@@ -37,6 +40,10 @@ tfd = tfp.distributions
 tfspec = tfa.specs
 tfaa = tfa.agents
 tfa_ddpg = tfa.agents.ddpg
+
+class DdpgInfo(collections.namedtuple(
+    'DdpgInfo', ('actor_loss', 'critic_loss'))):
+  pass
 
 def make_environment(*args, duration=100, convert_tf=True, **kwargs):
     py_env = RLEnvironment(*args, **kwargs)
@@ -50,9 +57,11 @@ def make_environment(*args, duration=100, convert_tf=True, **kwargs):
 
 class RLEnvironment(tfa.environments.PyEnvironment):
 
-    def __init__(self, dg, n_tasks, *args, discount=.9, eps=.6, f_type=np.float32,
+    def __init__(self, dg, n_tasks, *args, discount=0, eps=.7, f_type=np.float32,
                  i_type=np.int32, episode_length=100, n_tasks_per_samp=None,
-                 reward_pos_weight=1, reward_neg_weight=1, **task_kwargs):
+                 reward_pos_weight=1, reward_neg_weight=1, multi_reward=False,
+                 include_task_mask=False, **task_kwargs):
+        self.include_task_mask = include_task_mask
         self.n_tasks = n_tasks
         if n_tasks_per_samp is None:
             self.n_tasks_per_samp = n_tasks
@@ -63,7 +72,6 @@ class RLEnvironment(tfa.environments.PyEnvironment):
         self.eps = eps
         self.f_type = f_type
         self.i_type = i_type
-        self.discount = np.array(discount, dtype=f_type)
         out = dd.make_tasks(dg.input_dim, n_tasks, **task_kwargs)
         self.tasks, _, _ = out
         self.dg = dg
@@ -71,10 +79,23 @@ class RLEnvironment(tfa.environments.PyEnvironment):
         self.reward_pos_weight = reward_pos_weight
         self.reward_neg_weight = reward_neg_weight
 
-        self._observation_spec = tfspec.ArraySpec((dg.output_dim,), f_type)
+        if include_task_mask:
+            observation_shape = (dg.output_dim + self.n_tasks,)
+        else:
+            observation_shape = (dg.output_dim,)
 
-        self._reward_spec = tfspec.ArraySpec((), f_type)
+        self._observation_spec = tfspec.ArraySpec(observation_shape, f_type)
+
+        self.multi_reward = multi_reward
+        if self.multi_reward:
+            rew_shape = (len(self.tasks),)
+        else:
+            rew_shape = ()
+        self.discount = f_type(discount) # np.ones((), dtype=f_type)*discount
+        
+        self._reward_spec = tfspec.ArraySpec(rew_shape, f_type)
         self._discount_spec = tfspec.ArraySpec((), f_type)
+        
         self._step_type_spec = tfspec.ArraySpec((), i_type)
         self._action_spec = tfspec.BoundedArraySpec((len(self.tasks),), f_type,
                                                      minimum=-1, maximum=1)
@@ -82,13 +103,23 @@ class RLEnvironment(tfa.environments.PyEnvironment):
             step_type=self._step_type_spec, observation=self._observation_spec,
             reward=self._reward_spec, discount=self._discount_spec)
 
+    def _get_observation(self, task_mask=None):
+        initial_samp, initial_rep = self.dg.sample_reps(1)
+        out_rep = np.squeeze(initial_rep)
+        if task_mask is not None and self.include_task_mask:
+            out_rep = np.concatenate((out_rep, task_mask),
+                                     axis=0)
+        out_rep = out_rep.astype(self.f_type)
+        return initial_samp, out_rep
+
     def _reset(self):
         self.step_number = 0
-        initial_samp, initial_rep = self.dg.sample_reps(1)
+        task_mask = self._choose_task()
+        initial_samp, initial_rep = self._get_observation(task_mask)
         self.current_samp = initial_samp
-        initial_rep = np.squeeze(initial_rep).astype(self.f_type)
-        step_type = np.array(0, dtype=self.i_type) 
-        reward = np.array(0., dtype=self.f_type)
+        self.current_task_mask = task_mask
+        step_type = np.array(0, dtype=self.i_type)
+        reward = np.zeros(self.reward_spec().shape, dtype=self.f_type)
         discount = self.discount
         current_step = tfa.trajectories.TimeStep(step_type=step_type,
                                                  observation=initial_rep,
@@ -97,11 +128,18 @@ class RLEnvironment(tfa.environments.PyEnvironment):
         return current_step
 
     def _choose_task(self):
-        ind = self.rng.choice(self.n_tasks, size=self.n_tasks_per_samp,
-                              replace=False)
-        return ind
+        if self.include_task_mask:
+            ind = self.rng.choice(self.n_tasks, size=self.n_tasks_per_samp,
+                                  replace=False)
+            task_mask = np.zeros(self.n_tasks, dtype=bool)
+            task_mask[ind] = True
+        else:
+            task_mask = None
+        return task_mask
     
     def compute_reward(self, action, no_flatten=False):
+        if self.multi_reward:
+            no_flatten = True
         action = np.squeeze(action)
         mask_one = action > 1 - self.eps
         mask_zero = action <= -1 + self.eps
@@ -115,8 +153,8 @@ class RLEnvironment(tfa.environments.PyEnvironment):
                                        mask_zero * corr_vec)
         reward_vec = (self.reward_pos_weight*reward_vec.astype(self.f_type)
                       - self.reward_neg_weight*neg_reward_vec.astype(self.f_type))
-        if len(self.tasks) > 1:
-            reward_vec = reward_vec[self._choose_task()]
+        if self.current_task_mask is not None:
+            reward_vec[np.logical_not(self.current_task_mask)] = 0
         else:
             reward_vec = np.expand_dims(reward_vec, 0).astype(self.f_type)
         if no_flatten:
@@ -127,7 +165,9 @@ class RLEnvironment(tfa.environments.PyEnvironment):
     
     def _step(self, action):
         reward = self.compute_reward(action)
-        self.current_samp, observation = self.dg.sample_reps(1)
+        self.current_task_mask = self._choose_task()
+        out = self._get_observation(self.current_task_mask)
+        self.current_samp, observation = out
         discount = self.discount
         if self.step_number < self.episode_length:
             step_type = np.array(1, dtype=self.i_type)
@@ -141,6 +181,12 @@ class RLEnvironment(tfa.environments.PyEnvironment):
                                               discount=discount)
         return next_step
 
+    def discount_spec(self):
+        return self._discount_spec
+    
+    def reward_spec(self):
+        return self._reward_spec
+    
     def observation_spec(self):
         return self._observation_spec
 
@@ -153,7 +199,187 @@ class RLEnvironment(tfa.environments.PyEnvironment):
     def step_type_spec(self):
         return self._step_type_spec
 
+class ExtendedDdpgAgent(tfaa.DdpgAgent):
 
+    def __init__(self, time_step_spec, action_spec, actor_network,
+                 critic_network, many_critics=False, **kwargs):
+        super().__init__(time_step_spec, action_spec, actor_network,
+                         critic_network, **kwargs):
+        self.many_critics = many_critics
+        if many_critics:
+             n_tasks = action_spec.shape
+             self._critic_network = critic_network
+             critic_input_spec = (time_step_spec.observation, action_spec)
+             critic_network.create_variables(critic_input_spec)
+             if target_critic_network:
+                  target_critic_network.create_variables(critic_input_spec)
+             self._target_critic_network = common.maybe_copy_target_network_with_checks(
+               self._critic_network,
+        target_critic_network,
+        'TargetCriticNetwork',
+        input_spec=critic_input_spec)
+
+    def critic_loss(self,
+                    time_steps,
+                    actions,
+                    next_time_steps,
+                    weights=None,
+                    training=False):
+        """Computes the critic loss for DDPG training.
+
+        Args:
+        time_steps: A batch of timesteps.
+        actions: A batch of actions.
+        next_time_steps: A batch of next timesteps.
+        weights: Optional scalar or element-wise (per-batch-entry) importance
+        weights.
+        training: Whether this loss is being used for training.
+        Returns:
+        critic_loss: A scalar critic loss.
+        """
+        with tf.name_scope('critic_loss'):
+            target_actions, _ = self._target_actor_network(
+                next_time_steps.observation, step_type=next_time_steps.step_type,
+                training=False)
+            target_critic_net_input = (next_time_steps.observation, target_actions)
+            target_q_values, _ = self._target_critic_network(
+                target_critic_net_input, step_type=next_time_steps.step_type,
+                training=False)
+
+            td_targets = tf.stop_gradient(
+                self._reward_scale_factor * next_time_steps.reward +
+                self._gamma * next_time_steps.discount * target_q_values)
+            
+            critic_net_input = (time_steps.observation, actions)
+            q_values, _ = self._critic_network(critic_net_input,
+                                               step_type=time_steps.step_type,
+                                               training=training)
+
+            critic_loss = self._td_errors_loss_fn(td_targets, q_values)
+            if nest_utils.is_batched_nested_tensors(
+                    time_steps, self.time_step_spec, num_outer_dims=2):
+                # Do a sum over the time dimension.
+                critic_loss = tf.reduce_sum(critic_loss, axis=1)
+            if weights is not None:
+                critic_loss *= weights
+            critic_loss = tf.reduce_mean(critic_loss)
+
+            with tf.name_scope('Losses/'):
+                tf.compat.v2.summary.scalar(
+                    name='critic_loss', data=critic_loss, step=self.train_step_counter)
+
+            if self._debug_summaries:
+                td_errors = td_targets - q_values
+                common.generate_tensor_summaries('td_errors', td_errors,
+                                                 self.train_step_counter)
+                common.generate_tensor_summaries('td_targets', td_targets,
+                                                 self.train_step_counter)
+                common.generate_tensor_summaries('q_values', q_values,
+                                                 self.train_step_counter)
+
+        return critic_loss
+    
+    def actor_loss(self, time_steps, weights=None, training=False):
+        """Computes the actor_loss for DDPG training.
+        Args:
+        time_steps: A batch of timesteps.
+        weights: Optional scalar or element-wise (per-batch-entry) importance
+        weights.
+        training: Whether this loss is being used for training.
+        # TODO(b/124383618): Add an action norm regularizer.
+        Returns:
+        actor_loss: A scalar actor loss.
+        """
+        with tf.name_scope('actor_loss'):
+            actions, _ = self._actor_network(time_steps.observation,
+                                             step_type=time_steps.step_type,
+                                             training=training)
+            if self._actor_network.observation_includes_mask:
+                obs_len = self._actor_network.observ_len
+                action_mask = time_steps.observation[:, obs_len:] > 0
+            else:
+                action_mask = np.zeros_like(actions, dtype=bool)
+            with tf.GradientTape(watch_accessed_variables=False) as tape:
+                tape.watch(actions)
+                q_values, _ = self._critic_network((time_steps.observation, actions),
+                                                   step_type=time_steps.step_type,
+                                                   training=False)
+                actions = tf.nest.flatten(actions)
+
+            dqdas = tape.gradient([q_values], actions)
+
+            actor_losses = []
+            for j, (dqda, action) in enumerate(zip(dqdas, actions)):
+                if self._dqda_clipping is not None:
+                    dqda = tf.clip_by_value(dqda, -1 * self._dqda_clipping,
+                                            self._dqda_clipping)
+                loss = common.element_wise_squared_loss(
+                    tf.stop_gradient(dqda + action), action)
+                
+                if nest_utils.is_batched_nested_tensors(
+                        time_steps, self.time_step_spec, num_outer_dims=2):
+                    # Sum over the time dimension.
+                    loss = tf.reduce_sum(loss, axis=1)
+                if weights is not None:
+                    loss *= weights
+                # actor_losses.append(tf.Variable(0))
+                # loss_vars = []
+                for i in range(loss.shape[1]):
+                    if j == 0:
+                        actor_losses.append(0)
+                    loss_masked = tf.boolean_mask(loss[:, i], action_mask[:, i])
+                    actor_losses[i] = actor_losses[i] + tf.reduce_mean(loss_masked)
+                # actor_losses.append(loss_vars)
+
+            # actor_loss = tf.add_n(actor_losses)
+            actor_loss = actor_losses
+            # print(actor_loss)
+            actor_loss_flat = tf.reduce_mean(actor_loss)
+
+            with tf.name_scope('Losses/'):
+                tf.compat.v2.summary.scalar(
+                    name='actor_loss', data=actor_loss_flat,
+                    step=self.train_step_counter)
+
+        return actor_loss
+
+    def _train(self, experience, weights=None):
+        transition = self._as_transition(experience)
+        time_steps, policy_steps, next_time_steps = transition
+        actions = policy_steps.action
+
+        # TODO(b/124382524): Apply a loss mask or filter boundary transitions.
+        trainable_critic_variables = self._critic_network.trainable_variables
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            assert trainable_critic_variables, ('No trainable critic variables to '
+                                                'optimize.')
+            tape.watch(trainable_critic_variables)
+            critic_loss = self.critic_loss(time_steps, actions, next_time_steps,
+                                           weights=weights, training=True)
+        tf.debugging.check_numerics(critic_loss, 'Critic loss is inf or nan.')
+        critic_grads = tape.gradient(critic_loss, trainable_critic_variables)
+        self._apply_gradients(critic_grads, trainable_critic_variables,
+                              self._critic_optimizer)
+
+        trainable_actor_variables = self._actor_network.trainable_variables
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            assert trainable_actor_variables, ('No trainable actor variables to '
+                                               'optimize.')
+            tape.watch(trainable_actor_variables)
+            actor_loss = self.actor_loss(time_steps, weights=weights, training=True)
+        tf.debugging.check_numerics(actor_loss, 'Actor loss is inf or nan.')
+        actor_grads = tape.gradient(actor_loss, trainable_actor_variables)
+        self._apply_gradients(actor_grads, trainable_actor_variables,
+                              self._actor_optimizer)
+
+        self.train_step_counter.assign_add(1)
+        self._update_target()
+
+        # TODO(b/124382360): Compute per element TD loss and return in loss_info.
+        total_loss = actor_loss + critic_loss
+        return tf_agent.LossInfo(total_loss,
+                                 DdpgInfo(actor_loss, critic_loss))
+    
 def compute_avg_return(environment, policy, num_episodes=10):
 
     total_return = 0.0
@@ -174,12 +400,44 @@ def compute_avg_return(environment, policy, num_episodes=10):
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
 
+def nan_huber(y_true, y_pred):
+    loss_fn = tf.keras.losses.Huber()
+    y_pred_nans = tf.math.logical_not(tf.math.is_nan(y_pred))
+    y_true_nans = tf.math.logical_not(tf.math.is_nan(y_true))
+    yt = tf.boolean_mask(y_true, y_true_nans)
+    yp = tf.boolean_mask(y_pred, y_pred_nans)
+    out = loss_fn(yt, yp)
+    return out    
+
+class SimpleCriticNetwork(tfa_ddpg.critic_network.CriticNetwork):
+
+    def __init__(self, input_spec, observation_len=None, **kwargs):
+        if observation_len is not None:
+            self.observ_len = observation_len
+            self.observation_includes_mask = True
+        super().__init__(input_spec, **kwargs)
+
+    def call(self, inputs, *args, **kwargs):
+        observations, actions = inputs
+        if self.observation_includes_mask:
+            obs = observations[:, :self.observ_len]
+            mask = tf.cast(observations[:, self.observ_len:] > 0, float)
+
+            actions = actions*mask
+        else:
+            obs = observations
+            actions = actions
+        return super().call((obs, actions), *args, **kwargs)
 
 class SimpleActorNetwork(tfa_ddpg.actor_network.ActorNetwork):
 
     def __init__(self, input_spec, output_spec, layer_sizes,
                  encoded_size, last_kernel_initializer=None,
-                 act_func=tf.nn.relu, **layer_params):
+                 act_func=tf.nn.relu, observation_len=None,
+                 **layer_params):
+        if observation_len is not None:
+            self.observ_len = observation_len
+            self.observation_includes_mask = True
         super().__init__(input_spec, output_spec, fc_layer_params=layer_sizes,
                          activation_fn=act_func,
                          last_kernel_initializer=last_kernel_initializer)
@@ -200,10 +458,27 @@ class SimpleActorNetwork(tfa_ddpg.actor_network.ActorNetwork):
         layer_list.append(out_layer)
         self._mlp_layers = layer_list
 
+    def call(self, observations, *args, repl_zero=True, **kwargs):
+        if self.observation_includes_mask:
+            obs = observations[:, :self.observ_len]
+            mask = tf.cast(observations[:, self.observ_len:] > 0, tf.float32)
+            mask = observations[:, self.observ_len:] > 0
+        else:
+            obs = observations
+        resp, state = super().call(obs, *args, **kwargs)
+        if self.observation_includes_mask:
+            mult_mask = np.ones_like(mask, dtype=float)
+            if repl_zero:
+                repl_ = 0
+            else:
+                repl_ = np.nan
+            mult_mask[np.logical_not(mask)] = repl_
+            resp = resp*mult_mask
+        return resp, state
+        
     def get_representation(self, inputs):
         return self.rep_model(inputs)
-
-
+    
 class RLDisentangler(dd.FlexibleDisentanglerAE):
     """ 
     The environment is samples from a DataGenerator
@@ -214,7 +489,9 @@ class RLDisentangler(dd.FlexibleDisentanglerAE):
     def __init__(self, env, actor_layers,
                  critic_action_layers, critic_obs_layers,
                  critic_joint_layers, train_sequence_length=2,
-                 encoded_size=50, use_simple_actor=True):
+                 encoded_size=50, use_simple_actor=True,
+                 use_simple_critic=False,
+                 observation_len=None):
         self.env = env
         self.train_sequence_length = train_sequence_length
         # self.input_dim = self.env.dg.input_dim
@@ -228,34 +505,43 @@ class RLDisentangler(dd.FlexibleDisentanglerAE):
             self.actor = SimpleActorNetwork(
                 observation_spec,
                 action_spec, actor_layers, encoded_size,
-                last_kernel_initializer=last_init)
+                last_kernel_initializer=last_init,
+                observation_len=observation_len)
         else:
             self.actor = tfa_ddpg.actor_network.ActorNetwork(
                 observation_spec, action_spec,
                 fc_layer_params=actor_layers,
                 last_kernel_initializer=last_init)
-        self.critic = tfa_ddpg.critic_network.CriticNetwork(
-            (observation_spec, action_spec),
-            observation_fc_layer_params=critic_obs_layers,
-            action_fc_layer_params=critic_action_layers,
-            joint_fc_layer_params=critic_joint_layers)
+        if use_simple_critic:
+            self.critic = SimpleCriticNetwork(
+                (observation_spec, action_spec),
+                observation_fc_layer_params=critic_obs_layers,
+                action_fc_layer_params=critic_action_layers,
+                joint_fc_layer_params=critic_joint_layers,
+                observation_len=observation_len)
+        else:
+            self.critic = tfa_ddpg.critic_network.CriticNetwork(
+                (observation_spec, action_spec),
+                observation_fc_layer_params=critic_obs_layers,
+                action_fc_layer_params=critic_action_layers,
+                joint_fc_layer_params=critic_joint_layers)
         self.compiled = False
 
-    def _compile(self, act_opt=None, crit_opt=None, actor_learning_rate=1e-4,
-                 critic_learning_rate=2e-4, ou_stddev=.5, ou_damping=.2,
-                 discount=.9):
+    def _compile(self, act_opt=None, crit_opt=None, actor_learning_rate=1e-3,
+                 critic_learning_rate=2e-3, ou_stddev=.5, ou_damping=.2,
+                 discount=0, loss=None):
         if act_opt is None:
             act_opt = tf.keras.optimizers.Adam(
                 learning_rate=actor_learning_rate)
         if crit_opt is None:
             crit_opt = tf.keras.optimizers.Adam(
                 learning_rate=actor_learning_rate)
-        self.agent = tfaa.DdpgAgent(
+        self.agent = ExtendedDdpgAgent(
             self.env.time_step_spec(), self.env.action_spec(),
             actor_network=self.actor, actor_optimizer=act_opt,
             critic_network=self.critic, critic_optimizer=crit_opt,
             ou_stddev=ou_stddev, ou_damping=ou_damping,
-            gamma=discount)
+            gamma=discount, td_errors_loss_fn=loss)
         self.agent.initialize()
         self.compiled = True
 
@@ -351,7 +637,8 @@ class RLDisentangler(dd.FlexibleDisentanglerAE):
                 returns.append(avg_return)
         return returns
     
-    def fit_tf(self, env=None, num_iterations=10000, initial_collect_episodes=100,
+    def fit_tf(self, env=None, num_iterations=10000,
+               initial_collect_episodes=1000,
                collect_episodes_per_iteration=1, replay_buffer_max_length=100000,
                batch_size=64, log_interval=200, num_eval_episodes=10,
                eval_interval=1000, learning_rate=1e-3, test_rep=None):
@@ -393,7 +680,6 @@ class RLDisentangler(dd.FlexibleDisentanglerAE):
 
         self.agent.train_step_counter.assign(0)
         returns = []
-        print(replay_buffer.num_frames())
         if test_rep is not None:
             print(self.actor(test_rep))
         for i in range(num_iterations):
@@ -401,23 +687,56 @@ class RLDisentangler(dd.FlexibleDisentanglerAE):
             # print(time_step)
             # print(self.agent.collect_policy.action(time_step))
             experience, unused_info = next(iterator)
-            train_loss = self.agent.train(experience).loss
-            # train_actor_loss = self.agent.actor_loss(experience)
-            train_actor_loss = 0
-            train_critic_loss = 0
-            # train_critic_loss = self.agent.critic_loss(experience)
+            weights = np.ones((64, 5))
+            all_loss = self.agent.train(experience)
+            train_loss = all_loss.loss
+            train_actor_loss = all_loss.extra.actor_loss
+            train_critic_loss = all_loss.extra.critic_loss
             step = self.agent.train_step_counter.numpy()
             if step % log_interval == 0:
                 if test_rep is not None:
                     print(self.actor(test_rep))
-                s = 'step = {0}: loss = {1}, actor = {2}, critic = {3}'
-                print(s.format(step, train_loss, train_actor_loss,
-                               train_critic_loss))
+                s = 'step = {}: loss = {:0.4f}, actor = {:0.4f}, critic = {:0.4f}'
+                print(s.format(step, np.mean(train_loss), np.mean(train_actor_loss),
+                               np.mean(train_critic_loss)))
 
             if step % eval_interval == 0:
                 avg_return = compute_avg_return(env, self.agent.policy,
                                                 num_eval_episodes)
-                s = 'step = {0}: Average Return = {1}'.format(step, avg_return)
+                s = 'step = {}: Average Return = {:0.2f}'.format(step, avg_return)
                 print(s)
                 returns.append(avg_return)
         return returns
+
+class MultiAgentDisentangler(RLDisentangler):
+
+    def __init__(self, env, actor_layers,
+                 critic_action_layers, critic_obs_layers,
+                 critic_joint_layers, train_sequence_length=2,
+                 encoded_size=50, use_simple_actor=True):
+        self.env = env
+        self.train_sequence_length = train_sequence_length
+        # self.input_dim = self.env.dg.input_dim
+        action_spec = self.env.action_spec()
+        observation_spec = self.env.observation_spec()
+        # step_type_spec = self.env.step_type_spec()
+        time_step_spec = self.env.time_step_spec()
+        last_init = tf.random_uniform_initializer(minval=-0.003,
+                                                  maxval=0.003)
+        if use_simple_actor:
+            self.actor = SimpleActorNetwork(
+                observation_spec,
+                action_spec, actor_layers, encoded_size,
+                last_kernel_initializer=last_init)
+        else:
+            self.actor = tfa_ddpg.actor_network.ActorNetwork(
+                observation_spec, action_spec,
+                fc_layer_params=actor_layers,
+                last_kernel_initializer=last_init)
+        self.critic = tfa_ddpg.critic_network.CriticNetwork(
+            (observation_spec, action_spec),
+            observation_fc_layer_params=critic_obs_layers,
+            action_fc_layer_params=critic_action_layers,
+            joint_fc_layer_params=critic_joint_layers)
+        self.compiled = False
+

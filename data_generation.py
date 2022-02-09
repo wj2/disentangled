@@ -74,6 +74,11 @@ class DataGenerator(da.TFModel):
         elif source_distribution is None:
             raise Exception('no source distribution provided')
         inp_samps = source_distribution.rvs(sample_size)
+        if len(inp_samps.shape) < 2 and sample_size == 1:
+            inp_samps = np.expand_dims(inp_samps, 0)
+        if len(inp_samps.shape) < 2 and self.input_dim == 1:
+            inp_samps = np.expand_dims(inp_samps, 1)
+            
         if repl_mean is not None:
             inp_samps[:, repl_mean] = source_distribution.mean[repl_mean]
         rep_samps = self.get_representation(inp_samps)
