@@ -83,13 +83,25 @@ class DataGenerator(da.TFModel):
             inp_samps[:, repl_mean] = source_distribution.mean[repl_mean]
         rep_samps = self.get_representation(inp_samps)
         return inp_samps, rep_samps
+
+@gpl.ax_adder
+def visualize_gp(length_scale, inp_dim=2, dim=0, domain=(-1, 1), n_samples=1000,
+                 func_samps=1, ax=None, **kwargs):
+    gp = GaussianProcessDataGenerator(inp_dim, 0, 1, length_scale=length_scale)
+    inp = np.zeros((n_samples, gp.input_dim))
+    inp_val = np.sort(gp.source_distribution.rvs(n_samples)[:, dim])
+    inp_val = np.linspace(*domain, n_samples)
+    inp[:, dim] = inp_val
+    out = gp.model.sample_y(inp, n_samples=func_samps, random_state=None)
+    ax.plot(inp_val, out, **kwargs)
     
 class GaussianProcessDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_width, out_dim,
                  kernel_func=skgp.kernels.RBF, l2_weight=(0, .1),
                  layer=None, distrib_variance=1, low_thr=None,
-                 source_distribution=None, noise=.01, **kernel_kwargs):
+                 source_distribution=None, noise=.01, rand_state=None,
+                 **kernel_kwargs):
         self.input_dim = inp_dim
         self.output_dim = out_dim
         self.compiled=False
@@ -105,6 +117,7 @@ class GaussianProcessDataGenerator(DataGenerator):
         else:
             self.layer = dd.IdentityModel()
         self.low_thr = low_thr
+        self.rand_state = rand_state
 
     def fit(self, train_x=None, train_y=None, eval_x=None, eval_y=None,
             source_distribution=None, epochs=15, train_samples=1000,
@@ -114,7 +127,8 @@ class GaussianProcessDataGenerator(DataGenerator):
             fit_distribution = sts.multivariate_normal(np.zeros(self.output_dim),
                                                        1)
         in_samp = self.source_distribution.rvs(train_samples)
-        samp_proc = self.model.sample_y(in_samp, n_samples=self.output_dim)
+        samp_proc = self.model.sample_y(in_samp, n_samples=self.output_dim,
+                                        random_state=self.rand_state)
         self.model.fit(in_samp, samp_proc)
 
     def _compile(self, *args, **kwargs):
