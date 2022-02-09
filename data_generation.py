@@ -79,16 +79,31 @@ class DataGenerator(da.TFModel):
         rep_samps = self.get_representation(inp_samps)
         return inp_samps, rep_samps
 
-@gpl.ax_adder
-def visualize_gp(length_scale, inp_dim=2, dim=0, domain=(-1, 1), n_samples=1000,
-                 func_samps=1, ax=None, **kwargs):
+def visualize_gp(length_scale, inp_dim=2, dim=0, domain=(-2, 2), n_samples=1000,
+                 func_samps=1, plot_dim=1, ax=None, fwid=5, **kwargs):
+    if ax is None:
+        if plot_dim == 3:
+            f = plt.figure(figsize=(fwid, fwid))
+            ax = f.add_subplot(1, 1, 1, projection='3d')
+        else:
+            f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
     gp = GaussianProcessDataGenerator(inp_dim, 0, 1, length_scale=length_scale)
     inp = np.zeros((n_samples, gp.input_dim))
     inp_val = np.sort(gp.source_distribution.rvs(n_samples)[:, dim])
     inp_val = np.linspace(*domain, n_samples)
     inp[:, dim] = inp_val
-    out = gp.model.sample_y(inp, n_samples=func_samps, random_state=None)
-    ax.plot(inp_val, out, **kwargs)
+    out = gp.model.sample_y(inp, n_samples=func_samps*plot_dim,
+                            random_state=None)
+    if plot_dim == 1:
+        ax.plot(inp_val, out, **kwargs)
+    elif plot_dim == 2:
+        out = out.reshape((out.shape[0], 2, -1))
+        ax.plot(out[:, 0], out[:, 1], **kwargs)
+    elif plot_dim == 3:
+        out = out.reshape((out.shape[0], 3, -1))
+        for i in range(out.shape[2]):
+            ax.plot(out[:, 0, i], out[:, 1, i], out[:, 2, i], **kwargs)
+    return ax
     
 class GaussianProcessDataGenerator(DataGenerator):
 
