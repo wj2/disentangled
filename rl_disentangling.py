@@ -199,6 +199,29 @@ class RLEnvironment(tfa.environments.PyEnvironment):
     def step_type_spec(self):
         return self._step_type_spec
 
+
+class DummyCriticNetwork():
+
+  def __init__(self, *networks, mask_in_obs=True):
+      self.networks = networks
+      self.mask_in_obs = mask_in_obs
+
+    def __call__(self, inp, mask=None, **kwargs):
+      obs, action = inp
+      if mask is None and self.mask_in_obs:
+          mask_len = action.shape[1]
+          obs = obs[:, :mask_len]
+          mask = obs[:, mask_len:]
+      elif mask is None:
+          mask = np.ones_like(action, dtype=bool)
+      outs = tf.zeros(action.shape)
+      for i, net in enumerate(self.networks):
+          out[:, i] = net((tf.boolean_mask(obs, mask[:, i]),
+                       tf.boolean_mask(inp[:, i], mask[:, i])),
+                      **kwargs)
+        
+      return tf.reduce_sum(out, axis=1)
+    
 class ExtendedDdpgAgent(tfaa.DdpgAgent):
 
     def __init__(self, time_step_spec, action_spec, actor_network,
@@ -207,17 +230,29 @@ class ExtendedDdpgAgent(tfaa.DdpgAgent):
                          critic_network, **kwargs):
         self.many_critics = many_critics
         if many_critics:
-             n_tasks = action_spec.shape
-             self._critic_network = critic_network
-             critic_input_spec = (time_step_spec.observation, action_spec)
-             critic_network.create_variables(critic_input_spec)
-             if target_critic_network:
-                  target_critic_network.create_variables(critic_input_spec)
-             self._target_critic_network = common.maybe_copy_target_network_with_checks(
-               self._critic_network,
-        target_critic_network,
-        'TargetCriticNetwork',
-        input_spec=critic_input_spec)
+            n_tasks = action_spec.shape
+            single_action_spec = tfspec.BoundedTensorSpec(
+                (1,), dtype=action_spec.dtype, minimum=action_spec.minimum,
+                maximum=action_spec.maximum)
+            self._many_critic_networks = (critic_network,)*n_tasks
+            critic_input_spec = (time_step_spec.observation, single_action_spec)
+            list(cn.create_variables(critic_input_spec)
+                 for cn in self._many_critic_networks)
+            if target_critic_network:
+                many_target_critic_networks = (target_critic_network,)*n_tasks
+                list(cn.create_variables(critic_input_spec)
+                     for cn in many_target_critic_networks)
+            tcns = []
+            for i in range(n_tasks):
+                tcn = common.maybe_copy_target_network_with_checks(
+                    self._many_critic_networks[i],
+                    many_target_critic_networks[i],
+                    'TCN{}'.format(i),
+                    input_spec=critic_input_spec[i])
+                tcns.append(tcn)
+            self._many_target_critic_networks = tcns
+            self._target_critic_network = DummyNetwork(*tcns)
+            self._critic_network = DummyNetwork(*self._many_critic_networks)
 
     def critic_loss(self,
                     time_steps,
