@@ -145,6 +145,8 @@ def create_parser():
                         help='number of latent variables to learn for tasks')
     parser.add_argument('--use_weight_decay', default=False, action='store_true',
                         'use AdamW optimizer to train model')
+    parser.add_argument('--weight_reg_weight', default=0, type=float,
+                        'weight of L2 regularization on weights')
     ## ADD OPTION TO REGULARIZE WEIGHTS (similar to weight decay)
     return parser
 
@@ -282,7 +284,8 @@ if __name__ == '__main__':
                                   grid_coloring=args.use_grids_only,
                                   use_gp_tasks=args.use_gp_tasks_only,
                                   gp_task_length_scale=args.gp_task_length_scale,
-                                  no_learn_lvs=no_learn_lvs)
+                                  no_learn_lvs=no_learn_lvs,
+                                  weight_reg_weight=args.weight_reg_weight)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
