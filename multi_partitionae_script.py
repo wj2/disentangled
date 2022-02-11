@@ -144,10 +144,12 @@ def create_parser():
     parser.add_argument('--task_subset', default=None, type=int,
                         help='number of latent variables to learn for tasks')
     parser.add_argument('--use_weight_decay', default=False, action='store_true',
-                        'use AdamW optimizer to train model')
+                        help='use AdamW optimizer to train model')
     parser.add_argument('--weight_reg_weight', default=0, type=float,
-                        'weight of L2 regularization on weights')
-    ## ADD OPTION TO REGULARIZE WEIGHTS (similar to weight decay)
+                        help='weight of L2 regularization on weights')
+    parser.add_argument('--eval_intermediate', default=False,
+                        action='store_true', help='run generalization analysis '
+                        'on intermediate layers')
     return parser
 
 if __name__ == '__main__':
@@ -303,7 +305,8 @@ if __name__ == '__main__':
                                      generate_data=not args.no_data,
                                      distr_type=args.source_distr,
                                      compute_trained_lvs=compute_train_lvs,
-                                     plot=False)
+                                     plot=False,
+                                     evaluate_intermediate=args.eval_intermediate)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,

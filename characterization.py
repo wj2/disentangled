@@ -236,18 +236,17 @@ def evaluate_multiple_models(dg_use, models, train_func, test_distributions,
     chance = np.zeros_like(performance)
     if train_distributions is None:
         train_distributions = (None,)*len(test_distributions)
-    for i in range(models.shape[0]):
-        for j in range(models.shape[1]):
-            bvae = models[i, j]
-            for k, td in enumerate(test_distributions):
-                train_d_k = train_distributions[k]
-                out = classifier_generalization(dg_use, bvae, train_func,
-                                                test_distrib=td,
-                                                train_distrib=train_d_k,
-                                                mean=mean, n_iters=n_iters,
-                                                **classifier_args)
-                performance[i, j, k] = out[0]
-                chance[i, j, k]= out[1]
+    for ind in u.make_array_ind_iterator(models.shape):
+        bvae = models[ind]
+        for k, td in enumerate(test_distributions):
+            train_d_k = train_distributions[k]
+            out = classifier_generalization(dg_use, bvae, train_func,
+                                            test_distrib=td,
+                                            train_distrib=train_d_k,
+                                            mean=mean, n_iters=n_iters,
+                                            **classifier_args)
+            performance[ind + (k,)] = out[0]
+            chance[ind + (k,)]= out[1]
     return performance, chance
 
 def train_and_evaluate_models(dg_use, betas, layer_spec, train_func,
@@ -980,6 +979,18 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
     axs[plot_ind].set_xlabel(xlab)
     return axs        
 
+def expand_intermediate_models(mod_arr):
+    for i, ind in enumerate(u.make_array_ind_iterator(mod_arr.shape)):
+        model = mod_arr[ind]
+        n_layers = len(model.rep_model.layers)
+        if i == 0:
+            mod_out = np.zeros(mod_arr.shape + (n_layers,),
+                               dtype=object)
+        for j in range(n_layers):
+            mod_out[ind + (j,)] = dd.IntermediateLayers(model.rep_model,
+                                                        use_i=j)
+    return mod_out
+
 def plot_recon_accuracy_partition(scores, mks=None, ax=None, indiv_pts=True,
                                   log_x=False, errorbar=False, **kwargs):
     if ax is None:
@@ -1147,7 +1158,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             model_batch_size=30, p_mean=True,
                             distr_type='normal', dg_layers=None,
                             compute_trained_lvs=False,
-                            compute_untrained=True):
+                            compute_untrained=True,
+                            evaluate_intermediate=False):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1220,6 +1232,9 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     else:
         models, th = models_ths
 
+    if evaluate_intermediate:
+        models = expand_intermediate_models(models)
+
     if th is not None and plot:
         plot_training_progress(th, use_x)
     if plot:
@@ -1270,12 +1285,10 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                 p = pt
                 c = ct
         else:
-            p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
-                                                 train_distributions=train_ds,
-                                                 n_iters=eval_n_iters,
-                                                 n_train_samples=n_train_samples,
-                                                 n_test_samples=n_test_samples,
-                                                 mean=p_mean)
+            p, c = evaluate_multiple_models_dims(
+                dg_use, models, None, test_ds, train_distributions=train_ds,
+                n_iters=eval_n_iters, n_train_samples=n_train_samples,
+                n_test_samples=n_test_samples, mean=p_mean)
     else:
         p, c = p_c
 
@@ -1287,20 +1300,20 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
 
     if lts_scores is None:
         if compute_trained_lvs:
-            lts_t = find_linear_mappings(dg_use, models, half=True,
-                                         n_samps=n_test_samples,
-                                         learn_lvs='trained')
+            lts_t = find_linear_mappings(
+                dg_use, models, half=True, n_samps=n_test_samples,
+                learn_lvs='trained')
             if compute_untrained:
-                lts_u = find_linear_mappings(dg_use, models, half=True,
-                                             n_samps=n_test_samples,
-                                             learn_lvs='untrained')
+                lts_u = find_linear_mappings(
+                    dg_use, models, half=True, n_samps=n_test_samples,
+                    learn_lvs='untrained')
                 lts_scores = list(np.stack((lts_ti, lts_u[i]), axis=0)
                                   for i, lts_ti in enumerate(lts_t))
             else:
                 lts_scores = lts_t
         else:
-            lts_scores = find_linear_mappings(dg_use, models, half=True,
-                                              n_samps=n_test_samples)
+            lts_scores = find_linear_mappings(
+                dg_use, models, half=True, n_samps=n_test_samples)
     print(lts_scores[1])
     print(np.mean(lts_scores[1]))
     if plot:

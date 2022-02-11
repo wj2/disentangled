@@ -246,16 +246,14 @@ class SingleLayer(da.TFModel):
 
 class IntermediateLayers():
 
-    def __init__(self, model):
+    def __init__(self, model, use_i=0):
         self.model = model
-        inp = tfk.Input(self.model.layers[0].input_shape[0][1])
-        x = inp
+        layers = self.model.layers
         i_models = []
-        for i in range(0, len(self.model.layers)):
-            x = self.model.layers[i](x)
-            i_models.append(tfk.Model(inputs=inp, outputs=x))
+        for i in range(1, len(self.model.layers) + 1):
+            i_models.append(tfk.Sequential(layers[:i]))
         self.i_models = i_models
-        self.use_i = 0
+        self.use_i = use_i
 
     def get_representation(self, x, layer_ind=None):
         if layer_ind is None:
@@ -392,7 +390,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             kernel_reg = None
             
         for lp in layer_shapes:
-            x = layer_type(*lp, activation=act_func, kernel_reg=kernel_reg,
+            x = layer_type(*lp, activation=act_func,
+                           kernel_regularizer=kernel_reg,
                            **layer_params)(x)
 
         if dropout_rate > 0:
