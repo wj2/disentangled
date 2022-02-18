@@ -627,9 +627,14 @@ def get_circle_pts(n, inp_dim, r=1):
 def _load_archive(archive, img_key, param_vals, param_names,
                   norm_params=False, img_size=(64, 64),
                   max_load=np.inf, norm_pixels=False, convert_color=True,
-                  binarize=False):
+                  binarize=False, pre_model=None):
     images = archive[img_key]
-    images_list = []
+    n_images = int(np.min((len(images), max_load)))
+    print(n_images)
+    if pre_model is None:
+        images_list = np.zeros((n_images,) + img_size, (3,))
+    else:
+        images_list = np.zeros((n_images, pre_model.output_size))
     need_resize = not np.all(np.array(img_size) == images.shape[1:3])
     for i, img in enumerate(images):
         if i >= max_load:
@@ -639,7 +644,8 @@ def _load_archive(archive, img_key, param_vals, param_names,
             im = im.resize(img_size)
             img = np.asarray(im)
             if binarize:
-                img = np.round(img).astype(int)
+                img = np.round(img).astype(np.uint8)
+        img = np.asarray(img)
         if convert_color:
             img = pImage.fromarray(img).convert(mode='RGB')
             img = np.asarray(img)
@@ -647,14 +653,16 @@ def _load_archive(archive, img_key, param_vals, param_names,
             img = np.expand_dims(img, -1)
         if norm_pixels:
             img = img/255.
-        images_list.append(img)
+        if pre_model is not None:
+            img = pre_model.get_representation(img, single=True)
+        images_list[i] = img
     if max_load == np.inf:
         max_load = archive[param_vals].shape[0]
     vals = archive[param_vals][:max_load]
     if norm_params:
         vals = u.demean_unit_std(vals)
     d = {param_names[i]:vals[:, i] for i in range(vals.shape[1])}
-    d['images'] = images_list
+    d['images'] = list(images_list)
     data = pd.DataFrame(data=d)
     return data    
 
@@ -680,7 +688,8 @@ chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                       img_size=(64, 64), max_load=np.inf, norm_pixels=True,
                       norm_params=False, grayscale=False, filter_edges=None,
-                      edge_keys=('rotation',), read_specific_chairs=None):
+                      edge_keys=('rotation',), read_specific_chairs=None,
+                      pre_model=None):
     subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
                                                 os.listdir(folder))
     names = []
@@ -714,6 +723,9 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                         img_arr = np.expand_dims(img_arr, -1)
                     if norm_pixels:
                         img_arr = img_arr/255
+                    if pre_model is not None:
+                        img_arr = pre_model.get_representation(img_arr,
+                                                               single=True)
                     imgs.append(img_arr)
                     img.close()
                     

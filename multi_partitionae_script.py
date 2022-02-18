@@ -123,6 +123,12 @@ def create_parser():
                         help='use participation ratio-optimized data generator')
     parser.add_argument('--use_gp_dg', default=False, action='store_true',
                         help='use GaussianProcess data generator')
+    parser.add_argument('--use_3d_dg', default=False, action='store_true',
+                        help='use 3D shapes data generator')
+    parser.add_argument('--use_2d_dg', default=False, action='store_true',
+                        help='use 2D shapes data generator')
+    parser.add_argument('--use_chairs_dg', default=False, action='store_true',
+                        help='use chair data generator')
     parser.add_argument('--gp_length_scale', default=.5, type=float,
                         help='length scale for RBF kernel')
     parser.add_argument('--config_path', default=None, type=str,
@@ -150,6 +156,12 @@ def create_parser():
     parser.add_argument('--eval_intermediate', default=False,
                         action='store_true', help='run generalization analysis '
                         'on intermediate layers')
+    parser.add_argument('--img_resize', default=(224, 224), nargs=2,
+                        type=tuple, help='size to resize images to')
+    default_pre_model = ('https://tfhub.dev/google/imagenet/'
+                         'mobilenet_v3_small_100_224/feature_vector/5')
+    parser.add_argument('--img_pre_net', default=default_pre_model, type=str,
+                        help='string giving url for image model to use')
     return parser
 
 if __name__ == '__main__':
@@ -187,7 +199,8 @@ if __name__ == '__main__':
         dg_layers = (100, 200, 300, 100)
     else:
         dg_layers = args.dg_layer_spec
-        
+
+    pre_net = False
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
@@ -216,7 +229,29 @@ if __name__ == '__main__':
         dg_use = dg.GaussianProcessDataGenerator(
             true_inp_dim, dg_layers, args.dg_dim, source_distribution=sd,
             length_scale=args.gp_length_scale)
-        dg_use.fit(train_samples=1000)                                                 
+        dg_use.fit(train_samples=1000)
+    elif args.use_chairs_dg:
+        filter_edges = .4
+        chair_file = 'disentangled/datasets/chairs_images/'
+        dg_use = dg.ChairGenerator(chair_file, img_size=args.img_resize,
+                                   max_load=np.inf, include_position=False,
+                                   max_move=.6, filter_edges=filter_edges,
+                                   pre_model=args.img_pre_net)
+        true_inp_dim = dg_use.input_dim
+    elif args.use_2d_dg:
+        twod_file = ('disentangled/datasets/'
+                     'dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz')
+        dg_use = dg.TwoDShapeGenerator(twod_file, img_size=args.img_resize,
+                                       max_load=np.inf, convert_color=True,
+                                       pre_model=args.img_pre_net)  
+        true_inp_dim = dg_use.input_dim
+    elif args.use_3d_dg:
+        threed_file = 'disentangled/datasets/3dshapes.h5'
+        dg_use = dg.ThreeDShapeGenerator(threed_file, 
+                                         img_size=args.img_resize,
+                                         max_load=np.inf,
+                                         pre_model=args.img_pre_net)   
+        true_inp_dim = dg_use.input_dim
     else:
         dg_use = None
 
@@ -261,11 +296,15 @@ if __name__ == '__main__':
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
     context_offset = args.context_offset
+    if pre_net:
+        net_type = dd.FlexibleDisentanglerPre
+    else:
+        net_type = dd.FlexibleDisentanglerAE
     if args.nan_salt == -1:
         nan_salt = 'single'
     else:
         nan_salt = args.nan_salt
-    model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
+    model_kinds = list(ft.partial(net_type,
                                   true_inp_dim=true_inp_dim,
                                   n_partitions=p,
                                   contextual_partitions=contextual_partitions,
