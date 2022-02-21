@@ -236,18 +236,17 @@ def evaluate_multiple_models(dg_use, models, train_func, test_distributions,
     chance = np.zeros_like(performance)
     if train_distributions is None:
         train_distributions = (None,)*len(test_distributions)
-    for i in range(models.shape[0]):
-        for j in range(models.shape[1]):
-            bvae = models[i, j]
-            for k, td in enumerate(test_distributions):
-                train_d_k = train_distributions[k]
-                out = classifier_generalization(dg_use, bvae, train_func,
-                                                test_distrib=td,
-                                                train_distrib=train_d_k,
-                                                mean=mean, n_iters=n_iters,
-                                                **classifier_args)
-                performance[i, j, k] = out[0]
-                chance[i, j, k]= out[1]
+    for ind in u.make_array_ind_iterator(models.shape):
+        bvae = models[ind]
+        for k, td in enumerate(test_distributions):
+            train_d_k = train_distributions[k]
+            out = classifier_generalization(dg_use, bvae, train_func,
+                                            test_distrib=td,
+                                            train_distrib=train_d_k,
+                                            mean=mean, n_iters=n_iters,
+                                            **classifier_args)
+            performance[ind + (k,)] = out[0]
+            chance[ind + (k,)]= out[1]
     return performance, chance
 
 def train_and_evaluate_models(dg_use, betas, layer_spec, train_func,
@@ -950,10 +949,18 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
                                  plot_labels='train egs = {}', n_plots=None,
                                  ylabel='', ylim=None, num_dims=None,
                                  xlab='partitions', collapse_plots=False,
-                                 set_title=True, **kwargs):
-    if len(scores.shape) == 4:
+                                 set_title=True, intermediate=False, **kwargs):
+    if len(scores.shape) == 4 and not intermediate:
         scores = np.mean(scores, axis=3)
-    n_ds, n_mks, n_reps = scores.shape
+        n_ds, n_mks, n_reps = scores.shape
+    elif len(scores.shape) == 4 and intermediate:
+        n_ds, n_mks, n_reps, n_inter = scores.shape
+    elif len(scores.shape) == 5:
+        scores = np.mean(scores, axis=-1)
+        n_ds, n_mks, n_reps, n_inter = scores.shape
+    else:
+        n_ds, n_mks, n_reps = scores.shape
+        n_inter = 0
     if axs is None:
         f, axs = plt.subplots(n_ds, 1, sharey=True,
                               figsize=(fwid, n_ds*fwid))
@@ -967,8 +974,13 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
             plot_ind = i
         if not set_title and collapse_plots:
             kwargs['label'] = ''
-        plot_recon_accuracy_partition(sc, ax=axs[plot_ind], mks=xs,
-                                      **kwargs)
+        if n_inter > 0:
+            for j in range(n_inter):
+                plot_recon_accuracy_partition(sc[..., j], ax=axs[plot_ind],
+                                              mks=xs, **kwargs)
+        else:
+            plot_recon_accuracy_partition(sc, ax=axs[plot_ind], mks=xs,
+                                          **kwargs)
         axs[plot_ind].set_ylabel(ylabel)
         if (n_plots is not None and len(plot_labels) > 0 and set_title
             and not collapse_plots):
@@ -979,6 +991,18 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
             gpl.add_vlines(num_dims, axs[plot_ind])
     axs[plot_ind].set_xlabel(xlab)
     return axs        
+
+def expand_intermediate_models(mod_arr):
+    for i, ind in enumerate(u.make_array_ind_iterator(mod_arr.shape)):
+        model = mod_arr[ind]
+        n_layers = len(model.rep_model.layers)
+        if i == 0:
+            mod_out = np.zeros(mod_arr.shape + (n_layers,),
+                               dtype=object)
+        for j in range(n_layers):
+            mod_out[ind + (j,)] = dd.IntermediateLayers(model.rep_model,
+                                                        use_i=j)
+    return mod_out
 
 def plot_recon_accuracy_partition(scores, mks=None, ax=None, indiv_pts=True,
                                   log_x=False, errorbar=False, **kwargs):
@@ -1147,7 +1171,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             model_batch_size=30, p_mean=True,
                             distr_type='normal', dg_layers=None,
                             compute_trained_lvs=False,
-                            compute_untrained=True):
+                            compute_untrained=True,
+                            evaluate_intermediate=False):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1214,11 +1239,16 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         use_x = models_kwargs['n_train_samps']
     else:
         use_x = models_args[0]
-    
+
+    print('args', models_args)
+    print('kwargs', models_kwargs)
     if models_ths is None:
         models, th = train_multiple_models_dims(*models_args, **models_kwargs)
     else:
         models, th = models_ths
+
+    if evaluate_intermediate:
+        models = expand_intermediate_models(models)
 
     if th is not None and plot:
         plot_training_progress(th, use_x)
@@ -1270,12 +1300,10 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                 p = pt
                 c = ct
         else:
-            p, c = evaluate_multiple_models_dims(dg_use, models, None, test_ds,
-                                                 train_distributions=train_ds,
-                                                 n_iters=eval_n_iters,
-                                                 n_train_samples=n_train_samples,
-                                                 n_test_samples=n_test_samples,
-                                                 mean=p_mean)
+            p, c = evaluate_multiple_models_dims(
+                dg_use, models, None, test_ds, train_distributions=train_ds,
+                n_iters=eval_n_iters, n_train_samples=n_train_samples,
+                n_test_samples=n_test_samples, mean=p_mean)
     else:
         p, c = p_c
 
@@ -1287,20 +1315,20 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
 
     if lts_scores is None:
         if compute_trained_lvs:
-            lts_t = find_linear_mappings(dg_use, models, half=True,
-                                         n_samps=n_test_samples,
-                                         learn_lvs='trained')
+            lts_t = find_linear_mappings(
+                dg_use, models, half=True, n_samps=n_test_samples,
+                learn_lvs='trained')
             if compute_untrained:
-                lts_u = find_linear_mappings(dg_use, models, half=True,
-                                             n_samps=n_test_samples,
-                                             learn_lvs='untrained')
+                lts_u = find_linear_mappings(
+                    dg_use, models, half=True, n_samps=n_test_samples,
+                    learn_lvs='untrained')
                 lts_scores = list(np.stack((lts_ti, lts_u[i]), axis=0)
                                   for i, lts_ti in enumerate(lts_t))
             else:
                 lts_scores = lts_t
         else:
-            lts_scores = find_linear_mappings(dg_use, models, half=True,
-                                              n_samps=n_test_samples)
+            lts_scores = find_linear_mappings(
+                dg_use, models, half=True, n_samps=n_test_samples)
     print(lts_scores[1])
     print(np.mean(lts_scores[1]))
     if plot:
@@ -1458,7 +1486,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            xlab='tasks', ret_fig=False, legend='',
                            print_args=True, set_title=True, color=None,
                            plot_hline=True, distr_parts=None, linestyle='solid',
-                           double_ind=None, set_lims=True, **kwargs):
+                           double_ind=None, set_lims=True,
+                           intermediate=False, **kwargs):
     if double_ind is not None:
         merge_axis = 2
     else:
@@ -1505,7 +1534,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       ret_fig=ret_fig, label=legend,
                                       fwid=fwid, set_title=set_title,
                                       color=color, plot_hline=plot_hline,
-                                      linestyle=linestyle, thresh=thresh)
+                                      linestyle=linestyle, thresh=thresh,
+                                      intermediate=intermediate)
     if ret_info:
         out_all = (out, info)
     else:

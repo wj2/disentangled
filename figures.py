@@ -196,7 +196,7 @@ def characterize_gaussian_process(inp_dim, out_dim, length_scales, eps=1e-3,
     for i, ls in enumerate(length_scales):
         dg_gp = dg.GaussianProcessDataGenerator(inp_dim, 100, out_dim,
                                                 length_scale=ls)
-        dg_gp.fit(train_samples=1000)
+        dg_gp.fit(train_samples=fit_samples)
         out = characterize_generalization(dg_gp, dd.IdentityModel(), n_reps)
         pr = dg_gp.representation_dimensionality(participation_ratio=True)
         class_res, regr_res = out

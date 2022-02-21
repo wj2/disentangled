@@ -246,16 +246,14 @@ class SingleLayer(da.TFModel):
 
 class IntermediateLayers():
 
-    def __init__(self, model):
+    def __init__(self, model, use_i=0):
         self.model = model
-        inp = tfk.Input(self.model.layers[0].input_shape[0][1])
-        x = inp
+        layers = self.model.layers
         i_models = []
-        for i in range(0, len(self.model.layers)):
-            x = self.model.layers[i](x)
-            i_models.append(tfk.Model(inputs=inp, outputs=x))
+        for i in range(1, len(self.model.layers) + 1):
+            i_models.append(tfk.Sequential(layers[:i]))
         self.i_models = i_models
-        self.use_i = 0
+        self.use_i = use_i
 
     def get_representation(self, x, layer_ind=None):
         if layer_ind is None:
@@ -381,19 +379,29 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                      n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
                      layer_type=tfkl.Dense, branch_names=('a', 'b'),
                      regularizer_type=tfk.regularizers.l2,
-                     dropout_rate=0, noise=0, **layer_params):
+                     dropout_rate=0, noise=0, weight_reg_weight=0,
+                     weight_reg_type=tfk.regularizers.l2,
+                     **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
+        if weight_reg_weight > 0:
+            kernel_reg = weight_reg_type(weight_reg_weight)
+        else:
+            kernel_reg = None
+            
         for lp in layer_shapes:
-            x = layer_type(*lp, activation=act_func, **layer_params)(x)
+            x = layer_type(*lp, activation=act_func,
+                           kernel_regularizer=kernel_reg,
+                           **layer_params)(x)
 
         if dropout_rate > 0:
             x = tfkl.Dropout(dropout_rate)(x)
-        
+
         # representation layer
         act_reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
-                         activity_regularizer=act_reg)(x)
+                         activity_regularizer=act_reg,
+                         kernel_regularizer=kernel_reg)(x)
         if noise > 0:
             rep = tfkl.GaussianNoise(noise)(rep)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
@@ -498,6 +506,33 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         reps = self.get_representation(samples)
         recon = self.get_reconstruction(reps)
         return np.mean((samples - recon)**2)
+
+default_pre_model = ('https://tfhub.dev/google/imagenet/'
+                     'mobilenet_v3_small_100_224/feature_vector/5')
+class FlexibleDisentanglerPre(FlexibleDisentanglerAE):
+
+    def __init__(self, input_shape, *args, use_pre_network=default_pre_model,
+                 **kwargs):
+        print('args', input_shape, *args)
+        self.pm = PretrainedModel(input_shape, use_pre_network)
+        new_input_shape = self.pm.output_size
+        super().__init__(new_input_shape, *args, **kwargs)
+
+    def fit(self, train_x, train_y, eval_x=None, eval_y=None, **kwargs):
+        train_x = self.pm.get_representation(train_x)
+        eval_x = self.pm.get_representation(eval_x)
+        super().fit(train_x, train_y, eval_x=eval_x, eval_y=eval_y,
+                    **kwargs)
+
+    def get_representation(self, samples):
+        pre_rep = self.get_pre_representation(samples)
+        rep = super().get_representation(pre_rep)
+        return rep
+
+    def get_pre_representation(self, samples):
+        pre_rep = self.pm.get_representation(samples)
+        return pre_rep
+
     
 class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
 
@@ -695,15 +730,32 @@ class StandardAE(da.TFModel):
 class PretrainedModel(da.TFModel):
 
     def __init__(self, img_shape, model_path, trainable=False):
-        full_img_shape = img_shape + (3,)
+        if len(img_shape) == 2:
+            full_img_shape = img_shape + (3,)
+        else:
+            full_img_shape = img_shape
+        self._img_shape = full_img_shape
         layer_list = [tfkl.InputLayer(input_shape=full_img_shape),
-                      tfhub.KerasLayer(model_path, trainable=trainable)]
+                      tfhub.KerasLayer(model_path, 
+                                       trainable=trainable)]
         model = tfk.Sequential(layer_list)
         model.build((None,) + full_img_shape)
         self.encoder = model
 
-    def get_representation(self, samples):
+    @property
+    def output_size(self):
+        return self.encoder.output.shape[1]
+
+    @property
+    def input_shape(self):
+        return self._img_shape
+        
+    def get_representation(self, samples, single=False):
+        if single:
+            samples = np.expand_dims(samples, 0)
         rep = self.encoder(samples)
+        if single:
+            rep = rep[0]
         return rep
     
 class BetaVAE(da.TFModel):

@@ -123,6 +123,12 @@ def create_parser():
                         help='use participation ratio-optimized data generator')
     parser.add_argument('--use_gp_dg', default=False, action='store_true',
                         help='use GaussianProcess data generator')
+    parser.add_argument('--use_3d_dg', default=False, action='store_true',
+                        help='use 3D shapes data generator')
+    parser.add_argument('--use_2d_dg', default=False, action='store_true',
+                        help='use 2D shapes data generator')
+    parser.add_argument('--use_chairs_dg', default=False, action='store_true',
+                        help='use chair data generator')
     parser.add_argument('--gp_length_scale', default=.5, type=float,
                         help='length scale for RBF kernel')
     parser.add_argument('--config_path', default=None, type=str,
@@ -144,8 +150,18 @@ def create_parser():
     parser.add_argument('--task_subset', default=None, type=int,
                         help='number of latent variables to learn for tasks')
     parser.add_argument('--use_weight_decay', default=False, action='store_true',
-                        'use AdamW optimizer to train model')
-    ## ADD OPTION TO REGULARIZE WEIGHTS (similar to weight decay)
+                        help='use AdamW optimizer to train model')
+    parser.add_argument('--weight_reg_weight', default=0, type=float,
+                        help='weight of L2 regularization on weights')
+    parser.add_argument('--eval_intermediate', default=False,
+                        action='store_true', help='run generalization analysis '
+                        'on intermediate layers')
+    parser.add_argument('--img_resize', default=(224, 224), nargs=2,
+                        type=tuple, help='size to resize images to')
+    default_pre_model = ('https://tfhub.dev/google/imagenet/'
+                         'mobilenet_v3_small_100_224/feature_vector/5')
+    parser.add_argument('--img_pre_net', default=default_pre_model, type=str,
+                        help='string giving url for image model to use')
     return parser
 
 if __name__ == '__main__':
@@ -183,7 +199,11 @@ if __name__ == '__main__':
         dg_layers = (100, 200, 300, 100)
     else:
         dg_layers = args.dg_layer_spec
-        
+
+    no_learn_lvs = None
+    compute_train_lvs = False
+
+    pre_net = False
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
@@ -212,7 +232,33 @@ if __name__ == '__main__':
         dg_use = dg.GaussianProcessDataGenerator(
             true_inp_dim, dg_layers, args.dg_dim, source_distribution=sd,
             length_scale=args.gp_length_scale)
-        dg_use.fit(train_samples=1000)                                                 
+        dg_use.fit(train_samples=1000)
+    elif args.use_chairs_dg:
+        filter_edges = .4
+        chair_file = 'disentangled/datasets/chairs_images/'
+        dg_use = dg.ChairGenerator(chair_file, img_size=args.img_resize,
+                                   max_load=np.inf, include_position=True,
+                                   max_move=.6, filter_edges=filter_edges,
+                                   pre_model=args.img_pre_net)
+        true_inp_dim = dg_use.input_dim
+    elif args.use_2d_dg:
+        twod_file = ('disentangled/datasets/'
+                     'dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz')
+        dg_use = dg.TwoDShapeGenerator(twod_file, img_size=args.img_resize,
+                                       max_load=np.inf, convert_color=True,
+                                       pre_model=args.img_pre_net)  
+        true_inp_dim = dg_use.input_dim
+        no_learn_lvs = np.array([True, False, True, False, False])
+        compute_train_lvs = True
+    elif args.use_3d_dg:
+        threed_file = 'disentangled/datasets/3dshapes.h5'
+        dg_use = dg.ThreeDShapeGenerator(threed_file, 
+                                         img_size=args.img_resize,
+                                         max_load=np.inf,
+                                         pre_model=args.img_pre_net)   
+        true_inp_dim = dg_use.input_dim
+        no_learn_lvs = np.array([False, False, False, False, True, True])
+        compute_train_lvs = True
     else:
         dg_use = None
 
@@ -249,19 +295,20 @@ if __name__ == '__main__':
         miss_dims = true_inp_dim - args.task_subset
         no_learn_lvs[-miss_dims:] = 1
         compute_train_lvs = True
-    else:
-        no_learn_lvs = None
-        compute_train_lvs = False
         
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
     context_offset = args.context_offset
+    if pre_net:
+        net_type = dd.FlexibleDisentanglerPre
+    else:
+        net_type = dd.FlexibleDisentanglerAE
     if args.nan_salt == -1:
         nan_salt = 'single'
     else:
         nan_salt = args.nan_salt
-    model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
+    model_kinds = list(ft.partial(net_type,
                                   true_inp_dim=true_inp_dim,
                                   n_partitions=p,
                                   contextual_partitions=contextual_partitions,
@@ -282,7 +329,8 @@ if __name__ == '__main__':
                                   grid_coloring=args.use_grids_only,
                                   use_gp_tasks=args.use_gp_tasks_only,
                                   gp_task_length_scale=args.gp_task_length_scale,
-                                  no_learn_lvs=no_learn_lvs)
+                                  no_learn_lvs=no_learn_lvs,
+                                  weight_reg_weight=args.weight_reg_weight)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
@@ -300,7 +348,8 @@ if __name__ == '__main__':
                                      generate_data=not args.no_data,
                                      distr_type=args.source_distr,
                                      compute_trained_lvs=compute_train_lvs,
-                                     plot=False)
+                                     plot=False,
+                                     evaluate_intermediate=args.eval_intermediate)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,

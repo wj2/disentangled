@@ -375,7 +375,8 @@ class ChairSourceDistrib(ImageSourceDistrib):
 class ImageDatasetGenerator(DataGenerator):
 
     def __init__(self, data, img_params, include_position=False,
-                 position_distr=None, max_move=4, **kwargs):
+                 position_distr=None, max_move=4, pre_model=None,
+                 img_out_label='images', **kwargs):
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
         self.include_position = include_position
@@ -383,11 +384,13 @@ class ImageDatasetGenerator(DataGenerator):
         self.data_table = data
         self.img_params = img_params
         self.n_img_params = len(self.img_params)
-        self.img_out_label = ['images'][0]
+        self.img_out_label = img_out_label 
         self.source_distribution = ImageSourceDistrib(
             data[self.img_params],
             position_distr=position_distr)
         self.img_size = data[self.img_out_label][0].shape
+        if len(self.img_size) == 1:
+            self.img_size = self.img_size[0]
         self.params = self.img_params
         self.data_dict = None
         if include_position:
@@ -398,6 +401,12 @@ class ImageDatasetGenerator(DataGenerator):
         self.input_dim = len(self.params)
         self.max_move = max_move
         self.x_uniques = None
+        if pre_model is not None:
+            self.pm = pre_model
+            self.output_dim = self.pm.output_size
+        else:
+            self.pm = dd.IdentityModel()
+            self.output_dim = self.img_size
 
     def save(self, path):
         pass
@@ -419,7 +428,7 @@ class ImageDatasetGenerator(DataGenerator):
     def _move_img(self, img, coords):
         coords[coords > self.max_move] = self.max_move
         coords[coords < -self.max_move] = -self.max_move
-        img_dim = np.array(self.output_dim[:-1])
+        img_dim = np.array(self.img_size[:-1])
         shifts = np.round(img_dim*coords/2).astype(int)
         s_img = np.roll(img, shifts, axis=(0,1))
         return s_img
@@ -472,23 +481,29 @@ class ImageDatasetGenerator(DataGenerator):
             id_mask = img_ids == chosen_id
         # this is a bit slow
         for i, xi in enumerate(x):
-            xi_img = xi[:self.n_img_params]
-            if self.data_dict is None:
-                mask = np.product(img_params == xi_img,
-                                  axis=1, dtype=bool)
-                if same_img and self.img_identifier is not None:
-                    mask = mask*id_mask
-                s = np.array(self.data_table[self.img_out_label])[mask]
-                out_ind = np.random.choice(range(s.shape[0]))
-                samp = s[out_ind]
-                if self.position_distr is not None:
-                    samp = self._move_img(samp, xi[self.n_img_params:])                    
-            else:
-                samp = self.data_dict[tuple(xi_img)]
-            if flat:
-                samp = samp.flatten()
+            samp = self._params_to_samp(xi, img_params, flat=flat,
+                                        same_img=same_img)
             out[i] = samp
         return np.stack(out)
+
+    def _params_to_samp(self, xi, img_params, flat=False, same_img=False):
+        xi_img = xi[:self.n_img_params]
+        if self.data_dict is None:
+            mask = np.product(img_params == xi_img,
+                              axis=1, dtype=bool)
+            if same_img and self.img_identifier is not None:
+                mask = mask*id_mask
+            s = np.array(self.data_table[self.img_out_label])[mask]
+            out_ind = np.random.choice(range(s.shape[0]))
+            samp = s[out_ind]
+            if self.position_distr is not None:
+                samp = self._move_img(samp, xi[self.n_img_params:])                    
+        else:
+            samp = self.data_dict[tuple(xi_img)]
+        samp = self.pm.get_representation(np.expand_dims(samp, 0))[0]
+        if flat:
+            samp = np.asarray(samp).flatten()
+        return samp
 
     def representation_dimensionality(self, source_distribution=None,
                                       sample_size=10**3,
@@ -501,7 +516,7 @@ class ImageDatasetGenerator(DataGenerator):
 
         samples = source_distribution.rvs(sample_size)
         rep = self.get_representation(samples, flat=True)
-        print(rep.shape)
+        print('rep shape', rep.shape)
         if participation_ratio:
             out = u.participation_ratio(rep)
         else:
@@ -514,27 +529,34 @@ class ChairGenerator(ImageDatasetGenerator):
 
     def __init__(self, folder, norm_params=True, img_size=(128, 128),
                  include_position=False, position_distr=None, max_move=4,
-                 max_load=np.inf, filter_edges=None,
+                 max_load=np.inf, filter_edges=None, pre_model=None,
                  param_keys=['rotation', 'pitch'], **kwargs):
+        if pre_model is not None:
+            pre_model = dd.PretrainedModel(img_size, pre_model,
+                                    trainable=False)
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
                                     max_load=max_load, filter_edges=filter_edges,
                                     **kwargs)
         super().__init__(data, param_keys,
                          include_position=include_position,
                          position_distr=position_distr,
-                         max_move=max_move)    
+                         max_move=max_move, pre_model=pre_model, )    
 
 class TwoDShapeGenerator(ImageDatasetGenerator):
 
     default_pks = ['shape', 'scale','orientation', 'x_pos', 'y_pos']
     def __init__(self, folder, img_size=(64, 64), norm_params=True,
                  max_load=np.inf, param_keys=default_pks, convert_color=False,
-                 **kwargs):
+                 pre_model=None, **kwargs):
         self.img_identifier = None
+        if pre_model is not None:
+            pre_model = dd.PretrainedModel(img_size, pre_model,
+                                           trainable=False)
+            
         data = da.load_2d_shapes(folder, img_size=img_size,
                                  convert_color=convert_color,
                                  norm_params=norm_params,
-                                 max_load=max_load)
+                                 max_load=max_load, pre_model=pre_model)
         super().__init__(data, param_keys, **kwargs)
 
 class ThreeDShapeGenerator(ImageDatasetGenerator):
@@ -542,11 +564,16 @@ class ThreeDShapeGenerator(ImageDatasetGenerator):
     default_pks = ['floor_hue', 'wall_hue', 'object_hue','scale', 'shape',
                    'orientation']
     def __init__(self, folder, img_size=(64, 64), norm_params=True,
-                 max_load=np.inf, param_keys=default_pks, **kwargs):
+                 max_load=np.inf, param_keys=default_pks, pre_model=None,
+                 **kwargs):
         self.img_identifier = None
+        if pre_model is not None:
+            pre_model = dd.PretrainedModel(img_size, pre_model,
+                                    trainable=False)
+            
         data = da.load_3d_shapes(folder, img_size=img_size,
                                  norm_params=norm_params,
-                                 max_load=max_load)
+                                 max_load=max_load, pre_model=pre_model)
         super().__init__(data, param_keys, **kwargs)
 
 class RFDataGenerator(DataGenerator):
