@@ -237,7 +237,7 @@ if __name__ == '__main__':
         filter_edges = .4
         chair_file = 'disentangled/datasets/chairs_images/'
         dg_use = dg.ChairGenerator(chair_file, img_size=args.img_resize,
-                                   max_load=np.inf, include_position=False,
+                                   max_load=np.inf, include_position=True,
                                    max_move=.6, filter_edges=filter_edges,
                                    pre_model=args.img_pre_net)
         true_inp_dim = dg_use.input_dim

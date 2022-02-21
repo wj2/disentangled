@@ -402,8 +402,7 @@ class ImageDatasetGenerator(DataGenerator):
         self.max_move = max_move
         self.x_uniques = None
         if pre_model is not None:
-            self.pm = dd.PretrainedModel(self.img_size, pre_model,
-                                         trainable=False)
+            self.pm = pre_model
             self.output_dim = self.pm.output_size
         else:
             self.pm = dd.IdentityModel()
@@ -429,7 +428,7 @@ class ImageDatasetGenerator(DataGenerator):
     def _move_img(self, img, coords):
         coords[coords > self.max_move] = self.max_move
         coords[coords < -self.max_move] = -self.max_move
-        img_dim = np.array(self.output_dim[:-1])
+        img_dim = np.array(self.img_size[:-1])
         shifts = np.round(img_dim*coords/2).astype(int)
         s_img = np.roll(img, shifts, axis=(0,1))
         return s_img
@@ -482,12 +481,13 @@ class ImageDatasetGenerator(DataGenerator):
             id_mask = img_ids == chosen_id
         # this is a bit slow
         for i, xi in enumerate(x):
-            xi_img = xi[:self.n_img_params]
-            samp = self._params_to_samp(xi_img, img_params, flat=flat)
+            samp = self._params_to_samp(xi, img_params, flat=flat,
+                                        same_img=same_img)
             out[i] = samp
         return np.stack(out)
 
-    def _params_to_samp(self, xi_img, img_params, flat=False):
+    def _params_to_samp(self, xi, img_params, flat=False, same_img=False):
+        xi_img = xi[:self.n_img_params]
         if self.data_dict is None:
             mask = np.product(img_params == xi_img,
                               axis=1, dtype=bool)
@@ -536,11 +536,11 @@ class ChairGenerator(ImageDatasetGenerator):
                                     trainable=False)
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
                                     max_load=max_load, filter_edges=filter_edges,
-                                    pre_model=pre_model, **kwargs)
+                                    **kwargs)
         super().__init__(data, param_keys,
                          include_position=include_position,
                          position_distr=position_distr,
-                         max_move=max_move)    
+                         max_move=max_move, pre_model=pre_model, )    
 
 class TwoDShapeGenerator(ImageDatasetGenerator):
 
