@@ -31,6 +31,7 @@ import general.plotting as gpl
 import disentangled.aux as da
 import disentangled.regularizer as dr
 import disentangled.disentanglers as dd
+import disentangled.characterization as dc
 import collections
 
 tfk = tf.keras
@@ -40,6 +41,69 @@ tfd = tfp.distributions
 tfspec = tfa.specs
 tfaa = tfa.agents
 tfa_ddpg = tfa.agents.ddpg
+
+def training_characterizing_script(envs, model_maker, ou_stddev=1,
+                                   n_reps=10, initial_collects=None,
+                                   models_n_bounds=(4, 4.5),
+                                   model_n_diffs=2, batch_size=200,
+                                   **fit_kwargs):
+    if initial_collects is None:
+        initial_collectsion = (1000, 5000, 10000)
+    train_samples = np.logspace(models_n_bounds[0], models_n_bounds[1],
+                                models_n_diffs, dtype=int)
+
+    all_models = np.zeros((len(envs), len(initial_collects), model_n_diffs,
+                           n_reps), dtype=object)
+    all_hist = np.zeros_like(all_models)
+    for ind in u.make_array_ind_iterator(all_models.shape):
+        m_ind = model_maker(envs[ind[0]][0])
+        m_ind._compile(ou_stddev=ou_stddev)
+        hist = m_ind.fit_tf(envs[ind[0]][0],
+                            num_iterations=train_samples[ind[2]],
+                            batch_size=model_batch_size,
+                            initial_collect_episodes=initial_collects[ind[1]],
+                            **fit_kwargs)
+        all_models[ind] = m_ind.actor_network
+        all_hist[ind] = hist
+
+    dg_use = envs[0][1].dg
+    if train_test_distrs is None:
+        try:
+            train_d2 = dg_use.source_distribution.make_partition()
+        except AttributeError:
+            if distr_type == 'normal':
+                train_d2 = da.HalfMultidimensionalNormal.partition(
+                    dg_use.source_distribution)
+            elif distr_type == 'uniform':
+                train_d2 = da.HalfMultidimensionalUniform.partition(
+                    dg_use.source_distribution)
+            else:
+                raise IOError('distribution type indicated ({}) is not '
+                              'recognized'.format(distr_type))
+                
+        train_ds = (None, train_d2)
+        test_ds = (None, train_d2.flip())
+    else:
+        train_ds, test_ds = train_test_distr
+
+    if gpu_samples:
+        n_train_samples = 2*10**3
+        n_test_samples = 10**3
+        n_save_samps = int(n_save_samps/10)
+    else:
+        n_train_samples = 2*10**3
+        n_test_samples = 10**3
+
+    p, c = dc.evaluate_multiple_models_dims(
+      dg_use, models, None, test_ds, train_distributions=train_ds,
+      n_iters=eval_n_iters, n_train_samples=n_train_samples,
+      n_test_samples=n_test_samples, mean=p_mean)
+
+    lts_scores = dc.find_linear_mappings(
+      dg_use, models, half=True, n_samps=n_test_samples)
+
+    return dg_use, (models, all_hist), (p, c), lts_scores, None                   
+
 
 class DdpgInfo(collections.namedtuple(
     'DdpgInfo', ('actor_loss', 'critic_loss'))):
