@@ -200,6 +200,9 @@ if __name__ == '__main__':
     else:
         dg_layers = args.dg_layer_spec
 
+    no_learn_lvs = None
+    compute_train_lvs = False
+
     pre_net = False
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
@@ -245,6 +248,8 @@ if __name__ == '__main__':
                                        max_load=np.inf, convert_color=True,
                                        pre_model=args.img_pre_net)  
         true_inp_dim = dg_use.input_dim
+        no_learn_lvs = np.array([True, False, True, False, False])
+        compute_train_lvs = True
     elif args.use_3d_dg:
         threed_file = 'disentangled/datasets/3dshapes.h5'
         dg_use = dg.ThreeDShapeGenerator(threed_file, 
@@ -252,6 +257,8 @@ if __name__ == '__main__':
                                          max_load=np.inf,
                                          pre_model=args.img_pre_net)   
         true_inp_dim = dg_use.input_dim
+        no_learn_lvs = np.array([False, False, False, False, True, True])
+        compute_train_lvs = True
     else:
         dg_use = None
 
@@ -288,9 +295,6 @@ if __name__ == '__main__':
         miss_dims = true_inp_dim - args.task_subset
         no_learn_lvs[-miss_dims:] = 1
         compute_train_lvs = True
-    else:
-        no_learn_lvs = None
-        compute_train_lvs = False
         
     hide_print = not args.show_prints
     orthog_partitions = args.use_orthog_partitions

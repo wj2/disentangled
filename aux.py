@@ -632,7 +632,7 @@ def _load_archive(archive, img_key, param_vals, param_names,
     n_images = int(np.min((len(images), max_load)))
     print(n_images)
     if pre_model is None:
-        images_list = np.zeros((n_images,) + img_size, (3,))
+        images_list = np.zeros((n_images,) + img_size + (3,))
     else:
         images_list = np.zeros((n_images, pre_model.output_size))
     need_resize = not np.all(np.array(img_size) == images.shape[1:3])
