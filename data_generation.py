@@ -388,7 +388,7 @@ class ImageDatasetGenerator(DataGenerator):
         self.source_distribution = ImageSourceDistrib(
             data[self.img_params],
             position_distr=position_distr)
-        self.img_size = data[self.img_out_label][0].shape
+        self.img_size = data[self.img_out_label].iloc[0].shape
         if len(self.img_size) == 1:
             self.img_size = self.img_size[0]
         self.params = self.img_params
@@ -569,7 +569,7 @@ class ThreeDShapeGenerator(ImageDatasetGenerator):
         self.img_identifier = None
         if pre_model is not None:
             pre_model = dd.PretrainedModel(img_size, pre_model,
-                                    trainable=False)
+                                           trainable=False)
             
         data = da.load_3d_shapes(folder, img_size=img_size,
                                  norm_params=norm_params,

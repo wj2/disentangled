@@ -950,9 +950,11 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
                                  ylabel='', ylim=None, num_dims=None,
                                  xlab='partitions', collapse_plots=False,
                                  set_title=True, intermediate=False, **kwargs):
+    print(scores.shape)
     if len(scores.shape) == 4 and not intermediate:
         scores = np.mean(scores, axis=3)
         n_ds, n_mks, n_reps = scores.shape
+        n_inter = 0
     elif len(scores.shape) == 4 and intermediate:
         n_ds, n_mks, n_reps, n_inter = scores.shape
     elif len(scores.shape) == 5:
