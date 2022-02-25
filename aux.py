@@ -698,8 +698,11 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
     rots = []
     dists = []
     ids = []
+    id_nums = []
     imgs = []
     loaded = 0
+    chair_counter = 0
+    chair_id_dict = {}
     for sfl in subfolders:
         if ((read_specific_chairs is not None and sfl in read_specific_chairs)
             or read_specific_chairs is None):
@@ -714,6 +717,12 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                     rots.append(int(m.group(3)))
                     dists.append(int(m.group(4)))
                     ids.append(sfl)
+                    id_num = chair_id_dict.get(sfl)
+                    if id_num is None:
+                        id_num = chair_counter
+                        chair_id_dict[sfl] = chair_counter
+                        chair_counter += 1
+                    id_nums.append(id_num)
                     img = pImage.open(os.path.join(p, ifl))
                     if grayscale:
                         img = img.convert('L')
@@ -738,7 +747,8 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
         pitchs = u.demean_unit_std(np.array(pitchs))
         rots = u.demean_unit_std(np.array(rots))
         dists = u.demean_unit_std(np.array(dists))
-    d = {'names':names, 'chair_id':ids, 'img_nums':nums, 'pitch':pitchs,
+    d = {'names':names, 'chair_id':ids, 'chair_id_num':id_nums,
+         'img_nums':nums, 'pitch':pitchs,
          'rotation':rots, 'distances':dists, 'images':imgs}
     data = pd.DataFrame(data=d)
     if filter_edges is not None:

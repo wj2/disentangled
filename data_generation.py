@@ -530,7 +530,7 @@ class ChairGenerator(ImageDatasetGenerator):
     def __init__(self, folder, norm_params=True, img_size=(128, 128),
                  include_position=False, position_distr=None, max_move=4,
                  max_load=np.inf, filter_edges=None, pre_model=None,
-                 param_keys=['rotation', 'pitch'], **kwargs):
+                 param_keys=['chair_id_num', 'rotation', 'pitch'], **kwargs):
         if pre_model is not None:
             pre_model = dd.PretrainedModel(img_size, pre_model,
                                     trainable=False)
