@@ -11,6 +11,7 @@ import general.utility as u
 import disentangled.characterization as dc
 import disentangled.aux as da
 import disentangled.disentanglers as dd
+import disentangled.rl_disentangling as drl
 import disentangled.data_generation as dg
 import disentangled.regularizer as dr
 
@@ -67,23 +68,19 @@ def create_parser():
                         help='use an RF-based data generator')
     parser.add_argument('--dg_dim', default=200, type=int,
                         help='dimensionality of the data generator')
-    parser.add_argument('--batch_size', default=30, type=int,
+    parser.add_argument('--batch_size', default=200, type=int,
                         help='batch size to use for training model')
     parser.add_argument('--loss_ratio', default=10, type=float,
                         help='the ratio between autoencoder loss/classifier '
                         'loss')
-    parser.add_argument('--no_autoencoder', default=False, action='store_true',
-                        help='construct models with no autoencoder component')
-    parser.add_argument('--dropout', default=0, type=float,
-                        help='amount of dropout to include during model '
-                        'training')
-    parser.add_argument('--model_epochs', default=200, type=int,
-                        help='the number of epochs to train each model for')
+    parser.add_argument('--initial_collects', default=None, nargs='*', type=int)
     parser.add_argument('--dg_train_epochs', default=25, type=int,
                         help='the number of epochs to train the data generator '
                         'for')
     parser.add_argument('--l2pr_weights', default=None, nargs=2, type=float,
                         help='the weights for L2-PR regularization')
+    parser.add_argument('--ou_stddev', default=1, type=float,
+                        help='stddev for the OU process in training')
     parser.add_argument('--l2pr_weights_mult', default=1, type=float,
                         help='the weight multiplier for L2-PR regularization')
     parser.add_argument('--l2_weight', default=None, type=float,
@@ -97,7 +94,13 @@ def create_parser():
                         help='do not save representation samples')
     parser.add_argument('--use_tanh', default=False, action='store_true',
                         help='use tanh instead of relu transfer function')
-    parser.add_argument('--layer_spec', default=None, type=int, nargs='*',
+    parser.add_argument('--actor_layer_spec', default=(250, 150, 50), type=int,
+                        nargs='*', help='the layer sizes to use')
+    parser.add_argument('--critic_obs_layer_spec', default=(5,), type=int, nargs='*',
+                        help='the layer sizes to use')
+    parser.add_argument('--critic_action_layer_spec', default=(5,), type=int, nargs='*',
+                        help='the layer sizes to use')
+    parser.add_argument('--critic_common_layer_spec', default=(5,), type=int, nargs='*',
                         help='the layer sizes to use')
     parser.add_argument('--dg_layer_spec', default=None, type=int, nargs='*',
                         help='the layer sizes to use')
@@ -283,28 +286,7 @@ if __name__ == '__main__':
     if args.use_tanh:
         act_func = tf.nn.tanh
     else:
-        act_func = tf.nn.relu
-
-    if args.actor_layer_spec is None:
-        actor_layer_spec = (250, 150, 50)
-    else:
-        actor_layer_spec = tuple(i for i in args.actor_layer_spec)
-        
-    if args.critic_obs_layer_spec is None:
-        critic_obs_layer_spec = (5,)
-    else:
-        critic_obs_layer_spec = tuple((i,) for i in args.critic_obs_layer_spec)
-    if args.critic_action_layer_spec is None:
-        critic_action_layer_spec = (5,)
-    else:
-        critic_action_layer_spec = tuple((i,) for i in
-                                         args.critic_action_layer_spec)
-    if args.critic_common_layer_spec is None:
-        critic_common_layer_spec = (5,)
-    else:
-        critic_common_layer_spec = tuple((i,) for i in
-                                         args.critic_common_layer_spec)
-    
+        act_func = tf.nn.relu   
         
     if args.task_subset is not None:
         no_learn_lvs = np.zeros(true_inp_dim, dtype=int)
@@ -336,16 +318,17 @@ if __name__ == '__main__':
                        grid_coloring=args.use_grids_only,
                        use_gp_tasks=args.use_gp_tasks_only,
                        gp_task_length_scale=args.gp_task_length_scale)
-    evs = list(drl.make_environment(dg_use, p, convert_tf=True,
-                                    multi_reward=False, include_task_mask=True,
-                                    n_tasks_per_samp=p, **task_kwargs)
-               for p in partitions)
+    envs = list(drl.make_environment(dg_use, p, convert_tf=True,
+                                     multi_reward=False, include_task_mask=True,
+                                     n_tasks_per_samp=p, **task_kwargs)
+                for p in partitions)
 
 
-    model_kind = ft.partial(drl.RLDisentangler, actor_layer_spec,
-                            critic_action_layer_spec,
-                            critic_obs_layer_spec,
-                            critic_common_layer_spec,
+    model_kind = ft.partial(drl.RLDisentangler,
+                            actor_layers=args.actor_layer_spec,
+                            critic_action_layers=args.critic_action_layer_spec,
+                            critic_obs_layers=args.critic_obs_layer_spec,
+                            critic_joint_layers=args.critic_common_layer_spec,
                             observation_len=dg_use.output_dim,
                             use_simple_actor=True,
                             use_simple_critic=False,
@@ -355,15 +338,14 @@ if __name__ == '__main__':
 
     out = drl.training_characterizing_script(
         envs, model_kind, n_reps=args.n_reps,
-        initial_collects=,
-        verbose=not hide_print,
-        num_iterations=args.num_iterations,
-        initial_collect_episodes=args.pre_episodes,
-        ou_stddev=args.ou_stddev)
+        initial_collects=args.initial_collects,
+        model_n_bounds=args.n_train_bounds,
+        model_n_diffs=args.n_train_diffs,
+        ou_stddev=args.ou_stddev,
+        batch_size=args.batch_size)
 
-    rwd, task_perf, p, c, lr, scrs, sims = out
+    dg, (models, hists), (p, c), (lrs, scrs, sims), gd = out
 
-    da.save_generalization_output(args.output_folder, None, None, None,
-                                  p, (rwd, task_perf),
-                                  None, (scrs, sims), None, save_args=args,
+    da.save_generalization_output(args.output_folder, dg, models, hists, p, c,
+                                  lrs, (scrs, sims), gd, save_args=args,
                                   save_tf_models=False)

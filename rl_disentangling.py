@@ -44,47 +44,46 @@ tfa_ddpg = tfa.agents.ddpg
 
 def training_characterizing_script(envs, model_maker, ou_stddev=1,
                                    n_reps=10, initial_collects=None,
-                                   models_n_bounds=(4, 4.5),
+                                   model_n_bounds=(4, 4.5),
                                    model_n_diffs=2, batch_size=200,
-                                   **fit_kwargs):
+                                   distr_type='normal', gpu_samples=False,
+                                   eval_n_iters=10, p_mean=True, **fit_kwargs):
     if initial_collects is None:
-        initial_collectsion = (1000, 5000, 10000)
-    train_samples = np.logspace(models_n_bounds[0], models_n_bounds[1],
-                                models_n_diffs, dtype=int)
+        initial_collects = (1000, 5000, 10000)
+    train_samples = np.logspace(model_n_bounds[0], model_n_bounds[1],
+                                model_n_diffs, dtype=int)
 
     all_models = np.zeros((len(envs), len(initial_collects), model_n_diffs,
                            n_reps), dtype=object)
     all_hist = np.zeros_like(all_models)
     for ind in u.make_array_ind_iterator(all_models.shape):
-        m_ind = model_maker(envs[ind[0]][0])
+        m_ind = model_maker(envs[ind[0]][1])
         m_ind._compile(ou_stddev=ou_stddev)
-        hist = m_ind.fit_tf(envs[ind[0]][0],
+        hist = m_ind.fit_tf(envs[ind[0]][1],
                             num_iterations=train_samples[ind[2]],
-                            batch_size=model_batch_size,
+                            batch_size=batch_size,
                             initial_collect_episodes=initial_collects[ind[1]],
                             **fit_kwargs)
-        all_models[ind] = m_ind.actor_network
+        all_models[ind] = m_ind.actor
         all_hist[ind] = hist
 
-    dg_use = envs[0][1].dg
-    if train_test_distrs is None:
-        try:
-            train_d2 = dg_use.source_distribution.make_partition()
-        except AttributeError:
-            if distr_type == 'normal':
-                train_d2 = da.HalfMultidimensionalNormal.partition(
-                    dg_use.source_distribution)
-            elif distr_type == 'uniform':
-                train_d2 = da.HalfMultidimensionalUniform.partition(
-                    dg_use.source_distribution)
-            else:
-                raise IOError('distribution type indicated ({}) is not '
-                              'recognized'.format(distr_type))
+    dg_use = envs[0][0].dg
+    models = all_models
+    try:
+        train_d2 = dg_use.source_distribution.make_partition()
+    except AttributeError:
+        if distr_type == 'normal':
+            train_d2 = da.HalfMultidimensionalNormal.partition(
+                dg_use.source_distribution)
+        elif distr_type == 'uniform':
+            train_d2 = da.HalfMultidimensionalUniform.partition(
+                dg_use.source_distribution)
+        else:
+            raise IOError('distribution type indicated ({}) is not '
+                          'recognized'.format(distr_type))
                 
-        train_ds = (None, train_d2)
-        test_ds = (None, train_d2.flip())
-    else:
-        train_ds, test_ds = train_test_distr
+    train_ds = (None, train_d2)
+    test_ds = (None, train_d2.flip())
 
     if gpu_samples:
         n_train_samples = 2*10**3
@@ -593,12 +592,15 @@ class SimpleActorNetwork(tfa_ddpg.actor_network.ActorNetwork):
         if observation_len is not None:
             self.observ_len = observation_len
             self.observation_includes_mask = True
+            input_shape = (self.observ_len,)
+        else:
+            input_shape = input_spec.shape
         super().__init__(input_spec, output_spec, fc_layer_params=layer_sizes,
                          activation_fn=act_func,
                          last_kernel_initializer=last_kernel_initializer)
         
         layer_list = []
-        layer_list.append(tfkl.InputLayer(input_shape=input_spec.shape))
+        layer_list.append(tfkl.InputLayer(input_shape=input_shape))
 
         for ls in layer_sizes:
             l_i = tfkl.Dense(ls, activation=act_func, **layer_params)
@@ -612,6 +614,7 @@ class SimpleActorNetwork(tfa_ddpg.actor_network.ActorNetwork):
                                name='action')
         layer_list.append(out_layer)
         self._mlp_layers = layer_list
+        self.rep_model = None
 
     def call(self, observations, *args, repl_zero=True, **kwargs):
         if self.observation_includes_mask:
@@ -632,6 +635,8 @@ class SimpleActorNetwork(tfa_ddpg.actor_network.ActorNetwork):
         return resp, state
         
     def get_representation(self, inputs):
+        if self.rep_model is None:
+            self.rep_model = tfk.Sequential(self._mlp_layers[:-1])
         return self.rep_model(inputs)
     
 class RLDisentangler(dd.FlexibleDisentanglerAE):
@@ -641,9 +646,9 @@ class RLDisentangler(dd.FlexibleDisentanglerAE):
     Reward is given for each correct categorization
     """
     
-    def __init__(self, env, actor_layers,
-                 critic_action_layers, critic_obs_layers,
-                 critic_joint_layers, train_sequence_length=2,
+    def __init__(self, env, actor_layers=(250, 150, 50),
+                 critic_action_layers=(5,), critic_obs_layers=(5,),
+                 critic_joint_layers=(5,), train_sequence_length=2,
                  encoded_size=50, use_simple_actor=True,
                  use_simple_critic=False,
                  observation_len=None, many_critics=False):
