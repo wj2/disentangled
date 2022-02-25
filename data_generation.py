@@ -376,7 +376,8 @@ class ImageDatasetGenerator(DataGenerator):
 
     def __init__(self, data, img_params, include_position=False,
                  position_distr=None, max_move=4, pre_model=None,
-                 img_out_label='images', **kwargs):
+                 img_out_label='images', categorical_variables=None):
+        
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
         self.include_position = include_position
@@ -407,7 +408,20 @@ class ImageDatasetGenerator(DataGenerator):
         else:
             self.pm = dd.IdentityModel()
             self.output_dim = self.img_size
+        if categorical_variables is None:
+            self.categorical_variables = np.zeros(len(self.params), dtype=bool)
+        else:
+            self.categorical_variables = categorical_variables
 
+    def get_category_partitions(self, vec=None, bound=0):
+        assert np.any(self.categorical_variables)
+        if vec is None:
+            vec = u.make_unit_vector(self.categorical_variables.astype(float))
+        sd1 = self.source_distribution.make_partition(partition_vec=vec,
+                                                      offset=bound)
+        sd2 = sd1.flip()
+        return sd1, sd2
+                    
     def save(self, path):
         pass
         
@@ -534,13 +548,15 @@ class ChairGenerator(ImageDatasetGenerator):
         if pre_model is not None:
             pre_model = dd.PretrainedModel(img_size, pre_model,
                                     trainable=False)
+        categorical_variables = np.array([True, False, False, False, False])
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
                                     max_load=max_load, filter_edges=filter_edges,
                                     **kwargs)
         super().__init__(data, param_keys,
                          include_position=include_position,
                          position_distr=position_distr,
-                         max_move=max_move, pre_model=pre_model, )    
+                         categorical_variables=categorical_variables,
+                         max_move=max_move, pre_model=pre_model)    
 
 class TwoDShapeGenerator(ImageDatasetGenerator):
 
@@ -549,6 +565,7 @@ class TwoDShapeGenerator(ImageDatasetGenerator):
                  max_load=np.inf, param_keys=default_pks, convert_color=False,
                  pre_model=None, **kwargs):
         self.img_identifier = None
+        categorical_variables = np.array([True, False, False, False, False])
         if pre_model is not None:
             pre_model = dd.PretrainedModel(img_size, pre_model,
                                            trainable=False)
@@ -557,7 +574,9 @@ class TwoDShapeGenerator(ImageDatasetGenerator):
                                  convert_color=convert_color,
                                  norm_params=norm_params,
                                  max_load=max_load, pre_model=pre_model)
-        super().__init__(data, param_keys, **kwargs)
+        super().__init__(data, param_keys,
+                         categorical_variables=categorical_variables,
+                         **kwargs)
 
 class ThreeDShapeGenerator(ImageDatasetGenerator):
 

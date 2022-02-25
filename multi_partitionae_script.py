@@ -162,6 +162,10 @@ def create_parser():
                          'mobilenet_v3_small_100_224/feature_vector/5')
     parser.add_argument('--img_pre_net', default=default_pre_model, type=str,
                         help='string giving url for image model to use')
+    parser.add_argument('--partition_categorical_bound', default=None,
+                        type=float, help='if a number is supplied, one set of '
+                        'categorical variables will be used for training the '
+                        'model and the other will be used for testing')
     return parser
 
 if __name__ == '__main__':
@@ -237,7 +241,7 @@ if __name__ == '__main__':
         filter_edges = .4
         chair_file = 'disentangled/datasets/chairs_images/'
         dg_use = dg.ChairGenerator(chair_file, img_size=args.img_resize,
-                                   max_load=np.inf, include_position=True,
+                                   max_load=10, include_position=True,
                                    max_move=.6, filter_edges=filter_edges,
                                    pre_model=args.img_pre_net)
         true_inp_dim = dg_use.input_dim
@@ -351,6 +355,7 @@ if __name__ == '__main__':
                                      distr_type=args.source_distr,
                                      compute_trained_lvs=compute_train_lvs,
                                      plot=False,
+                                     categ_var=args.partition_categorical_bound,
                                      evaluate_intermediate=args.eval_intermediate)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 

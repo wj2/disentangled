@@ -749,6 +749,7 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
         pitchs = u.demean_unit_std(np.array(pitchs))
         rots = u.demean_unit_std(np.array(rots))
         dists = u.demean_unit_std(np.array(dists))
+        id_nums = u.demean_unit_std(np.array(id_nums))
     d = {'names':names, 'chair_id':ids, 'chair_id_num':id_nums,
          'img_nums':nums, 'pitch':pitchs,
          'rotation':rots, 'distances':dists, 'images':imgs}

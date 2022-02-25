@@ -1174,6 +1174,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             distr_type='normal', dg_layers=None,
                             compute_trained_lvs=False,
                             compute_untrained=True,
+                            categ_var=None,
                             evaluate_intermediate=False):
     # train data generator
     if dg_args is None:
@@ -1217,7 +1218,13 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), dg_source_var)
         test_d2 = train_d2.flip()
         dg_use.source_distribution = train_d2
-
+    elif categ_var is not None:
+        train_d2, test_d2 = dg_use.get_category_partitions(bound=categ_var)
+        full_sd = dg_use.source_distribution
+        dg_use.source_distribution = train_d2
+        train_test_distrs = ((None, train_d2),
+                             (None, test_d2))
+        
     # train models
     if models_args is None:
         if est_inp_dim is None:
