@@ -241,6 +241,8 @@ if __name__ == '__main__':
                                    max_move=.6, filter_edges=filter_edges,
                                    pre_model=args.img_pre_net)
         true_inp_dim = dg_use.input_dim
+        no_learn_lvs = np.array([True, False, False, False])
+        compute_train_lvs = True
     elif args.use_2d_dg:
         twod_file = ('disentangled/datasets/'
                      'dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz')
