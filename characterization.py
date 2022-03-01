@@ -1281,7 +1281,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         train_ds = (None, train_d2)
         test_ds = (None, train_d2.flip())
     else:
-        train_ds, test_ds = train_test_distr
+        train_ds, test_ds = train_test_distrs
 
     if gpu_samples:
         n_train_samples = 2*10**3
