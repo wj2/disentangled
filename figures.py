@@ -5,6 +5,7 @@ import functools as ft
 import sklearn.decomposition as skd
 import sklearn.svm as skc
 import scipy.linalg as spla
+import itertools as it
 
 import general.plotting as gpl
 import general.plotting_styles as gps
@@ -16,6 +17,7 @@ import disentangled.characterization as dc
 import disentangled.aux as da
 import disentangled.theory as dt
 import disentangled.multiverse_options as dmo
+import disentangled.simulation_db as dsb
 
 config_path = 'disentangled/figures.conf'
 
@@ -245,6 +247,9 @@ def characterize_generalization(dg, model, c_reps, train_samples=1000,
     return results_class, results_regr
 
 class DisentangledFigure(pu.Figure):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, find_panel_keys=False, **kwargs)
 
     def make_fdg(self, retrain=False):
         try:
@@ -1131,6 +1136,212 @@ class Figure3Grid(DisentangledFigure):
             gpl.add_vlines(15, ax=ax, linestyle='dashed')
         
 
+class FigureGP(DisentangledFigure):
+
+    def __init__(self, fig_key='figure_gp', colors=colors, **kwargs):
+        fsize = (6.5, 4)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.panel_keys = ('gp_inputs', 'dp_tasks', 'gp_results',
+                           'gp_input_characterization')
+        super().__init__(fsize, params, colors=colors, **kwargs)
+
+    def make_gp_dgs(self, retrain=False):
+        if self.data.get('gp_dgs') is not None and not retrain:
+            gp_dgs = self.data.get('gp_dgs')
+        else:
+            inp_dim = self.params.getint('inp_dim')
+            dg_dim = self.params.getint('dg_dim')
+            fit_samples = self.params.getint('fit_samples')
+            length_scales = self.params.getlist('dg_scales', typefunc=float)
+            gp_dgs = np.zeros(len(length_scales), dtype=object)
+            for i, ls in enumerate(length_scales):
+                dg_gp = dg.GaussianProcessDataGenerator(inp_dim, 100, dg_dim,
+                                                        length_scale=ls)
+                dg_gp.fit(train_samples=fit_samples)
+                gp_dgs[i] = dg_gp
+            self.data['gp_dgs'] = gp_dgs
+        return gp_dgs
+
+    def make_gp_tasks(self, retrain=False):
+        if self.data.get('gp_tasks') is not None and not retrain:
+            gp_tasks = self.data.get('gp_tasks')
+        else:
+            task_dim = self.params.getint('task_dim')
+            length_scales = self.params.getlist('task_scales', typefunc=float)
+            gp_tasks = np.zeros(len(length_scales), dtype=object)
+            for i, ls in enumerate(length_scales):
+                out = dd.make_tasks(task_dim, 1, use_gp_tasks=True,
+                                    gp_task_length_scale=ls)
+                func, _, _ = out
+                gp_tasks[i] = func
+            self.data['gp_tasks'] = gp_tasks
+        return gp_tasks
+
+    def make_gss(self):
+        gss = {}
+
+        n_dgs = len(self.params.getlist('dg_scales', typefunc=float))
+        dg_grid = pu.make_mxn_gridspec(self.gs, 1, n_dgs, 0, 40,
+                                       15, 100, 5, 5)
+        axs_3ds = np.ones((1, n_dgs), dtype=bool)
+        gss[self.panel_keys[0]] = self.get_axs(dg_grid, plot_3ds=axs_3ds,
+                                               squeeze=True)
+
+        n_tasks = len(self.params.getlist('task_scales', typefunc=float))
+        task_grid = pu.make_mxn_gridspec(self.gs, n_tasks, 1, 20, 100,
+                                         0, 20, 5, 5)
+        gss[self.panel_keys[1]] = self.get_axs(task_grid, squeeze=True,
+                                               aspect='equal')
+
+        res_grid = pu.make_mxn_gridspec(self.gs, 1, 2, 60, 100,
+                                        25, 100, 5, 10)
+        gss[self.panel_keys[2]] = self.get_axs(res_grid, squeeze=True)
+
+        inp_char_grid = pu.make_mxn_gridspec(self.gs, 1, 3, 30, 45,
+                                             30, 90, 5, 10)
+        gss[self.panel_keys[3]] = self.get_axs(inp_char_grid, squeeze=True)
+
+        self.gss = gss
+
+    def panel_gp_inputs(self, **kwargs):
+        key = self.panel_keys[0]
+        dg_axs = self.gss[key]
+
+        length_scales = self.params.getlist('dg_scales', typefunc=float)
+        dgs = self.make_gp_dgs(**kwargs)
+        pass_model = dd.IdentityModel()
+        rs = self.params.getlist('manifold_radii', typefunc=float)
+        n_arcs = self.params.getint('manifold_arcs')
+        vis_3d = self.params.getboolean('vis_3d')
+
+        for i, dg in enumerate(dgs):
+            ls = length_scales[i]
+            ax = dg_axs[i]
+            ax.set_title('LS = {}'.format(ls))
+            dc.plot_diagnostics(dg, pass_model, rs, n_arcs, scale_mag=.5,
+                                markers=False, ax=ax, plot_3d=vis_3d)
+
+    def _get_task_map(self, func, task_coords, task_vals):
+        task_map = np.zeros((len(task_vals), len(task_vals)))
+        for (i, j) in task_coords:
+            pt = np.array([[task_vals[i], task_vals[j]]])
+            out = func(pt)
+            task_map[i, j] = out
+        return task_map            
+            
+    def panel_gp_tasks(self, **kwargs):
+        key = self.panel_keys[1]
+        task_axs = self.gss[key][::-1]
+
+        length_scales = self.params.getlist('task_scales', typefunc=float)
+        tasks = self.make_gp_tasks(**kwargs)
+        mesh_pts = self.params.getint('mesh_pts')
+        task_range = self.params.getfloat('task_range')
+        task_vals = np.linspace(-task_range, task_range, mesh_pts)
+        cmap = self.params.get('task_cmap')
+
+        task_coords = np.array(list(it.product(range(mesh_pts), repeat=2)))
+        for i, task in enumerate(tasks):
+            ls = length_scales[i]
+            ax = task_axs[i]
+            ax.set_ylabel('LS = {:.0f}'.format(ls))
+
+            task_map = self._get_task_map(task[0], task_coords, task_vals)
+            gpl.pcolormesh(task_vals, task_vals, task_map, ax=ax,
+                           cmap=cmap)            
+            ax.set_xticks([])
+            ax.set_yticks([-task_range, 0, task_range])
+        task_axs[0].set_xticks([-task_range, 0, task_range])
+
+    def panel_gp_results(self):
+        key = self.panel_keys[2]
+        (ax_c, ax_r) = self.gss[key]
+
+        pre_str = self.params.get('gp_str')
+        folder = self.params.get('mp_simulations_path')
+        cmap = self.params.get('results_cmap')
+
+        if self.data.get(key) is None:
+            load_out = dsb.read_in_files_from_folder(folder, pre_str=pre_str)
+            part_arr = list(sp[0] for sp in load_out['partitions'])
+            load_out['single_partition'] = np.array(part_arr)
+            load_out['regr_gen_single'] = dsb.complex_field_func(
+                load_out['regr_gen'], pre_ind=0)
+            out = dsb.construct_matrix(load_out, 'class_gen',
+                                       'gp_task_length_scale', 
+                                       'gp_length_scale',
+                                       'single_partition')
+            ax_vals, gp_map_class = out
+            out = dsb.construct_matrix(load_out, 'regr_gen_single', 
+                                       'gp_task_length_scale', 
+                                       'gp_length_scale',
+                                       'single_partition')
+            ax_vals, gp_map_regr = out
+            self.data[key] = (ax_vals, gp_map_class, gp_map_regr)
+        ax_vals, gp_map_class, gp_map_regr = self.data[key]
+
+        part_ind = self.params.getint('part_ind')
+        eg_ind = self.params.getint('eg_ind')
+        comp_ind = self.params.getint('comp_ind')
+
+        proc_gp_class = np.mean(gp_map_class[..., eg_ind, 0, :, comp_ind],
+                                axis=-1)
+        proc_gp_regr = np.mean(gp_map_regr[..., eg_ind, 0, :, :],
+                               axis=(-1, -2))
+        proc_gp_regr[proc_gp_regr < 0] = 0
+
+        m = gpl.pcolormesh(ax_vals[1], ax_vals[0], proc_gp_class[..., part_ind],
+                           ax_c, equal_bins=True, vmin=.5, vmax=1,
+                           cmap=cmap)
+        cb_c = self.f.colorbar(m, ax=ax_c)
+        cb_c.set_ticks([.5, 1])
+        cb_c.set_label('classifier generalization')
+
+        ax_c.set_ylabel('task length scale')
+        ax_r.set_xlabel('input length scale')
+        ax_c.set_xlabel('input length scale')
+
+        m = gpl.pcolormesh(ax_vals[1], ax_vals[0], proc_gp_regr[..., part_ind],
+                           ax_r, equal_bins=True, vmin=0, vmax=1,
+                           cmap=cmap)
+        cb_r = self.f.colorbar(m, ax=ax_r)
+        cb_r.set_ticks([0, .5, 1])
+        cb_r.set_label('regression generalization')
+
+    def panel_gp_input_baseline(self, retrain=False):
+        key = self.panel_keys[3]
+        ax_c, ax_r, ax_d = self.gss[key]
+        
+        inp_dim = self.params.getint('inp_dim')
+        dg_dim = self.params.getint('dg_dim')
+        fit_samples = self.params.getint('fit_samples')
+        length_scales = self.params.getlist('dg_scales_perf', typefunc=float)
+        if self.data.get(key) is None or retrain:
+            out = characterize_gaussian_process(inp_dim, dg_dim,
+                                                length_scales,
+                                                fit_samples=fit_samples)
+            self.data[key] = out
+        out = self.data[key]
+        gpl.plot_trace_werr(length_scales, out[1], ax=ax_c)
+        gpl.plot_trace_werr(length_scales, out[2], ax=ax_c)
+
+        gpl.plot_trace_werr(length_scales, out[3], ax=ax_r)
+        gpl.plot_trace_werr(length_scales, out[4], ax=ax_r)
+
+        gpl.plot_trace_werr(length_scales, out[0], ax=ax_d)
+
+        ax_c.set_xscale('log')
+        ax_r.set_xscale('log')
+        ax_d.set_xscale('log')
+        ax_r.set_xlabel('kernel length scale')
+        ax_c.set_ylabel('classifier')
+        ax_r.set_ylabel('regression')
+        ax_d.set_ylabel('dimensionality')
+
+            
 class Figure4(DisentangledFigure):
 
     def __init__(self, fig_key='figure4', colors=colors, **kwargs):
@@ -1301,12 +1512,13 @@ class Figure4(DisentangledFigure):
 class Figure5(DisentangledFigure):
 
     def __init__(self, fig_key='figure5', colors=colors, **kwargs):
-        fsize = (5.5, 3.5)
+        fsize = (5.5, 4.5)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
         params = cf[fig_key]
-        self.panel_keys = ('img_egs', 'rep_geometry', 'traversal_comparison')
+        self.panel_keys = ('img_egs', 'rep_geometry', 'traversal_comparison',
+                           'preproc_img')
         super().__init__(fsize, params, colors=colors, **kwargs)
 
     def make_shape_dg(self, retrain=False):
@@ -1325,14 +1537,14 @@ class Figure5(DisentangledFigure):
     def make_gss(self):
         gss = {}
         
-        img_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 30,
+        img_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 20,
                                          0, 40, 3, 1)        
         gss[self.panel_keys[0]] = self.get_axs(img_grids)
 
-        rep_geom_fd = self.gs[30:70, :18]
-        rep_geom_bvae = self.gs[30:70, 22:40]
-        rep_geom_class_perf = self.gs[75:, :15]
-        rep_geom_regr_perf = self.gs[75:, 25:40]
+        rep_geom_fd = self.gs[20:60, :18]
+        rep_geom_bvae = self.gs[20:60, 22:40]
+        rep_geom_class_perf = self.gs[65:80, :15]
+        rep_geom_regr_perf = self.gs[65:80, 25:40]
         axs_3d = np.zeros(4, dtype=bool)
         axs_3d[0:2] = self.params.getboolean('vis_3d')
         gss[self.panel_keys[1]] = self.get_axs((rep_geom_fd, rep_geom_bvae,
@@ -1340,10 +1552,14 @@ class Figure5(DisentangledFigure):
                                                 rep_geom_regr_perf),
                                                plot_3ds=axs_3d)
 
-        recon_grids = pu.make_mxn_gridspec(self.gs, 5, 6, 0, 100,
+        recon_grids = pu.make_mxn_gridspec(self.gs, 5, 6, 0, 80,
                                            45, 100, 3, 1)        
         gss[self.panel_keys[2]] = self.get_axs(recon_grids)
-        
+
+        preproc_grids = pu.make_mxn_gridspec(self.gs, 1, 2, 80, 100,
+                                             50, 100, 3, 14)        
+        gss[self.panel_keys[3]] = self.get_axs(preproc_grids)
+
         self.gss = gss
 
     def panel_img_egs(self):
@@ -1470,6 +1686,35 @@ class Figure5(DisentangledFigure):
         recs, di, dl, dr, lr = out
         dc.plot_img_series(dr, title='', axs=axs[3], cmap=cm)
         dc.plot_img_series(recs, title='', axs=axs[4], cmap=cm)
+
+    def panel_preproc_img_learning(self):
+        key = self.panel_keys[3]
+        axs = self.gss[key]
+
+        run_inds = self.params.getlist('img_run_inds')
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        shape_color = self.params.getcolor('shape_color')
+        chair_color = self.params.getcolor('chair_color')
+
+        labels = ('shapes', 'chairs')
+        colors = (shape_color, chair_color)
+        double_inds = (0, 0)
+
+        pv_mask = np.array([False, True])
+
+        for i, ri in enumerate(run_inds):
+            dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
+                                      collapse_plots=False, folder=folder,
+                                      intermediate=False,
+                                      pv_mask=pv_mask,
+                                      axs=axs, legend=labels[i],
+                                      plot_hline=False, 
+                                      print_args=False, set_title=False,
+                                      color=colors[i], double_ind=double_inds[i],
+                                      set_lims=True)
+        gpl.add_vlines(3, axs[0, 0])
+        gpl.add_vlines(3, axs[0, 1])
 
 class SIFigureMultiverse(DisentangledFigure):
     

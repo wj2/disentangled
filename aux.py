@@ -333,7 +333,7 @@ def save_models(path, model_arr):
 
 def save_histories(path, hist_arr):
     def hist_save_func(path_ind, hist):
-        hist.model = None
+        # hist.model = None
         pickle.dump(hist, open(path_ind, 'wb'))
     save_object_arr(path, hist_arr, hist_save_func)
 
@@ -632,9 +632,8 @@ def _load_archive(archive, img_key, param_vals, param_names,
                   binarize=False, pre_model=None):
     images = archive[img_key]
     n_images = int(np.min((len(images), max_load)))
-    print(n_images)
     if pre_model is None:
-        images_list = np.zeros((n_images,) + img_size + (3,))
+        images_list = np.zeros((n_images,) + tuple(img_size) + (3,))
     else:
         images_list = np.zeros((n_images, pre_model.output_size))
     need_resize = not np.all(np.array(img_size) == images.shape[1:3])
