@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 import tf_agents as tfa
-import reverb
+# import reverb
 
 from tf_agents.agents import tf_agent
 from tf_agents.agents.dqn import dqn_agent
@@ -17,10 +17,10 @@ from tf_agents.metrics import tf_metrics
 from tf_agents.networks import sequential
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.policies import random_tf_policy
-from tf_agents.replay_buffers import reverb_replay_buffer
+# from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.replay_buffers import py_uniform_replay_buffer
-from tf_agents.replay_buffers import reverb_utils
+# from tf_agents.replay_buffers import reverb_utils
 from tf_agents.trajectories import trajectory
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
@@ -735,91 +735,6 @@ class RLDisentangler(dd.FlexibleDisentanglerAE):
             output = layer(output)
         return output
         
-    def fit_py(self, env=None, num_iterations=10000, initial_collect_steps=100,
-               collect_steps_per_iteration=1, replay_buffer_max_length=100000,
-               batch_size=64, log_interval=200, num_eval_episodes=10,
-               eval_interval=1000, learning_rate=1e-3):
-        if env is None:
-            env = self.env
-        if not self.compiled:
-            self._compile()
-        
-        train_step_counter = tf.Variable(0)
-
-        table_name = 'uniform_table'
-        replay_buffer_signature = tensor_spec.from_spec(
-            self.agent.collect_data_spec)
-        replay_buffer_signature = tensor_spec.add_outer_dim(
-            replay_buffer_signature)
-
-        random_policy = random_tf_policy.RandomTFPolicy(env.time_step_spec(),
-                                                        env.action_spec())
-
-        table = reverb.Table(
-            table_name,
-            max_size=replay_buffer_max_length,
-            sampler=reverb.selectors.Uniform(),
-            remover=reverb.selectors.Fifo(),
-            rate_limiter=reverb.rate_limiters.MinSize(1),
-            signature=replay_buffer_signature)
-            
-        reverb_server = reverb.Server([table])
-            
-        replay_buffer = reverb_replay_buffer.ReverbReplayBuffer(
-            self.agent.collect_data_spec,
-            table_name=table_name,
-            sequence_length=2,
-            local_server=reverb_server)
-            
-        replay_observer = reverb_utils.ReverbAddTrajectoryObserver(
-            replay_buffer.py_client,
-            table_name,
-            sequence_length=2)
-
-        ## NEED TO MAKE TF vs PY AGREE -- leading to issues
-        py_driver.PyDriver(
-            py_env, random_policy,
-            py_tf_eager_policy.PyTFEagerPolicy(
-                random_policy, use_tf_function=True),
-            [replay_observer],
-            max_steps=initial_collect_steps).run(py_env.reset())
-
-        dataset = replay_buffer.as_dataset(
-            num_parallel_calls=3,
-            sample_batch_size=batch_size,
-            num_steps=2).prefetch(3)
-
-        iterator = iter(dataset)
-
-        time_step = py_env.reset()
-        collect_policy = py_tf_eager_policy.PyTFEagerPolicy(
-            self.agent.collect_policy, use_tf_function=True)
-
-        collect_driver = py_driver.PyDriver(
-            py_env, collect_policy, [replay_observer],
-            max_steps=collect_steps_per_iteration)
-
-        # return collect_driver, iterator, dataset, replay_buffer, # reverb_server 
-        returns = []
-        print('entering for loop')
-        for i in range(num_iterations):
-            time_step, _ = collect_driver.run(time_step)
-            experience, unused_info = next(iterator)
-            train_loss = self.agent.train(experience).loss
-            
-            step = self.agent.train_step_counter.numpy()
-
-            if step % log_interval == 0:
-                print('step = {0}: loss = {1}'.format(step, train_loss))
-
-            if step % eval_interval == 0:
-                avg_return = compute_avg_return(eval_env, self.agent.policy,
-                                                num_eval_episodes)
-                s = 'step = {0}: Average Return = {1}'.format(step, avg_return)
-                print(s)
-                returns.append(avg_return)
-        return returns
-    
     def fit_tf(self, env=None, num_iterations=10000,
                initial_collect_episodes=1000,
                collect_episodes_per_iteration=1, replay_buffer_max_length=100000,

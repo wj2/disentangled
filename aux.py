@@ -373,7 +373,7 @@ def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
 def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
                                gd=None, seed_str='genout_{}.tfmod',
                                save_tf_models=True, save_args=None,
-                               save_histories=True):
+                               save_hists=True):
     os.mkdir(folder)
     path_base = os.path.join(folder, seed_str)
 
@@ -384,7 +384,7 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
         models_file = seed_str.format('models')
         save_models(os.path.join(folder, models_file), models)
 
-    if save_histories and th is not None:
+    if save_hists and th is not None:
         history_file = seed_str.format('histories')
         save_histories(os.path.join(folder, history_file), th)
 
