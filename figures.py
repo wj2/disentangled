@@ -210,7 +210,7 @@ def characterize_gaussian_process(inp_dim, out_dim, length_scales, eps=1e-3,
 def characterize_generalization(dg, model, c_reps, train_samples=1000,
                                 test_samples=500, bootstrap_regr=True,
                                 n_boots=1000, norm=True, cut_zero=True,
-                                repl_mean=None):
+                                repl_mean=None, **kwargs):
     results_class = np.zeros((c_reps, 2))
     results_regr = np.zeros((c_reps, 2))
     for i in range(c_reps):
@@ -224,17 +224,18 @@ def characterize_generalization(dg, model, c_reps, train_samples=1000,
         results_class[i, 0] = dc.classifier_generalization(
             dg, model, n_train_samples=train_samples,
             n_test_samples=test_samples,
-            n_iters=1, repl_mean=repl_mean)[0]
+            n_iters=1, repl_mean=repl_mean, **kwargs)[0]
         results_class[i, 1] = dc.classifier_generalization(
             dg, model, train_distrib=train_distr,
             test_distrib=test_distr, n_train_samples=train_samples,
-            n_test_samples=test_samples, n_iters=1, repl_mean=repl_mean)[0]
+            n_test_samples=test_samples, n_iters=1, repl_mean=repl_mean,
+            **kwargs)[0]
         results_regr[i, 0] = dc.find_linear_mapping_single(
             dg, model, half=False, n_samps=train_samples,
-            repl_mean=repl_mean)[1]
+            repl_mean=repl_mean, **kwargs)[1]
         results_regr[i, 1] = dc.find_linear_mapping_single(
             dg, model, n_samps=train_samples,
-            repl_mean=repl_mean)[1]
+            repl_mean=repl_mean, **kwargs)[1]
     if cut_zero:
         results_regr[results_regr < 0] = 0
     if False and bootstrap_regr:
@@ -1719,7 +1720,7 @@ class Figure5(DisentangledFigure):
 class SIFigureMultiverse(DisentangledFigure):
     
     def __init__(self, fig_key='sifigure_multi', colors=colors, **kwargs):
-        fsize = (5.5, 5)
+        fsize = (5.5, 3)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         

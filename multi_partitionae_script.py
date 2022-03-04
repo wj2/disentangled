@@ -166,6 +166,9 @@ def create_parser():
                         type=float, help='if a number is supplied, one set of '
                         'categorical variables will be used for training the '
                         'model and the other will be used for testing')
+    parser.add_argument('--no_compute_untrained', default=False,
+                        action='store_true', help='do not compute generalization '
+                        'performance for untrained variables')
     return parser
 
 if __name__ == '__main__':
@@ -340,6 +343,7 @@ if __name__ == '__main__':
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
+    compute_untrained = not args.no_compute_untrained
     out = dc.test_generalization_new(dg_use=dg_use, est_inp_dim=est_inp_dim,
                                      inp_dim=true_inp_dim,
                                      hide_print=hide_print,
@@ -355,6 +359,7 @@ if __name__ == '__main__':
                                      distr_type=args.source_distr,
                                      compute_trained_lvs=compute_train_lvs,
                                      plot=False,
+                                     compute_untrained=compute_untrained,
                                      categ_var=args.partition_categorical_bound,
                                      evaluate_intermediate=args.eval_intermediate)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
