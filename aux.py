@@ -690,9 +690,12 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                       img_size=(64, 64), max_load=np.inf, norm_pixels=True,
                       norm_params=False, grayscale=False, filter_edges=None,
                       edge_keys=('rotation',), read_specific_chairs=None,
-                      pre_model=None):
-    subfolders = filter(lambda x: os.path.isdir(os.path.join(folder, x)),
-                                                os.listdir(folder))
+                      pre_model=None, n_unique_chairs=np.inf,
+                      shuffle_subfolders=True):
+    subfolders = list(filter(lambda x: os.path.isdir(os.path.join(folder, x)),
+                             os.listdir(folder)))
+    if shuffle_subfolders:
+        np.random.shuffle(subfolders)
     names = []
     nums = []
     pitchs = []
@@ -702,6 +705,7 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
     id_nums = []
     imgs = []
     loaded = 0
+    chairs_loaded = 0 
     chair_counter = 0
     chair_id_dict = {}
     for sfl in subfolders:
@@ -709,6 +713,7 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
             or read_specific_chairs is None):
             p = os.path.join(folder, sfl, mid_folder)
             img_fls = os.listdir(p)
+            init_loaded = loaded
             for ifl in img_fls:
                 m = re.match(file_template, ifl)
                 if m is not None:
@@ -742,6 +747,10 @@ def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                     loaded = loaded + 1
                 if loaded >= max_load:
                     break
+            if init_loaded < loaded:
+                chairs_loaded += 1
+            if chairs_loaded >= n_unique_chairs:
+                break
         if loaded >= max_load:
             break
     if norm_params:

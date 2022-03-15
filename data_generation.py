@@ -295,13 +295,25 @@ class VariationalDataGenerator(DataGenerator):
 class ImageSourceDistrib(object):
 
     def __init__(self, datalist, set_partition=None, position_distr=None,
-                 use_partition=False, partition_vec=None, offset=None):
+                 use_partition=False, partition_vec=None, offset=None,
+                 categorical_variables=None, cat_mask=None):
         self.partition_func = None
         self.data_list = np.array(datalist)
         self.position_distr = position_distr
-        self.dim = self.data_list.shape[1] 
+        self.dim = self.data_list.shape[1]
+        self.categorical_variables = categorical_variables
+        
         if position_distr is not None:
             self.dim = self.dim + position_distr.dim
+            self.pos_dim = position_distr.dim
+        else:
+            self.pos_dim = 0
+        if self.categorical_variables is None:
+            self.not_cat = np.ones(self.dim, dtype=bool)
+        else:
+            self.not_cat = np.logical_not(self.categorical_variables)
+        self.partition = partition_vec
+        self.offset = offset
         if use_partition:
             if partition_vec is not None:
                 self.partition = u.make_unit_vector(np.array(partition_vec))
@@ -310,16 +322,17 @@ class ImageSourceDistrib(object):
                                            plane=self.partition,
                                            off=self.offset)
             elif set_partition is None:
-                out = da.generate_partition_functions(self.dim, n_funcs=1)
+                out = da.generate_partition_functions(sum(self.not_cat),
+                                                      n_funcs=1)
                 pfs, vecs, offs = out
                 set_partition = pfs[0]
-                self.partition = vecs[0]
+                p_vec = np.zeros(self.dim)
+                p_vec[self.not_cat] = vecs[0]
+                self.partition = p_vec
                 self.offset = offs[0]
-            else:
-                self.partition = None
-                self.offset = None
             self.partition_func = set_partition
-
+        self.cat_mask = cat_mask
+            
     @property
     def mean(self):
         p_meds = np.percentile(self.data_list, 50, axis=0,
@@ -329,41 +342,84 @@ class ImageSourceDistrib(object):
     def rvs(self, rvs_shape):
         rvs = self._candidate_rvs(rvs_shape)
         while (self.partition_func is not None
-               and not np.all(self.partition_func(rvs))):
-            mask = np.logical_not(self.partition_func(rvs))
+               and not np.all(self.partition_func(rvs[:, self.not_cat]))):
+            mask = np.logical_not(self.partition_func(rvs[:, self.not_cat]))
             sample = self._candidate_rvs(rvs_shape)
             rvs[mask] = sample[mask]
         return rvs
 
     def _candidate_rvs(self, n):
-        inds = np.random.choice(self.data_list.shape[0], n)
-        out = self.data_list[inds]
+        if self.cat_mask is not None:
+            data_list = self.data_list[self.cat_mask]
+        else:
+            data_list = self.data_list
+        inds = np.random.choice(data_list.shape[0], n)
+        out = data_list[inds]
         if self.position_distr is not None:
             ps = self.position_distr.rvs(n)
             out = np.concatenate((out, ps), axis=1)
         return out
 
+    def make_cat_partition(self, cat_mask=None, part_frac=.5):
+        if cat_mask is None and self.categorical_variables is not None:
+            rel_mask = self.categorical_variables[:-self.pos_dim]
+            cat_vals = self.data_list[:, rel_mask]
+            u_vals = np.unique(cat_vals)
+            part_num = int(np.round(len(u_vals)*part_frac))
+            half_vals = np.random.choice(u_vals, part_num,
+                                         replace=False)
+            cat_mask = np.isin(cat_vals, half_vals)
+        else:
+            cat_mask = cat_mask
+        return ImageSourceDistrib(
+            self.data_list, position_distr=self.position_distr,
+            categorical_variables=self.categorical_variables,
+            cat_mask=np.squeeze(cat_mask))
+    
     def make_partition(self, set_partition=None, partition_vec=None,
                        offset=None):
         if partition_vec is not None and offset is None:
             offset = 0
-        return ImageSourceDistrib(self.data_list,
-                                  position_distr=self.position_distr,
-                                  set_partition=set_partition,
-                                  use_partition=True, offset=offset,
-                                  partition_vec=partition_vec)
+        return ImageSourceDistrib(
+            self.data_list, position_distr=self.position_distr,
+            set_partition=set_partition, use_partition=True, offset=offset,
+            partition_vec=partition_vec,
+            categorical_variables=self.categorical_variables,
+            cat_mask=self.cat_mask)
 
+    def flip_cat_partition(self):
+        if self.cat_mask is None:
+            print('no cat mask')
+            cat_mask = None
+        else:
+            cat_mask = np.logical_not(self.cat_mask)
+        new = ImageSourceDistrib(
+            self.data_list, cat_mask=cat_mask,
+            position_distr=self.position_distr,
+            set_partition=self.partition_func,
+            use_partition=self.partition_func is not None,
+            categorical_variables=self.categorical_variables)
+        new.partition = self.partition
+        offset = self.offset
+        return new
+    
     def flip(self):
+        cat_mask = np.logical_not(self.cat_mask)
         if self.partition_func is not None:
             set_part = lambda x: np.logical_not(self.partition_func(x))
-            new = ImageSourceDistrib(self.data_list, set_partition=set_part,
-                                     position_distr=self.position_distr,
-                                     use_partition=True, offset=self.offset)
+            new = ImageSourceDistrib(
+                self.data_list, set_partition=set_part,
+                position_distr=self.position_distr,
+                use_partition=True, offset=self.offset,
+                categorical_variables=self.categorical_variables,
+                cat_mask=cat_mask)
             new.partition = -self.partition
             new.offset = self.offset
         else:
             print('no partition to flip')
-            new = ImageSourceDistrib(self.data_list)
+            new = ImageSourceDistrib(
+                self.data_list,
+                categorical_variables=self.categorical_variables)
         return new        
 
 class ChairSourceDistrib(ImageSourceDistrib):
@@ -377,7 +433,6 @@ class ImageDatasetGenerator(DataGenerator):
     def __init__(self, data, img_params, include_position=False,
                  position_distr=None, max_move=4, pre_model=None,
                  img_out_label='images', categorical_variables=None):
-        
         if include_position and position_distr is None:
             position_distr = sts.multivariate_normal((0, 0), (.5*max_move)**2)
         self.include_position = include_position
@@ -388,10 +443,12 @@ class ImageDatasetGenerator(DataGenerator):
         self.img_out_label = img_out_label 
         self.source_distribution = ImageSourceDistrib(
             data[self.img_params],
-            position_distr=position_distr)
+            position_distr=position_distr,
+            categorical_variables=categorical_variables)
         self.img_size = data[self.img_out_label].iloc[0].shape
         if len(self.img_size) == 1:
             self.img_size = self.img_size[0]
+            
         self.params = self.img_params
         self.data_dict = None
         if include_position:
@@ -403,6 +460,8 @@ class ImageDatasetGenerator(DataGenerator):
         self.max_move = max_move
         self.x_uniques = None
         if pre_model is not None:
+            pre_model = dd.PretrainedModel(self.img_size, pre_model,
+                                           trainable=False)        
             self.pm = pre_model
             self.output_dim = self.pm.output_size
         else:
@@ -538,16 +597,41 @@ class ImageDatasetGenerator(DataGenerator):
             p.fit(rep)
             out = (p.explained_variance_ratio_, p.components_)
         return out        
+
+
+def make_split_chair_generators(folder, norm_params=True, img_size=(128, 128),
+                                include_position=False, position_distr=None,
+                                max_move=4, max_load=np.inf, filter_edges=None,
+                                pre_model=None, percent_split=.5,
+                                id_key='chair_id_num', **kwargs):
+    categorical_variables = np.array([True, False, False, False, False])
+    data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
+                                max_load=max_load, filter_edges=filter_edges,
+                                **kwargs)
+
+    param_keys = ChairGenerator.default_param_keys
+    id_cut = np.percentile(data[id_key], percent_split*100)
+    data1 = data[data[id_key] <= id_cut]
+    chairs1 = ImageDatasetGenerator(data1, param_keys, include_position=True,
+                                    position_distr=position_distr,
+                                    max_move=max_move, pre_model=pre_model,
+                                    categorical_variables=categorical_variables)
+    
+    data2 = data[data[id_key] > id_cut]
+    chairs2 = ImageDatasetGenerator(data2, param_keys, include_position=True,
+                                    position_distr=position_distr,
+                                    max_move=max_move, pre_model=pre_model,
+                                    categorical_variables=categorical_variables)
+    return chairs1, chairs2     
     
 class ChairGenerator(ImageDatasetGenerator):
 
+    default_param_keys = ['chair_id_num', 'rotation', 'pitch']
+            
     def __init__(self, folder, norm_params=True, img_size=(128, 128),
                  include_position=False, position_distr=None, max_move=4,
                  max_load=np.inf, filter_edges=None, pre_model=None,
                  param_keys=['chair_id_num', 'rotation', 'pitch'], **kwargs):
-        if pre_model is not None:
-            pre_model = dd.PretrainedModel(img_size, pre_model,
-                                    trainable=False)
         categorical_variables = np.array([True, False, False, False, False])
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
                                     max_load=max_load, filter_edges=filter_edges,
@@ -566,10 +650,7 @@ class TwoDShapeGenerator(ImageDatasetGenerator):
                  pre_model=None, **kwargs):
         self.img_identifier = None
         categorical_variables = np.array([True, False, False, False, False])
-        if pre_model is not None:
-            pre_model = dd.PretrainedModel(img_size, pre_model,
-                                           trainable=False)
-            
+
         data = da.load_2d_shapes(folder, img_size=img_size,
                                  convert_color=convert_color,
                                  norm_params=norm_params,
@@ -586,9 +667,6 @@ class ThreeDShapeGenerator(ImageDatasetGenerator):
                  max_load=np.inf, param_keys=default_pks, pre_model=None,
                  **kwargs):
         self.img_identifier = None
-        if pre_model is not None:
-            pre_model = dd.PretrainedModel(img_size, pre_model,
-                                           trainable=False)
             
         data = da.load_3d_shapes(folder, img_size=img_size,
                                  norm_params=norm_params,
@@ -598,8 +676,8 @@ class ThreeDShapeGenerator(ImageDatasetGenerator):
 class RFDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=0.001,
-                 distrib_variance=1, setup_distribution=None, total_out=False,
-                 width_scaling=4, input_noise=0, low_thr=None):
+                 distrib_variance=1, setup_distribution=None, total_out=True,
+                 width_scaling=4, input_noise=0, low_thr=.01):
         if source_distribution is None:
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)

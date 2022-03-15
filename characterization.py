@@ -1002,8 +1002,8 @@ def expand_intermediate_models(mod_arr):
             mod_out = np.zeros(mod_arr.shape + (n_layers,),
                                dtype=object)
         for j in range(n_layers):
-            mod_out[ind + (j,)] = dd.IntermediateLayers(model.rep_model,
-                                                        use_i=j)
+            mod_out[ind + (j,)] = dd.IntermediateLayers(
+                model.rep_model, learn_lvs=model.learn_lvs, use_i=j)
     return mod_out
 
 def plot_recon_accuracy_partition(scores, mks=None, ax=None, indiv_pts=True,
@@ -1095,7 +1095,7 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
                                lr_type=sklm.Ridge,
                                correct=False, repl_mean=None,
                                partition_vec=None, learn_lvs='ignore',
-                               **kwargs):
+                               eval_dg=None, flip_cat=False, **kwargs):
     if learn_lvs == 'trained':
         feat_mask = model.learn_lvs
     elif learn_lvs == 'untrained':
@@ -1129,6 +1129,8 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
         enc_pts = model.get_representation(dg_use.generator(stim))
         if half:
             flipped = src.flip()
+            if flip_cat:
+                flipped = flipped.flip_cat_partition()
             test_stim = flipped.rvs(n_samps)
         else:
             test_stim = dg_use.source_distribution.rvs(n_samps)
@@ -1214,16 +1216,24 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     pdims = dg_use.representation_dimensionality()[0]
     print('participation ratio', np.sum(pdims)**2/np.sum(pdims**2))
 
+    flip_cat = False
     if train_models_blind:
         train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), dg_source_var)
         test_d2 = train_d2.flip()
         dg_use.source_distribution = train_d2
     elif categ_var is not None:
-        train_d2, test_d2 = dg_use.get_category_partitions(bound=categ_var)
-        full_sd = dg_use.source_distribution
-        dg_use.source_distribution = train_d2
+        train_cat = dg_use.source_distribution.make_cat_partition(
+            part_frac=categ_var)
+        dg_use.source_distribution = train_cat
+
+        train_d2 = train_cat.make_partition()
+        test_d2 = train_d2.flip_cat_partition().flip()
+        flip_cat = True
         train_test_distrs = ((None, train_d2),
                              (None, test_d2))
+        train_cat.rvs(10)
+        train_d2.rvs(10)
+        test_d2.rvs(10)
         
     # train models
     if models_args is None:
@@ -1259,6 +1269,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     if evaluate_intermediate:
         models = expand_intermediate_models(models)
 
+    print('training done')
     if th is not None and plot:
         plot_training_progress(th, use_x)
     if plot:
@@ -1290,7 +1301,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     else:
         n_train_samples = 2*10**3
         n_test_samples = 10**3
-        
+
+    print('distr set')
     if p_c is None:
         if compute_trained_lvs:
             pt, ct = evaluate_multiple_models_dims(
@@ -1326,20 +1338,22 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         if compute_trained_lvs:
             lts_t = find_linear_mappings(
                 dg_use, models, half=True, n_samps=n_test_samples,
-                learn_lvs='trained')
+                learn_lvs='trained', flip_cat=flip_cat)
             if compute_untrained:
                 lts_u = find_linear_mappings(
                     dg_use, models, half=True, n_samps=n_test_samples,
-                    learn_lvs='untrained')
+                    learn_lvs='untrained', flip_cat=flip_cat)
                 lts_scores = list(np.stack((lts_ti, lts_u[i]), axis=0)
                                   for i, lts_ti in enumerate(lts_t))
             else:
                 lts_scores = lts_t
         else:
             lts_scores = find_linear_mappings(
-                dg_use, models, half=True, n_samps=n_test_samples)
-    print(lts_scores[1])
-    print(np.mean(lts_scores[1]))
+                dg_use, models, half=True, n_samps=n_test_samples,
+                flip_cat=flip_cat)
+    # print(lts_scores[1])
+    # print(np.mean(lts_scores[1]))
+    print(np.mean(lts_scores[1], axis=-1))
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)
 

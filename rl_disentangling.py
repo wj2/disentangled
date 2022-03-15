@@ -798,10 +798,7 @@ class RLDisentangler(dd.FlexibleDisentanglerAE):
                 s = 'step = {}: loss = {:0.4f}, actor = {:0.4f}, critic = {:0.4f}'
                 print(s.format(step, np.mean(train_loss), np.mean(train_actor_loss),
                                np.mean(train_critic_loss)))
-                actions = self.agent._actor_network(
-                  self.agent._as_transition(experience)[0].observation)
-                print(np.array(actions[0][:10]).T)
-
+                
             if step % eval_interval == 0:
                 out = compute_avg_return(env, self.agent.policy,
                                          num_eval_episodes,

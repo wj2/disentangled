@@ -162,13 +162,19 @@ def create_parser():
                          'mobilenet_v3_small_100_224/feature_vector/5')
     parser.add_argument('--img_pre_net', default=default_pre_model, type=str,
                         help='string giving url for image model to use')
-    parser.add_argument('--partition_categorical_bound', default=None,
-                        type=float, help='if a number is supplied, one set of '
-                        'categorical variables will be used for training the '
-                        'model and the other will be used for testing')
+    parser.add_argument('--categ_frac', default=None,
+                        type=float, help='if a number is supplied, it will be '
+                        'used as the fraction of the unique entries of the '
+                        'categorical variable used for training; 1 - the number '
+                        'will be used for testing')
     parser.add_argument('--no_compute_untrained', default=False,
                         action='store_true', help='do not compute generalization '
                         'performance for untrained variables')
+    parser.add_argument('--n_chairs', default=20, type=int,
+                        help='number of chairs to load')
+    parser.add_argument('--readout_bias_reg', default=0, type=float,
+                        help='strength of the L2 norm on the bias for the '
+                        'readout units')
     return parser
 
 if __name__ == '__main__':
@@ -210,6 +216,7 @@ if __name__ == '__main__':
     no_learn_lvs = None
     compute_train_lvs = False
 
+    dg_eval = None
     pre_net = False
     if args.data_generator is not None:
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
@@ -243,10 +250,13 @@ if __name__ == '__main__':
     elif args.use_chairs_dg:
         filter_edges = .4
         chair_file = 'disentangled/datasets/chairs_images/'
+
         dg_use = dg.ChairGenerator(chair_file, img_size=args.img_resize,
                                    max_load=np.inf, include_position=True,
                                    max_move=.6, filter_edges=filter_edges,
-                                   pre_model=args.img_pre_net)
+                                   pre_model=args.img_pre_net,
+                                   n_unique_chairs=args.n_chairs)
+        
         true_inp_dim = dg_use.input_dim
         no_learn_lvs = np.array([True, False, True, False, False])
         compute_train_lvs = True
@@ -339,29 +349,24 @@ if __name__ == '__main__':
                                   use_gp_tasks=args.use_gp_tasks_only,
                                   gp_task_length_scale=args.gp_task_length_scale,
                                   no_learn_lvs=no_learn_lvs,
-                                  weight_reg_weight=args.weight_reg_weight)
+                                  weight_reg_weight=args.weight_reg_weight,
+                                  readout_bias_reg_str=args.readout_bias_reg)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing
     compute_untrained = not args.no_compute_untrained
-    out = dc.test_generalization_new(dg_use=dg_use, est_inp_dim=est_inp_dim,
-                                     inp_dim=true_inp_dim,
-                                     hide_print=hide_print,
-                                     dg_train_epochs=dg_train_epochs,
-                                     n_reps=n_reps, model_kinds=model_kinds,
-                                     use_mp=use_mp, models_n_diffs=n_train_diffs,
-                                     models_n_bounds=args.n_train_bounds,
-                                     dg_dim=args.dg_dim,
-                                     model_batch_size=args.batch_size,
-                                     model_n_epochs=args.model_epochs,
-                                     layer_spec=layer_spec,
-                                     generate_data=not args.no_data,
-                                     distr_type=args.source_distr,
-                                     compute_trained_lvs=compute_train_lvs,
-                                     plot=False,
-                                     compute_untrained=compute_untrained,
-                                     categ_var=args.partition_categorical_bound,
-                                     evaluate_intermediate=args.eval_intermediate)
+    out = dc.test_generalization_new(
+        dg_use=dg_use, est_inp_dim=est_inp_dim, inp_dim=true_inp_dim,
+        hide_print=hide_print, dg_train_epochs=dg_train_epochs,
+        n_reps=n_reps, model_kinds=model_kinds, use_mp=use_mp,
+        models_n_diffs=n_train_diffs, models_n_bounds=args.n_train_bounds,
+        dg_dim=args.dg_dim, model_batch_size=args.batch_size,
+        model_n_epochs=args.model_epochs, layer_spec=layer_spec,
+        generate_data=not args.no_data, distr_type=args.source_distr,
+        compute_trained_lvs=compute_train_lvs, plot=False,
+        compute_untrained=compute_untrained,
+        categ_var=args.categ_frac,
+        evaluate_intermediate=args.eval_intermediate)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,

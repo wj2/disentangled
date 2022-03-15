@@ -246,8 +246,9 @@ class SingleLayer(da.TFModel):
 
 class IntermediateLayers():
 
-    def __init__(self, model, use_i=0):
+    def __init__(self, model, use_i=0, learn_lvs=None):
         self.model = model
+        self.learn_lvs = learn_lvs
         layers = self.model.layers
         i_models = []
         for i in range(1, len(self.model.layers) + 1):
@@ -381,6 +382,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                      regularizer_type=tfk.regularizers.l2,
                      dropout_rate=0, noise=0, weight_reg_weight=0,
                      weight_reg_type=tfk.regularizers.l2,
+                     readout_bias_reg_str=0,
+                     readout_bias_reg_type=tfk.regularizers.l2,
                      **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
@@ -410,7 +413,12 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         # partition branch
         class_inp = rep_inp
         sig_act = tf.keras.activations.sigmoid
+        if readout_bias_reg_str > 0:
+            readout_bias_reg = readout_bias_reg_type(readout_bias_reg_str)
+        else:
+            readout_bias_reg = None
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
+                                  bias_regularizer=readout_bias_reg,
                                   name=branch_names[0])(class_inp)
         class_model = tfk.Model(inputs=rep_inp, outputs=class_branch,
                                 name=branch_names[0])
