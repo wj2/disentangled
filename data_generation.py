@@ -339,13 +339,18 @@ class ImageSourceDistrib(object):
                                interpolation='nearest')
         return p_meds
             
-    def rvs(self, rvs_shape):
+    def rvs(self, rvs_shape, max_iters=10000):
         rvs = self._candidate_rvs(rvs_shape)
+        iters = 0
         while (self.partition_func is not None
                and not np.all(self.partition_func(rvs[:, self.not_cat]))):
             mask = np.logical_not(self.partition_func(rvs[:, self.not_cat]))
             sample = self._candidate_rvs(rvs_shape)
             rvs[mask] = sample[mask]
+            iters += 1
+            if iters > max_iters:
+                raise IOError('could not find enough samples in {} '
+                              'iterations'.format(max_iters))
         return rvs
 
     def _candidate_rvs(self, n):
@@ -408,7 +413,6 @@ class ImageSourceDistrib(object):
         return new
     
     def flip(self):
-        cat_mask = np.logical_not(self.cat_mask)
         if self.partition_func is not None:
             set_part = lambda x: np.logical_not(self.partition_func(x))
             new = ImageSourceDistrib(
@@ -416,7 +420,7 @@ class ImageSourceDistrib(object):
                 position_distr=self.position_distr,
                 use_partition=True, offset=self.offset,
                 categorical_variables=self.categorical_variables,
-                cat_mask=cat_mask)
+                cat_mask=self.cat_mask)
             new.partition = -self.partition
             new.offset = self.offset
         else:
