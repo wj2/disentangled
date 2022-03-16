@@ -362,7 +362,11 @@ class ImageSourceDistrib(object):
 
     def make_cat_partition(self, cat_mask=None, part_frac=.5):
         if cat_mask is None and self.categorical_variables is not None:
-            rel_mask = self.categorical_variables[:-self.pos_dim]
+            if self.pos_dim > 0:
+                ext = -self.pos_dim
+            else:
+                ext = None
+            rel_mask = self.categorical_variables[:ext]
             cat_vals = self.data_list[:, rel_mask]
             u_vals = np.unique(cat_vals)
             part_num = int(np.round(len(u_vals)*part_frac))
@@ -460,8 +464,6 @@ class ImageDatasetGenerator(DataGenerator):
         self.max_move = max_move
         self.x_uniques = None
         if pre_model is not None:
-            pre_model = dd.PretrainedModel(self.img_size, pre_model,
-                                           trainable=False)        
             self.pm = pre_model
             self.output_dim = self.pm.output_size
         else:
@@ -650,6 +652,9 @@ class TwoDShapeGenerator(ImageDatasetGenerator):
                  pre_model=None, **kwargs):
         self.img_identifier = None
         categorical_variables = np.array([True, False, False, False, False])
+        if pre_model is not None:
+            pre_model = dd.PretrainedModel(img_size, pre_model,
+                                           trainable=False)        
 
         data = da.load_2d_shapes(folder, img_size=img_size,
                                  convert_color=convert_color,
@@ -667,6 +672,9 @@ class ThreeDShapeGenerator(ImageDatasetGenerator):
                  max_load=np.inf, param_keys=default_pks, pre_model=None,
                  **kwargs):
         self.img_identifier = None
+        if pre_model is not None:
+            pre_model = dd.PretrainedModel(img_size, pre_model,
+                                           trainable=False)        
             
         data = da.load_3d_shapes(folder, img_size=img_size,
                                  norm_params=norm_params,

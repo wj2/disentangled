@@ -391,6 +391,10 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             kernel_reg = weight_reg_type(weight_reg_weight)
         else:
             kernel_reg = None
+        if readout_bias_reg_str > 0:
+            readout_bias_reg = readout_bias_reg_type(readout_bias_reg_str)
+        else:
+            readout_bias_reg = None
             
         for lp in layer_shapes:
             x = layer_type(*lp, activation=act_func,
@@ -404,7 +408,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         act_reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=act_reg,
-                         kernel_regularizer=kernel_reg)(x)
+                         kernel_regularizer=kernel_reg,
+                         bias_regularizer=readout_bias_reg)(x)
         if noise > 0:
             rep = tfkl.GaussianNoise(noise)(rep)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
@@ -413,10 +418,6 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         # partition branch
         class_inp = rep_inp
         sig_act = tf.keras.activations.sigmoid
-        if readout_bias_reg_str > 0:
-            readout_bias_reg = readout_bias_reg_type(readout_bias_reg_str)
-        else:
-            readout_bias_reg = None
         class_branch = tfkl.Dense(n_partitions, activation=sig_act,
                                   bias_regularizer=readout_bias_reg,
                                   name=branch_names[0])(class_inp)
