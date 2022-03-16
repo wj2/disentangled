@@ -77,7 +77,11 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         # print('tl', train_labels)
         if not np.any(np.isnan(train_rep)):
             c = classifier(max_iter=100000, **classifier_params)
-            ops = [skp.StandardScaler(), c]
+            ops = [skp.StandardScaler()]
+            if train_rep.shape[1] > 1000:
+                p = skd.PCA(.95)
+                ops.append(p)
+            ops.append(c)
             pipe = sklpipe.make_pipeline(*ops)
             pipe.fit(train_rep, train_labels)
             test_samples = test_distrib.rvs(n_test_samples)
