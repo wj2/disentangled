@@ -1794,6 +1794,111 @@ class Figure5(DisentangledFigure):
         gpl.add_vlines(3, axs[0, 0])
         gpl.add_vlines(3, axs[0, 1])
 
+def get_tasks_learned(task_hists, training_ind=-1, thresh=.8):
+    frac_learned = np.zeros_like(task_hists)
+    n_tasks = np.zeros(task_hists.shape[0])
+    for ind in u.make_array_ind_iterator(task_hists.shape):
+        _, th = task_hists[ind]
+        th_arr = np.array(th)
+        n_tasks[ind[0]] = th_arr.shape[1]
+        frac_learned[ind] = np.sum(th_arr[training_ind] > thresh)/th_arr.shape[1]
+    return n_tasks, frac_learned
+        
+class FigureRL(DisentangledFigure):
+
+    def __init__(self, fig_key='figure_rl', colors=colors, **kwargs):
+        fsize = (4, 4)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = ('panel_history', 'panel_gen_performance')
+        super().__init__(fsize, params, colors=colors, **kwargs)
+
+    def make_gss(self):
+        gss = {}
+
+        schem_grid = self.gs[:50, 30:]
+        self.get_axs((schem_grid,))
+
+        hist_grid = pu.make_mxn_gridspec(self.gs, 2, 1,
+                                         30, 100, 0, 20,
+                                         13, 3)
+        hist_axs = self.get_axs(hist_grid)
+        gss[self.panel_keys[0]] = hist_axs
+        
+        gen_grid = pu.make_mxn_gridspec(self.gs, 1, 2,
+                                       60, 100, 38, 100,
+                                        3, 16)
+        gen_axs = self.get_axs(gen_grid)
+        gss[self.panel_keys[1]] = gen_axs
+        self.gss = gss
+
+    def _get_rl_run(self):
+        ri = self.params.get('run_ind')
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        out = da.load_full_run(folder, ri, merge_axis=1, file_template=f_pattern,
+                               analysis_only=False, add_hist=True)
+        order = ('inds', 'dg', 'model', 'history', 'p', 'c', 'ld', 'sc',
+                 'other')
+        out_dict = dict(zip(order, out[0]))
+        return out_dict, out[1]
+    
+    def panel_history(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        rl_run, rl_info = self._get_rl_run()
+        hist_all = rl_run['history']
+
+        tasks_ind = self.params.getint('hist_task_ind')
+        rep_ind = self.params.getint('hist_rep_ind')
+        task_color = self.params.getcolor('rl_task_color')
+        epoch_cut = self.params.getint('epoch_cutoff')
+
+        
+        n_tasks, task_fractions = get_tasks_learned(np.squeeze(hist_all))
+        ax, frac_ax = axs[:, 0]
+        frac_ax.plot(n_tasks, np.mean(task_fractions, axis=1))
+        frac_ax.set_ylabel('fraction of\ntasks learned')
+        frac_ax.set_xlabel('tasks')
+        gpl.clean_plot(frac_ax, 0)
+        
+        hist_full, hist_task = hist_all[0, tasks_ind, 0, rep_ind]
+        task_perf = np.array(hist_task)
+        epochs = np.arange(1, task_perf.shape[0] + 1)
+
+        mask = epochs < epoch_cut
+        ax.plot(epochs[mask], task_perf[mask], color=task_color)
+        ax.set_xlabel('training epoch')
+        ax.set_ylabel('average\ntask reward')
+        gpl.clean_plot(ax, 0)
+
+    def panel_gen_performance(self):
+        key = self.panel_keys[1]
+        axs = self.gss[key]
+
+        ri = self.params.get('run_ind')
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        rl_color = self.params.getcolor('rl_color')
+        label = 'RL agent'
+        pv_mask = np.array([True])       
+
+        dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
+                                  collapse_plots=False, folder=folder,
+                                  intermediate=False,
+                                  pv_mask=pv_mask,
+                                  axs=axs, legend=label,
+                                  plot_hline=False, 
+                                  print_args=False, set_title=False,
+                                  color=rl_color, double_ind=0,
+                                  set_lims=True)
+        gpl.add_vlines(5, axs[0, 0])
+        gpl.add_vlines(5, axs[0, 1])
+        
 class SIFigureMultiverse(DisentangledFigure):
     
     def __init__(self, fig_key='sifigure_multi', colors=colors, **kwargs):

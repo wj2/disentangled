@@ -407,9 +407,11 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
         pickle.dump(gd, open(os.path.join(folder, gd_file), 'wb'))
 
     if save_tf_models:
-        manifest = (dg_file, models_file, history_file)
+        manifest = (dg_file, models_file,)
     else:
         manifest = ()
+    if save_hists and th is not None:
+        manifest = manifest + (history_file,)
     if save_args is not None:
         args_file = seed_str.format('args')
         pickle.dump(save_args, open(os.path.join(folder, args_file), 'wb'))
@@ -428,8 +430,12 @@ def load_generalization_output(folder, manifest='manifest.pkl',
                                dg_type=None, analysis_only=False,
                                model_type=None, model_type_arr=None,
                                key_template='.*_([a-z]+)\.tfmod',
-                               skip_gd=True):
+                               skip_gd=True, add_hist=False):
     fnames = pickle.load(open(os.path.join(folder, manifest), 'rb'))
+    if add_hist:
+        hist_name = 'genout_histories.tfmod'
+        if hist_name not in fnames:
+            fnames = fnames + (hist_name,)
     fnames_full = list(os.path.join(folder, x) for x in fnames)
     key_str = (re.match(key_template, fn).group(1) for fn in fnames)
     fnames_dict = dict(zip(key_str, fnames_full))
@@ -443,21 +449,19 @@ def load_generalization_output(folder, manifest='manifest.pkl',
     p_file = fnames_dict.get('p')
     c_file = fnames_dict.get('c')
     gd_file = fnames_dict.get('gd')
-    if models_file is None:
-        analysis_only = True
-        
-    if analysis_only:
-        dg = None
+    if models_file is None or analysis_only:
         models = None
-        th = None
     else:
-        dg = dg_type.load(dg_file)
         models = load_models(models_file, model_type=model_type,
                              model_type_arr=model_type_arr)
-        if history_file is not None:
-            th = load_histories(history_file)
-        else:
-            th = None
+    if dg_file is None or analysis_only:
+        dg = None
+    else:
+        dg = dg_type.load(dg_file)
+    if history_file is None or analysis_only:
+        th = None
+    else:
+        th = load_histories(history_file)
     p = pickle.load(open(p_file, 'rb'))
     c = pickle.load(open(c_file, 'rb'))
     if ld_file is not None:
@@ -594,8 +598,8 @@ def load_full_run(folder, run_ind, merge_axis=1,
             if not analysis_only:
                 models_all = _concatenate_none((models_all, models),
                                             axis=merge_axis)
-                if th_all is not None:
-                    th_all = _concatenate_none((th_all, th), axis=merge_axis)
+            if th_all is not None:
+                th_all = _concatenate_none((th_all, th), axis=merge_axis)
             try:
                 sc.shape
             except AttributeError:
