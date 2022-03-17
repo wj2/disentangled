@@ -230,6 +230,7 @@ def characterize_generalization(dg, model, c_reps, train_samples=1000,
             test_distrib=test_distr, n_train_samples=train_samples,
             n_test_samples=test_samples, n_iters=1, repl_mean=repl_mean,
             **kwargs)[0]
+        
         results_regr[i, 0] = dc.find_linear_mapping_single(
             dg, model, half=False, n_samps=train_samples,
             repl_mean=repl_mean, **kwargs)[1]
@@ -1513,13 +1514,13 @@ class Figure4(DisentangledFigure):
 class Figure5(DisentangledFigure):
 
     def __init__(self, fig_key='figure5', colors=colors, **kwargs):
-        fsize = (5.5, 4.5)
+        fsize = (7, 3.75)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
         params = cf[fig_key]
         self.panel_keys = ('img_egs', 'rep_geometry', 'traversal_comparison',
-                           'preproc_img')
+                           'preproc_img', 'preproc_img_null')
         super().__init__(fsize, params, colors=colors, **kwargs)
 
     def make_shape_dg(self, retrain=False):
@@ -1528,24 +1529,49 @@ class Figure5(DisentangledFigure):
             shape_dg = self.shape_dg
         except:
             twod_file = self.params.get('shapes_path')
-            img_size = self.params.getlist('img_size', typefunc=int)
+            img_size = tuple(self.params.getlist('img_size', typefunc=int))
             shape_dg = dg.TwoDShapeGenerator(twod_file, img_size=img_size,
-                                             max_load=np.inf,
+                                             max_load=10000,
                                              convert_color=False)
             self.shape_dg = shape_dg 
         return shape_dg
+
+    def make_chair_dg(self, retrain=False):
+        try:
+            assert not retrain
+            chair_dg = self.chair_dg
+        except:
+            chair_file = self.params.get('chairs_path')
+            img_size = tuple(self.params.getlist('img_size', typefunc=int))
+            n_chairs = self.params.getint('n_chairs')
+            filter_edges = self.params.getfloat('filter_edges')
+            chair_dg = dg.ChairGenerator(chair_file, img_size=img_size,
+                                         max_load=np.inf,
+                                         include_position=True,
+                                         max_move=.6, filter_edges=filter_edges,
+                                         n_unique_chairs=n_chairs)
+            self.chair_dg = chair_dg 
+        return chair_dg
+
+    def make_preproc_model(self):
+        try:
+            preproc_model = self.preproc_model
+        except AttributeError:
+            preproc_path = self.params.get('preproc_path')
+            img_size = tuple(self.params.getlist('img_size', typefunc=int))
+            learned_lvs = self.params.getlist('learned_lvs', typefunc=bool)
+            preproc_model = dd.PretrainedModel(img_size, preproc_path)
+            preproc_model.learn_lvs = np.array(learned_lvs)
+            self.preproc_model = preproc_model
+        return preproc_model
         
     def make_gss(self):
         gss = {}
-        
-        img_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 20,
-                                         0, 40, 3, 1)        
-        gss[self.panel_keys[0]] = self.get_axs(img_grids)
-
-        rep_geom_fd = self.gs[20:60, :18]
-        rep_geom_bvae = self.gs[20:60, 22:40]
-        rep_geom_class_perf = self.gs[65:80, :15]
-        rep_geom_regr_perf = self.gs[65:80, 25:40]
+    
+        rep_geom_fd = self.gs[20:60, 30:45]
+        rep_geom_bvae = self.gs[20:60, 45:60]
+        rep_geom_class_perf = self.gs[70:, 35:45]
+        rep_geom_regr_perf = self.gs[70:, 50:60]
         axs_3d = np.zeros(4, dtype=bool)
         axs_3d[0:2] = self.params.getboolean('vis_3d')
         gss[self.panel_keys[1]] = self.get_axs((rep_geom_fd, rep_geom_bvae,
@@ -1553,15 +1579,64 @@ class Figure5(DisentangledFigure):
                                                 rep_geom_regr_perf),
                                                plot_3ds=axs_3d)
 
-        recon_grids = pu.make_mxn_gridspec(self.gs, 5, 6, 0, 80,
-                                           45, 100, 3, 1)        
+        recon_grids = pu.make_mxn_gridspec(self.gs, 5, 5, 0, 100,
+                                           65, 100, 3, 1)        
         gss[self.panel_keys[2]] = self.get_axs(recon_grids)
 
-        preproc_grids = pu.make_mxn_gridspec(self.gs, 1, 2, 80, 100,
-                                             50, 100, 3, 14)        
-        gss[self.panel_keys[3]] = self.get_axs(preproc_grids)
+        preproc_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 30, 100,
+                                             0, 30, 3, 10)
+        
+        pre_axs = self.get_axs(preproc_grids)
+        gss[self.panel_keys[4]] = pre_axs[0:1]
+        gss[self.panel_keys[3]] = pre_axs[1:]
 
         self.gss = gss
+
+    def make_ident_model(self):
+        learned_lvs = self.params.getlist('learned_lvs', typefunc=bool)
+        id_model = dd.IdentityModel(flatten=True)
+        id_model.learn_lvs = np.array(learned_lvs)
+        return id_model
+        
+    def panel_preproc_img_null(self):
+        key = self.panel_keys[4]
+        axs = self.gss[key]
+
+        if not key in self.data.keys():
+            shape_dg = self.make_shape_dg()
+            chair_dg = self.make_chair_dg()
+            preproc_model = self.make_preproc_model()
+            ident_model = self.make_ident_model()
+                        
+            c_reps = self.params.getint('dg_classifier_reps')
+            
+
+            id_shape = characterize_generalization(shape_dg, ident_model,
+                                                   c_reps, learn_lvs='trained',
+                                                   norm=False)
+            id_chair = characterize_generalization(chair_dg, ident_model,
+                                                   c_reps, learn_lvs='trained',
+                                                   norm=False)
+            ppm_shape = characterize_generalization(shape_dg, preproc_model,
+                                                    c_reps, learn_lvs='trained',
+                                                    norm=False)
+            ppm_chair = characterize_generalization(chair_dg, preproc_model,
+                                                    c_reps, learn_lvs='trained',
+                                                    norm=False)
+            self.data[key] = (id_shape, id_chair, ppm_shape, ppm_chair)
+        id_shape, id_chair, ppm_shape, ppm_chair = self.data[key]
+
+        shape_col = self.params.getcolor('shape_color')
+        chair_col = self.params.getcolor('chair_color')
+        colors = (shape_col, shape_col, chair_col, chair_col)
+
+        labels = ('shape input', 'shape', 'chair input', 'chair')
+
+        plot_multi_bgp((id_shape[0], ppm_shape[0], id_chair[0], ppm_chair[0]),
+                       (id_shape[1], ppm_shape[1], id_chair[1], ppm_chair[1]),
+                       axs[0, 0], axs[0, 1], colors=colors,
+                       legend_labels=labels)
+
 
     def panel_img_egs(self):
         key = self.panel_keys[0]
@@ -1700,11 +1775,13 @@ class Figure5(DisentangledFigure):
 
         labels = ('shapes', 'chairs')
         colors = (shape_color, chair_color)
-        double_inds = (0, 0)
+        double_inds = (0, None)
 
-        pv_mask = np.array([False, True])
-
+        pv_mask_2d = np.array([False, True])
+        pv_mask_chairs = np.array([True])
+        pv_masks = (pv_mask_2d, pv_mask_chairs)
         for i, ri in enumerate(run_inds):
+            pv_mask = pv_masks[i]
             dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
                                       collapse_plots=False, folder=folder,
                                       intermediate=False,
