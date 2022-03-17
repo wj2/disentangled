@@ -641,7 +641,11 @@ class ChairGenerator(ImageDatasetGenerator):
         categorical_variables = np.array([True, False, False, False, False])
         data = da.load_chair_images(folder, img_size=img_size, norm_params=True,
                                     max_load=max_load, filter_edges=filter_edges,
-                                    **kwargs)
+                                    **kwargs)        
+        if pre_model is not None:
+            pre_model = dd.PretrainedModel(img_size, pre_model,
+                                           trainable=False)        
+
         super().__init__(data, param_keys,
                          include_position=include_position,
                          position_distr=position_distr,
