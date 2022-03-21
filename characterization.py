@@ -1181,6 +1181,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             compute_trained_lvs=False,
                             compute_untrained=True,
                             categ_var=None,
+                            extrapolate_test=False, 
                             evaluate_intermediate=False):
     # train data generator
     if dg_args is None:
