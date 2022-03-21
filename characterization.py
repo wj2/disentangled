@@ -1230,8 +1230,12 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             part_frac=categ_var)
         dg_use.source_distribution = train_cat
 
-        train_d2 = train_cat.make_partition()
-        test_d2 = train_d2.flip_cat_partition().flip()
+        if extrapolate_test:
+            train_d2 = train_cat.make_partition()
+            test_d2 = train_d2.flip_cat_partition().flip()
+        else:
+            train_d2 = train_cat.flip_cat_partition().make_partition()
+            test_d2 = train_d2.flip() 
         flip_cat = True
         train_test_distrs = ((None, train_d2),
                              (None, test_d2))

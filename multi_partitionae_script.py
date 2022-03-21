@@ -167,6 +167,9 @@ def create_parser():
                         'used as the fraction of the unique entries of the '
                         'categorical variable used for training; 1 - the number '
                         'will be used for testing')
+    parser.add_argument('--extrapolation', default=False, action='store_true',
+                        help='if flagged and categ_frac is not None, then will '
+                        'train decoder on old imgs and test on new images')
     parser.add_argument('--no_compute_untrained', default=False,
                         action='store_true', help='do not compute generalization '
                         'performance for untrained variables')
@@ -366,6 +369,7 @@ if __name__ == '__main__':
         compute_trained_lvs=compute_train_lvs, plot=False,
         compute_untrained=compute_untrained,
         categ_var=args.categ_frac,
+        extrapolate_test=args.extrapolation,
         evaluate_intermediate=args.eval_intermediate)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 

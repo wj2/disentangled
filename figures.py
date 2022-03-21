@@ -1852,12 +1852,12 @@ class FigureRL(DisentangledFigure):
 
         rl_run, rl_info = self._get_rl_run()
         hist_all = rl_run['history']
+        print(rl_info['args'][0])
 
         tasks_ind = self.params.getint('hist_task_ind')
         rep_ind = self.params.getint('hist_rep_ind')
         task_color = self.params.getcolor('rl_task_color')
         epoch_cut = self.params.getint('epoch_cutoff')
-
         
         n_tasks, task_fractions = get_tasks_learned(np.squeeze(hist_all))
         ax, frac_ax = axs[:, 0]
@@ -1885,7 +1885,8 @@ class FigureRL(DisentangledFigure):
         folder = self.params.get('mp_simulations_path')
         rl_color = self.params.getcolor('rl_color')
         label = 'RL agent'
-        pv_mask = np.array([True])       
+        pv_mask = np.array([True])
+        print_args = True
 
         dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
                                   collapse_plots=False, folder=folder,
@@ -1893,7 +1894,7 @@ class FigureRL(DisentangledFigure):
                                   pv_mask=pv_mask,
                                   axs=axs, legend=label,
                                   plot_hline=False, 
-                                  print_args=False, set_title=False,
+                                  print_args=print_args, set_title=False,
                                   color=rl_color, double_ind=0,
                                   set_lims=True)
         gpl.add_vlines(5, axs[0, 0])

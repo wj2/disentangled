@@ -439,7 +439,7 @@ def load_generalization_output(folder, manifest='manifest.pkl',
     fnames_full = list(os.path.join(folder, x) for x in fnames)
     key_str = (re.match(key_template, fn).group(1) for fn in fnames)
     fnames_dict = dict(zip(key_str, fnames_full))
-    
+
     dg_file = fnames_dict.get('dg')
     models_file = fnames_dict.get('models')
     history_file = fnames_dict.get('histories')
@@ -483,7 +483,6 @@ def load_generalization_output(folder, manifest='manifest.pkl',
         args = pickle.load(open(args_file, 'rb'))
     else:
         args = None
-        
     return dg, models, th, p, c, ld, sc, gd, args
 
 def rename_files(folder, fl_templ1, fl_templ2, dry=True):
