@@ -136,11 +136,7 @@ class GaussianProcessDataGenerator(DataGenerator):
 
     def fit(self, train_x=None, train_y=None, eval_x=None, eval_y=None,
             source_distribution=None, epochs=15, train_samples=1000,
-            fit_distribution=None,
             eval_samples=10**3, batch_size=32, **kwargs):
-        if fit_distribution is None:
-            fit_distribution = sts.multivariate_normal(np.zeros(self.output_dim),
-                                                       1)
         in_samp = self.source_distribution.rvs(train_samples)
         samp_proc = self.model.sample_y(in_samp, n_samples=self.output_dim,
                                         random_state=self.rand_state)

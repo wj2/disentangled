@@ -1767,21 +1767,28 @@ class Figure5(DisentangledFigure):
         key = self.panel_keys[3]
         axs = self.gss[key]
 
-        run_inds = self.params.getlist('img_run_inds')
+        chair_nom_ind = self.params.getlist('chair_nom_ind')
+        chair_gen_ind = self.params.getlist('chair_gen_ind')
+        chair_extrap_ind = self.params.getlist('chair_extrap_ind')
+
+        twod_nom_ind = self.params.getlist('twod_nom_ind')
+        twod_gen_ind = self.params.getlist('twod_gen_ind')
+        twod_extrap_ind = self.params.getlist('twod_extrap_ind')
+
+        run_inds = (twod_nom_ind, twod_gen_ind, twod_extrap_ind,
+                    chair_nom_ind, chair_gen_ind, chair_extrap_ind)
+        
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
         shape_color = self.params.getcolor('shape_color')
         chair_color = self.params.getcolor('chair_color')
 
-        labels = ('shapes', 'chairs')
-        colors = (shape_color, chair_color)
-        double_inds = (0, None)
+        labels = ('shapes', '', '', 'chairs', '', '')
+        colors = (shape_color, shape_color, shape_color,
+                  chair_color, chair_color, chair_color)
 
-        pv_mask_2d = np.array([False, True])
-        pv_mask_chairs = np.array([True])
-        pv_masks = (pv_mask_2d, pv_mask_chairs)
+        pv_mask = np.array([True])
         for i, ri in enumerate(run_inds):
-            pv_mask = pv_masks[i]
             dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
                                       collapse_plots=False, folder=folder,
                                       intermediate=False,
@@ -1789,8 +1796,8 @@ class Figure5(DisentangledFigure):
                                       axs=axs, legend=labels[i],
                                       plot_hline=False, 
                                       print_args=False, set_title=False,
-                                      color=colors[i], double_ind=double_inds[i],
-                                      set_lims=True)
+                                      color=colors[i], double_ind=None,
+                                      set_lims=True, list_run_ind=True)
         gpl.add_vlines(3, axs[0, 0])
         gpl.add_vlines(3, axs[0, 1])
 
@@ -1836,7 +1843,7 @@ class FigureRL(DisentangledFigure):
         self.gss = gss
 
     def _get_rl_run(self):
-        ri = self.params.get('run_ind')
+        ri = self.params.getlist('run_ind_comb')[0]
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
         out = da.load_full_run(folder, ri, merge_axis=1, file_template=f_pattern,
@@ -1880,7 +1887,7 @@ class FigureRL(DisentangledFigure):
         key = self.panel_keys[1]
         axs = self.gss[key]
 
-        ri = self.params.get('run_ind')
+        ri = self.params.getlist('run_ind_comb')
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
         rl_color = self.params.getcolor('rl_color')
@@ -1896,7 +1903,7 @@ class FigureRL(DisentangledFigure):
                                   plot_hline=False, 
                                   print_args=print_args, set_title=False,
                                   color=rl_color, double_ind=0,
-                                  set_lims=True)
+                                  set_lims=True, list_run_ind=True)
         gpl.add_vlines(5, axs[0, 0])
         gpl.add_vlines(5, axs[0, 1])
         

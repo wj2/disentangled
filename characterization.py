@@ -1237,12 +1237,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         else:
             train_d2 = train_cat.flip_cat_partition().make_partition()
             test_d2 = train_d2.flip() 
-        flip_cat = True
         train_test_distrs = ((None, train_d2),
                              (None, test_d2))
-        train_cat.rvs(10)
-        train_d2.rvs(10)
-        test_d2.rvs(10)
         
     # train models
     if models_args is None:
@@ -1519,16 +1515,30 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            print_args=True, set_title=True, color=None,
                            plot_hline=True, distr_parts=None, linestyle='solid',
                            double_ind=None, set_lims=True,
-                           intermediate=False, **kwargs):
+                           intermediate=False, list_run_ind=False, **kwargs):
     if double_ind is not None:
         merge_axis = 2
     else:
         merge_axis = 1
-    data, info = da.load_full_run(folder, run_ind, merge_axis=merge_axis,
-                                  dg_type=dg_type, model_type=model_type,
-                                  file_template=f_pattern, analysis_only=True,
-                                  **kwargs) 
-    n_parts, _, _, _, p, c, _, sc, _ = data
+    if list_run_ind:
+        all_p, all_sc = [], []
+        for ri in run_ind: 
+            data, info = da.load_full_run(folder, ri, merge_axis=merge_axis,
+                                          dg_type=dg_type, model_type=model_type,
+                                          file_template=f_pattern, analysis_only=True,
+                                          **kwargs)
+            n_parts, _, _, _, p, c, _, sc, _ = data
+            all_p.append(p)
+            all_sc.append(sc)
+        
+        p = np.concatenate(all_p, axis=-2)
+        sc = np.concatenate(all_sc, axis=-2)
+    else:
+        data, info = da.load_full_run(folder, run_ind, merge_axis=merge_axis,
+                                      dg_type=dg_type, model_type=model_type,
+                                      file_template=f_pattern, analysis_only=True,
+                                      **kwargs) 
+        n_parts, _, _, _, p, c, _, sc, _ = data
     if 'beta_mult' in info['args'][0].keys():
         n_parts = np.array(n_parts)*info['args'][0]['beta_mult']
     if ('l2pr_weights_mult' in info['args'][0].keys()
