@@ -1234,6 +1234,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         if extrapolate_test:
             train_d2 = train_cat.make_partition()
             test_d2 = train_d2.flip_cat_partition().flip()
+            flip_cat = True
         else:
             train_d2 = train_cat.flip_cat_partition().make_partition()
             test_d2 = train_d2.flip() 
