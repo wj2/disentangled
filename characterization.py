@@ -1222,6 +1222,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     print('participation ratio', np.sum(pdims)**2/np.sum(pdims**2))
 
     flip_cat = False
+    lr_flip = False
     if train_models_blind:
         train_d2 = da.HalfMultidimensionalNormal(np.zeros(inp_dim), dg_source_var)
         test_d2 = train_d2.flip()
@@ -1236,6 +1237,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             test_d2 = train_d2.flip_cat_partition().flip()
             flip_cat = True
         else:
+            lr_flip = True
             train_d2 = train_cat.flip_cat_partition().make_partition()
             test_d2 = train_d2.flip() 
         train_test_distrs = ((None, train_d2),
@@ -1341,6 +1343,9 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         plot_model_manifolds(dg_use, models)
 
     if lts_scores is None:
+        if lr_flip:
+            flip_sd = dg_use.source_distribution.flip_cat_partition()
+            dg_use.source_distribution = flip_sd
         if compute_trained_lvs:
             lts_t = find_linear_mappings(
                 dg_use, models, half=True, n_samps=n_test_samples,
