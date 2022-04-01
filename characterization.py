@@ -27,7 +27,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               classifier=skc.LinearSVC, kernel='linear',
                               n_iters=2, mean=True,
                               shuffle=False, use_orthogonal=True,
-                              learn_lvs='ignore',
+                              learn_lvs='ignore', balance_samples=False,
                               repl_mean=None, **classifier_params):
     if train_func is None:
         lv_mask = np.ones(gen.input_dim, dtype=bool)
@@ -67,7 +67,26 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
     scores = np.zeros(n_iters)
     chances = np.zeros(n_iters)
     for i in range(n_iters):
-        train_samples = train_distrib.rvs(n_train_samples)
+        if balance_samples:
+            candidates = train_distrib.rvs(n_train_samples*10)
+            cats = train_func[i](candidates[:, lv_mask])
+            cat1_samps = candidates[cats == 0]
+            cat2_samps = candidates[cats == 1]
+            max_iter = 1000
+            curr_iter = 0
+            while ((len(cat1_samps) < n_train_samples
+                    or len(cat2_samps) < n_train_samples)
+                   and curr_iter < max_iter):
+                candidates = train_distrib.rvs(n_train_samples*10)
+                cats = train_func[i](candidates[:, lv_mask])
+                cat1_samps = np.concatenate((cat1_samps, candidates[cats == 0]))
+                cat2_samps = np.concatenate((cat2_samps, candidates[cats == 1]))
+                curr_iter += 1
+            train_samples = np.concatenate((cat1_samps[:n_train_samples],
+                                            cat2_samps[:n_train_samples]),
+                                           axis=0)
+        else:
+            train_samples = train_distrib.rvs(n_train_samples)
         if repl_mean is not None:
             train_samples[:, repl_mean] = train_distrib.mean[repl_mean]
         train_labels = train_func[i](train_samples[:, lv_mask])
@@ -78,7 +97,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
         if not np.any(np.isnan(train_rep)):
             c = classifier(max_iter=100000, **classifier_params)
             ops = [skp.StandardScaler()]
-            if train_rep.shape[1] > 1000:
+            if train_rep.shape[1] > 2000:
                 p = skd.PCA(.95)
                 ops.append(p)
             ops.append(c)
@@ -183,12 +202,24 @@ def train_multiple_models_dims(input_dims, *args, n_train_samps=10**5,
         ths.append(th)
     return np.array(models), np.array(ths)
 
-def evaluate_multiple_models_dims(dg_use, models, *args, **kwargs):
+def evaluate_multiple_models_dims(dg_use, models, *args, n_train_samples=10**3,
+                                  **kwargs):
     ps, cs = [], []
     for m in models:
-        p, c = evaluate_multiple_models(dg_use, m, *args, **kwargs)
-        ps.append(p)
-        cs.append(c)
+        if u.check_list(n_train_samples):
+            p_m = []
+            c_m = []
+            for nts in n_train_samples:
+                p, c = evaluate_multiple_models(dg_use, m, *args,
+                                                n_train_samples=nts,
+                                                balance_samples=True,
+                                                **kwargs)
+                p_m.append(p)
+                c_m.append(c)
+        else:
+            p_m, c_m = evaluate_multiple_models(dg_use, m, *args, **kwargs)
+        ps.append(p_m)
+        cs.append(c_m)
     return np.array(ps), np.array(cs)
 
 def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size=32,
@@ -1048,22 +1079,39 @@ def plot_recon_accuracy(scores, use_x=None, ax=None, log_x=False,
                 ax.plot(use_x, scores[:, j, k], 'o', color=col)
     return ax
 
-def find_linear_mappings(dg_use, model_arr, n_samps=10**4, half_ns=100, half=True,
-                         **kwargs):
+def find_linear_mappings(dg_use, model_arr, n_train_samps=10**4, half_ns=100,
+                         half=True, **kwargs):
     inds = it.product(*(range(x) for x in model_arr.shape))
+    scores_shape = model_arr.shape
+    if u.check_list(n_train_samps):
+        scores_shape = scores_shape + (len(n_train_samps),)
     if half:
-        scores_shape = model_arr.shape + (half_ns,)
-    else:
-        scores_shape = model_arr.shape
+        scores_shape = scores_shape + (half_ns,)
     scores = np.zeros(scores_shape, dtype=float)
     sims = np.zeros_like(scores, dtype=object)
     lintrans = np.zeros(model_arr.shape + (2,), dtype=object)
     for ind in inds:
-        lr, sc, sim = find_linear_mapping(dg_use, model_arr[ind], n_samps=n_samps,
-                                          **kwargs)
+        if u.check_list(n_train_samps):
+            lr = []
+            sc = []
+            sim = []
+            for nts in n_train_samps:
+                lr_n, sc_n, sim_n = find_linear_mapping(dg_use, model_arr[ind],
+                                                        n_train_samps=nts,
+                                                        **kwargs)
+                lr.append(lr_n)
+                sc.append(sc_n)
+                sim.append(sim_n)
+            lr = np.array(lr)
+            sc = np.array(sc)
+            sim = np.array(sim)
+        else:
+            lr, sc, sim = find_linear_mapping(dg_use, model_arr[ind],
+                                              n_train_samps=n_train_samps,
+                                              **kwargs)
         scores[ind] = sc
-        lintrans[ind] = lr
-        sims[ind] = sim
+        lintrans[ind] = None # lr
+        sims[ind] = None 
     return lintrans, scores, sims
 
 def find_linear_mapping(*args, half=True, half_ns=100, comb_func=np.median,
@@ -1092,7 +1140,8 @@ def plot_autodis_performance(latents, perf, axs=None):
     ax_c.set_ylim([.5, 1])
     ax_r.set_ylim([0, 1])
 
-def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
+def find_linear_mapping_single(dg_use, model, n_train_samps=10**4,
+                               n_test_samps=10**4, half=True,
                                get_parallelism=True, train_stim_set=None,
                                train_labels=None, test_stim_set=None,
                                test_labels=None, feat_mask=None,
@@ -1122,11 +1171,11 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
             except AttributeError:
                 src = da.HalfMultidimensionalNormal.partition(
                     dg_use.source_distribution)
-            stim = src.rvs(n_samps)
+            stim = src.rvs(n_train_samps)
             if repl_mean is not None:
                 stim[:, repl_mean] = src.mean[repl_mean]
         else:
-            stim = dg_use.source_distribution.rvs(n_samps)
+            stim = dg_use.source_distribution.rvs(n_train_samps)
             if repl_mean is not None:
                 stim[:, repl_mean] = dg_use.source_distribution.mean[repl_mean]
 
@@ -1135,9 +1184,9 @@ def find_linear_mapping_single(dg_use, model, n_samps=10**4, half=True,
             flipped = src.flip()
             if flip_cat:
                 flipped = flipped.flip_cat_partition()
-            test_stim = flipped.rvs(n_samps)
+            test_stim = flipped.rvs(n_test_samps)
         else:
-            test_stim = dg_use.source_distribution.rvs(n_samps)
+            test_stim = dg_use.source_distribution.rvs(n_test_samps)
         test_enc_pts = model.get_representation(dg_use.generator(test_stim))
     if feat_mask is None:
         feat_mask = np.ones(stim.shape[1], dtype=bool)
@@ -1182,7 +1231,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             compute_untrained=True,
                             categ_var=None,
                             extrapolate_test=False, 
-                            evaluate_intermediate=False):
+                            evaluate_intermediate=False,
+                            samples_seq=None):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1306,21 +1356,27 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         n_train_samples = 2*10**3
         n_test_samples = 10**3
         n_save_samps = int(n_save_samps/10)
+    elif samples_seq is not None:
+        n_train_samples = np.logspace(*samples_seq[0:2], int(samples_seq[2]),
+                                      dtype=int)
+        n_test_samples = 10**3
     else:
         n_train_samples = 2*10**3
         n_test_samples = 10**3
-
+    n_train_samples_c = n_train_samples
+    n_train_samples_r = n_train_samples_c*2
+        
     print('distr set')
     if p_c is None:
         if compute_trained_lvs:
             pt, ct = evaluate_multiple_models_dims(
                 dg_use, models, None, test_ds, train_distributions=train_ds,
-                n_iters=eval_n_iters, n_train_samples=n_train_samples,
+                n_iters=eval_n_iters, n_train_samples=n_train_samples_c,
                 n_test_samples=n_test_samples, mean=p_mean, learn_lvs='trained')
             if compute_untrained:
                 pu, cu = evaluate_multiple_models_dims(
                     dg_use, models, None, test_ds, train_distributions=train_ds,
-                    n_iters=eval_n_iters, n_train_samples=n_train_samples,
+                    n_iters=eval_n_iters, n_train_samples=n_train_samples_c,
                     n_test_samples=n_test_samples, mean=p_mean,
                     learn_lvs='untrained')
                 p = np.stack((pt, pu), axis=0)
@@ -1331,7 +1387,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
         else:
             p, c = evaluate_multiple_models_dims(
                 dg_use, models, None, test_ds, train_distributions=train_ds,
-                n_iters=eval_n_iters, n_train_samples=n_train_samples,
+                n_iters=eval_n_iters, n_train_samples=n_train_samples_c,
                 n_test_samples=n_test_samples, mean=p_mean)
     else:
         p, c = p_c
@@ -1348,11 +1404,13 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             dg_use.source_distribution = flip_sd
         if compute_trained_lvs:
             lts_t = find_linear_mappings(
-                dg_use, models, half=True, n_samps=n_test_samples,
+                dg_use, models, half=True, n_train_samps=n_train_samples_r,
+                n_test_samps=n_test_samples,
                 learn_lvs='trained', flip_cat=flip_cat)
             if compute_untrained:
                 lts_u = find_linear_mappings(
-                    dg_use, models, half=True, n_samps=n_test_samples,
+                    dg_use, models, half=True, n_train_samps=n_train_samples_r,
+                    n_test_samps=n_test_samples,
                     learn_lvs='untrained', flip_cat=flip_cat)
                 lts_scores = list(np.stack((lts_ti, lts_u[i]), axis=0)
                                   for i, lts_ti in enumerate(lts_t))
@@ -1360,10 +1418,9 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                 lts_scores = lts_t
         else:
             lts_scores = find_linear_mappings(
-                dg_use, models, half=True, n_samps=n_test_samples,
+                dg_use, models, half=True, n_train_samps=n_train_samples_r,
+                n_test_samps=n_test_samples,
                 flip_cat=flip_cat)
-    # print(lts_scores[1])
-    # print(np.mean(lts_scores[1]))
     print(np.mean(lts_scores[1], axis=-1))
     if plot:
         plot_recon_accuracy(lts_scores[1], use_x=use_x, log_x=models_log_x)

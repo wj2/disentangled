@@ -79,7 +79,7 @@ def create_parser():
                         'training')
     parser.add_argument('--model_epochs', default=200, type=int,
                         help='the number of epochs to train each model for')
-    parser.add_argument('--dg_train_epochs', default=25, type=int,
+    parser.add_argument('--dg_train_epochs', default=5, type=int,
                         help='the number of epochs to train the data generator '
                         'for')
     parser.add_argument('--l2pr_weights', default=None, nargs=2, type=float,
@@ -111,7 +111,7 @@ def create_parser():
                         'functions (default 0)')
     parser.add_argument('--nan_salt', default=None, type=float,
                         help='probability an output is replaced with nan')
-    parser.add_argument('--train_dg', default=False, action='store_true',
+    parser.add_argument('--no_train_dg', default=False, action='store_true',
                         help='train data generator')
     parser.add_argument('--source_distr', default='normal', type=str,
                         help='distribution to sample from (normal or uniform)')
@@ -178,6 +178,9 @@ def create_parser():
     parser.add_argument('--readout_bias_reg', default=0, type=float,
                         help='strength of the L2 norm on the bias for the '
                         'readout units')
+    parser.add_argument('--training_samples_seq', default=None, type=float,
+                        nargs=3, help='different numbers of training examples '
+                        'to use')
     return parser
 
 if __name__ == '__main__':
@@ -200,7 +203,7 @@ if __name__ == '__main__':
         n_reps = args.n_reps
         n_train_diffs = args.n_train_diffs
         dg_train_epochs = args.dg_train_epochs
-    if not args.train_dg:
+    if args.no_train_dg:
         dg_train_epochs = 0
 
     save_tf_models = not args.no_models
@@ -237,7 +240,7 @@ if __name__ == '__main__':
         dg_use = dg.ShiftMapDataGenerator(true_inp_dim, None, args.dg_dim,
                                           source_distribution=sd)
     elif args.use_prf_dg:
-        prf_train_epochs = 5
+        prf_train_epochs = dg_train_epochs
         dg_layers = (100, 200)
         dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
                                             args.dg_dim,
@@ -370,7 +373,8 @@ if __name__ == '__main__':
         compute_untrained=compute_untrained,
         categ_var=args.categ_frac,
         extrapolate_test=args.extrapolation,
-        evaluate_intermediate=args.eval_intermediate)
+        evaluate_intermediate=args.eval_intermediate,
+        samples_seq=args.training_samples_seq)
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,

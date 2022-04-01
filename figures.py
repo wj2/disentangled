@@ -62,7 +62,8 @@ def plot_multi_bgp(res_list_c, res_list_r, ax_c, ax_r, legend_labels=None,
     _make_rgp_ax(ax_r)
 
 def plot_single_gen(results, ax, xs=None, color=None,
-                    labels=('standard', 'gen'), legend_label=''):
+                    labels=('standard', 'gen'), legend_label='',
+                    rotation=0):
     if xs is None:
         xs = [0, 1]
     gpl.violinplot(results.T, xs, ax=ax, color=(color, color),
@@ -70,13 +71,13 @@ def plot_single_gen(results, ax, xs=None, color=None,
     ax.plot(xs, np.mean(results, axis=0), 'o', color=color,
             label=legend_label)
     ax.set_xticks(xs)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(labels, rotation=rotation)
     gpl.clean_plot(ax, 0)
     gpl.clean_plot_bottom(ax, keeplabels=True)
     return ax
 
 def plot_multi_gen(res_list, ax, xs=None, labels=('standard', 'gen'),
-                   sep=.2, colors=None, legend_labels=None):
+                   sep=.2, colors=None, legend_labels=None, rotation=0):
     if xs is None:
         xs = np.array([0, 1])
     if colors is None:
@@ -91,7 +92,7 @@ def plot_multi_gen(res_list, ax, xs=None, labels=('standard', 'gen'),
         plot_single_gen(rs, ax, xs=xs + use_xs[i], color=colors[i],
                         legend_label=legend_labels[i])
     ax.set_xticks(xs)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(labels, rotation=rotation)
     ax.legend(frameon=False)
     gpl.clean_plot(ax, 0)
     gpl.clean_plot_bottom(ax, keeplabels=True)
@@ -1141,13 +1142,16 @@ class Figure3Grid(DisentangledFigure):
 class FigureGP(DisentangledFigure):
 
     def __init__(self, fig_key='figure_gp', colors=colors, **kwargs):
-        fsize = (6.5, 4)
+        fsize = (6.5, 6.5)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
         params = cf[fig_key]
         self.panel_keys = ('gp_inputs', 'dp_tasks', 'gp_results',
-                           'gp_input_characterization')
+                           'gp_input_characterization',
+                           'gp_task_characterization',
+                           'gp_task_schem',
+                           'gp_input_schem')
         super().__init__(fsize, params, colors=colors, **kwargs)
 
     def make_gp_dgs(self, retrain=False):
@@ -1173,9 +1177,11 @@ class FigureGP(DisentangledFigure):
         else:
             task_dim = self.params.getint('task_dim')
             length_scales = self.params.getlist('task_scales', typefunc=float)
-            gp_tasks = np.zeros(len(length_scales), dtype=object)
+            n_tasks = self.params.getint('n_tasks_per_dim')
+            
+            gp_tasks = np.zeros((len(length_scales), n_tasks), dtype=object)
             for i, ls in enumerate(length_scales):
-                out = dd.make_tasks(task_dim, 1, use_gp_tasks=True,
+                out = dd.make_tasks(task_dim, n_tasks, use_gp_tasks=True,
                                     gp_task_length_scale=ls)
                 func, _, _ = out
                 gp_tasks[i] = func
@@ -1186,25 +1192,42 @@ class FigureGP(DisentangledFigure):
         gss = {}
 
         n_dgs = len(self.params.getlist('dg_scales', typefunc=float))
-        dg_grid = pu.make_mxn_gridspec(self.gs, 1, n_dgs, 0, 40,
+        dg_grid = pu.make_mxn_gridspec(self.gs, 1, n_dgs, 33, 60,
                                        15, 100, 5, 5)
         axs_3ds = np.ones((1, n_dgs), dtype=bool)
         gss[self.panel_keys[0]] = self.get_axs(dg_grid, plot_3ds=axs_3ds,
                                                squeeze=True)
 
         n_tasks = len(self.params.getlist('task_scales', typefunc=float))
-        task_grid = pu.make_mxn_gridspec(self.gs, n_tasks, 1, 20, 100,
+        task_grid = pu.make_mxn_gridspec(self.gs, n_tasks, 1, 40, 100,
                                          0, 20, 5, 5)
         gss[self.panel_keys[1]] = self.get_axs(task_grid, squeeze=True,
                                                aspect='equal')
 
-        res_grid = pu.make_mxn_gridspec(self.gs, 1, 2, 60, 100,
+        res_grid = pu.make_mxn_gridspec(self.gs, 1, 2, 75, 100,
                                         25, 100, 5, 10)
         gss[self.panel_keys[2]] = self.get_axs(res_grid, squeeze=True)
 
-        inp_char_grid = pu.make_mxn_gridspec(self.gs, 1, 3, 30, 45,
-                                             30, 90, 5, 10)
-        gss[self.panel_keys[3]] = self.get_axs(inp_char_grid, squeeze=True)
+        inp_char_grid = pu.make_mxn_gridspec(self.gs, 1, 4, 60, 70,
+                                             20, 100, 5, 10)
+        char_axs = self.get_axs(inp_char_grid, squeeze=True)
+        gss[self.panel_keys[3]] = char_axs[1:]
+        gss[self.panel_keys[4]] = char_axs[0]
+
+        task_schem = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 30,
+                                          0, 30, 10, 5)
+        gss[self.panel_keys[5]] = self.get_axs(task_schem, squeeze=False)
+
+        input_schem = pu.make_mxn_gridspec(self.gs, 3, 1, 0, 30,
+                                           77, 90, 5, 5)
+        input_gp_axs = self.get_axs(input_schem, squeeze=True, sharex=True,
+                                    sharey=True)
+        input_comb_ax = self.get_axs((self.gs[0:30, 40:70],),
+                                     plot_3ds=np.ones(1, dtype=bool),
+                                     squeeze=False)
+        lv_ax = self.get_axs((self.gs[0:30, 90:],),
+                             squeeze=False)
+        gss[self.panel_keys[6]] = (lv_ax[0], input_gp_axs, input_comb_ax[0])
 
         self.gss = gss
 
@@ -1226,6 +1249,107 @@ class FigureGP(DisentangledFigure):
             dc.plot_diagnostics(dg, pass_model, rs, n_arcs, scale_mag=.5,
                                 markers=False, ax=ax, plot_3d=vis_3d)
 
+
+    def panel_gp_input_schem(self, retrain=False):
+        key = self.panel_keys[6]
+        lv_ax, gp_axs, comb_ax = self.gss[key]
+        
+        ls = self.params.getfloat('eg_input_ls')
+        if self.data.get(key) is None or retrain:
+            gp_inp = dg.GaussianProcessDataGenerator(2, 1, 3,
+                                                     length_scale=ls)
+            gp_inp.fit()
+
+            mesh_pts = self.params.getint('mesh_pts')
+            task_range = self.params.getfloat('task_range')
+            
+            lv1 = np.zeros((mesh_pts, 2))
+            lv1[:, 0] = np.linspace(-task_range, task_range, mesh_pts)
+            lv2 = np.zeros((mesh_pts, 2))
+            lv2[:, 1] = np.linspace(-task_range, task_range, mesh_pts)
+
+            rep1 = gp_inp.get_representation(lv1)
+            rep2 = gp_inp.get_representation(lv2)
+
+            self.data[key] = ((lv1, rep1), (lv2, rep2), gp_inp)
+        (lv1, rep1), (lv2, rep2), gp_inp = self.data[key]
+
+        cmap1, cmap2 = self.params.getlist('schem_cmaps')
+        
+        gpl.plot_colored_line(lv1[:, 0], lv1[:, 1], ax=lv_ax, cmap=cmap1)
+        gpl.plot_colored_line(lv2[:, 0], lv2[:, 1], ax=lv_ax, cmap=cmap2)
+
+        for i in range(rep1.shape[1]):
+            gpl.plot_colored_line(lv1[:, 0], rep1[:, i], ax=gp_axs[i],
+                                  cmap=cmap1)
+            gpl.plot_colored_line(lv2[:, 1], rep2[:, i], ax=gp_axs[i],
+                                  cmap=cmap2)
+            gpl.clean_plot(gp_axs[i], 0)
+            gp_axs[i].set_ylabel('GP {}'.format(i+1))
+
+        gp_axs[-1].set_xlabel('LV 1/2')
+        gpl.plot_colored_line(rep1[:, 0], rep1[:, 1], rep1[:, 2], ax=comb_ax,
+                              cmap=cmap1)
+        gpl.plot_colored_line(rep2[:, 0], rep2[:, 1], rep2[:, 2], ax=comb_ax,
+                              cmap=cmap2)
+
+        lv_ax.set_aspect('equal')
+        gpl.clean_plot(lv_ax, 0)
+        gpl.make_xaxis_scale_bar(lv_ax, 1)
+        gpl.make_yaxis_scale_bar(lv_ax, 1)
+
+        lv_ax.set_xlabel('LV 1')
+        lv_ax.set_ylabel('LV 2')
+
+        gpl.clean_3d_plot(comb_ax)
+        gpl.make_3d_bars(comb_ax, bar_len=1)
+            
+    def panel_gp_task_schem(self, retrain=False):
+        key = self.panel_keys[5]
+        task_axs = self.gss[key]
+
+        n_tasks = task_axs.shape[0]
+        ls = self.params.getfloat('eg_task_ls')
+        if self.data.get(key) is None or retrain:
+            task = dg.GaussianProcessDataGenerator(2, 1, n_tasks,
+                                                   length_scale=ls)
+            task.fit()
+            mesh_pts = self.params.getint('mesh_pts')
+            task_range = self.params.getfloat('task_range')
+            task_vals = np.linspace(-task_range, task_range, mesh_pts)
+            task_coords = np.array(list(it.product(range(mesh_pts), repeat=2)))
+            task_maps = []
+            for i in range(n_tasks):
+                task_func = lambda x: task.get_representation(x)[:, i]
+                task_map = self._get_task_map(task_func, task_coords,
+                                              task_vals)
+                task_maps.append(task_map)
+            self.data[key] = (task_range, task_vals, task_maps)
+            
+        task_range, task_vals, task_maps = self.data.get(key)
+        cmap = self.params.get('task_cmap')
+
+        for i, task_map in enumerate(task_maps):
+            extreme = np.max(np.abs(task_map))
+            tm = np.diff(task_map > 0, n=1, axis=0)
+            tm_x, tm_y = np.where(tm)
+            tm_x = task_vals[tm_x]
+            tm_y = task_vals[tm_y]
+            m = gpl.pcolormesh(task_vals, task_vals, task_map, ax=task_axs[i, 0],
+                               cmap=cmap, vmin=-extreme, vmax=extreme)
+            task_axs[i, 0].plot(tm_y, tm_x, color='k', linewidth=1)
+            gpl.pcolormesh(task_vals, task_vals, task_map > 0, ax=task_axs[i, 1],
+                           cmap=cmap, vmin=0, vmax=1)
+            task_axs[i, 0].set_xticks([-task_range, 0, task_range])
+            task_axs[i, 0].set_yticks([-task_range, 0, task_range])
+            task_axs[i, 0].set_aspect('equal')
+            task_axs[i, 1].set_xticks([-task_range, 0, task_range])
+            task_axs[i, 1].set_yticks([-task_range, 0, task_range])
+            task_axs[i, 1].set_aspect('equal')
+
+        cb = self.f.colorbar(m, ax=task_axs)
+        cb.set_label('GP response')
+            
     def _get_task_map(self, func, task_coords, task_vals):
         task_map = np.zeros((len(task_vals), len(task_vals)))
         for (i, j) in task_coords:
@@ -1244,14 +1368,16 @@ class FigureGP(DisentangledFigure):
         task_range = self.params.getfloat('task_range')
         task_vals = np.linspace(-task_range, task_range, mesh_pts)
         cmap = self.params.get('task_cmap')
+        task_ind = self.params.getint('task_ind')
 
         task_coords = np.array(list(it.product(range(mesh_pts), repeat=2)))
         for i, task in enumerate(tasks):
+            task = task[task_ind]
             ls = length_scales[i]
             ax = task_axs[i]
             ax.set_ylabel('LS = {:.0f}'.format(ls))
 
-            task_map = self._get_task_map(task[0], task_coords, task_vals)
+            task_map = self._get_task_map(task, task_coords, task_vals)
             gpl.pcolormesh(task_vals, task_vals, task_map, ax=ax,
                            cmap=cmap)            
             ax.set_xticks([])
@@ -1327,21 +1453,48 @@ class FigureGP(DisentangledFigure):
                                                 fit_samples=fit_samples)
             self.data[key] = out
         out = self.data[key]
-        gpl.plot_trace_werr(length_scales, out[1], ax=ax_c)
-        gpl.plot_trace_werr(length_scales, out[2], ax=ax_c)
+        x_vals = length_scales # np.arange(len(length_scales))
+        gpl.plot_trace_werr(x_vals, out[1], ax=ax_c, label='standard')
+        gpl.plot_trace_werr(x_vals, out[2], ax=ax_c, label='gen')
 
-        gpl.plot_trace_werr(length_scales, out[3], ax=ax_r)
-        gpl.plot_trace_werr(length_scales, out[4], ax=ax_r)
+        gpl.plot_trace_werr(x_vals, out[3], ax=ax_r)
+        gpl.plot_trace_werr(x_vals, out[4], ax=ax_r)
 
-        gpl.plot_trace_werr(length_scales, out[0], ax=ax_d)
+        gpl.plot_trace_werr(x_vals, out[0], ax=ax_d)
+
+        # ax_r.set_xticks(x_vals)
+        # ax_r.set_xticklabels(length_scales, rotation=90)
+        # ax_c.set_xticks(x_vals)
+        # ax_c.set_xticklabels(length_scales, rotation=90)
+        # ax_d.set_xticks(x_vals)
+        # ax_d.set_xticklabels(length_scales, rotation=90)
 
         ax_c.set_xscale('log')
         ax_r.set_xscale('log')
         ax_d.set_xscale('log')
-        ax_r.set_xlabel('kernel length scale')
+        ax_r.set_xlabel('input length scale')
         ax_c.set_ylabel('classifier')
         ax_r.set_ylabel('regression')
-        ax_d.set_ylabel('dimensionality')
+        ax_d.set_ylabel('input dim')
+
+    def panel_gp_task_characterization(self, retrain=False):
+        key = self.panel_keys[4]
+        ax = self.gss[key]
+
+        tasks = self.make_gp_tasks(retrain=retrain)
+        task_dim = self.params.getint('task_dim')
+        task_scales = self.params.getlist('task_scales', typefunc=float)
+        sd = sts.multivariate_normal(np.zeros(task_dim), 1)
+        samps = sd.rvs(10000)
+        dims = np.zeros(len(task_scales))
+        for i, task in enumerate(tasks):
+            resps = np.concatenate(list(t(samps) for t in task), axis=1)
+            dims[i] = u.participation_ratio(resps)
+
+        gpl.plot_trace_werr(task_scales, dims, ax=ax)
+        gpl.add_hlines(task_dim, ax)
+        ax.set_xlabel('task length scale')
+        ax.set_ylabel('output dim')
 
             
 class Figure4(DisentangledFigure):
@@ -1511,16 +1664,15 @@ class Figure4(DisentangledFigure):
         gpl.add_vlines(rfdg.input_dim, res_axs[0, 1])
 
 
-class Figure5(DisentangledFigure):
+class FigureImg(DisentangledFigure):
 
-    def __init__(self, fig_key='figure5', colors=colors, **kwargs):
-        fsize = (7, 3.75)
+    def __init__(self, fig_key='figure_img', colors=colors, **kwargs):
+        fsize = (6, 4)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
         params = cf[fig_key]
-        self.panel_keys = ('img_egs', 'rep_geometry', 'traversal_comparison',
-                           'preproc_img', 'preproc_img_null')
+        self.panel_keys = ('preproc_img_learning', 'preproc_img_null', 'img_egs')
         super().__init__(fsize, params, colors=colors, **kwargs)
 
     def make_shape_dg(self, retrain=False):
@@ -1567,28 +1719,20 @@ class Figure5(DisentangledFigure):
         
     def make_gss(self):
         gss = {}
-    
-        rep_geom_fd = self.gs[20:60, 30:45]
-        rep_geom_bvae = self.gs[20:60, 45:60]
-        rep_geom_class_perf = self.gs[70:, 35:45]
-        rep_geom_regr_perf = self.gs[70:, 50:60]
-        axs_3d = np.zeros(4, dtype=bool)
-        axs_3d[0:2] = self.params.getboolean('vis_3d')
-        gss[self.panel_keys[1]] = self.get_axs((rep_geom_fd, rep_geom_bvae,
-                                                rep_geom_class_perf,
-                                                rep_geom_regr_perf),
-                                               plot_3ds=axs_3d)
 
-        recon_grids = pu.make_mxn_gridspec(self.gs, 5, 5, 0, 100,
-                                           65, 100, 3, 1)        
-        gss[self.panel_keys[2]] = self.get_axs(recon_grids)
-
-        preproc_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 30, 100,
-                                             0, 30, 3, 10)
+        eg_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 40,
+                                        0, 30, 4, 4)        
+        gss[self.panel_keys[2]] = self.get_axs(eg_grids)
         
-        pre_axs = self.get_axs(preproc_grids)
-        gss[self.panel_keys[4]] = pre_axs[0:1]
-        gss[self.panel_keys[3]] = pre_axs[1:]
+        null_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 50, 100,
+                                          0, 30, 10, 10)
+        null_axs = self.get_axs(null_grids, sharex=True)
+        gss[self.panel_keys[1]] = null_axs
+        
+        preproc_grids = pu.make_mxn_gridspec(self.gs, 1, 2, 60, 95,
+                                             50, 100, 3, 10)
+        preproc_axs = self.get_axs(preproc_grids, sharex=True)
+        gss[self.panel_keys[0]] = preproc_axs
 
         self.gss = gss
 
@@ -1597,9 +1741,27 @@ class Figure5(DisentangledFigure):
         id_model = dd.IdentityModel(flatten=True)
         id_model.learn_lvs = np.array(learned_lvs)
         return id_model
-        
+
+    def panel_img_egs(self):
+        key = self.panel_keys[2]
+        axs = self.gss[key]
+
+        if key not in self.data.keys():
+            shape_dg = self.make_shape_dg()
+            _, shape_imgs = shape_dg.sample_reps(2)
+            chair_dg = self.make_chair_dg()
+            _, chair_imgs = chair_dg.sample_reps(2)
+            self.data[key] = (shape_imgs, chair_imgs)
+
+        shape_imgs, chair_imgs = self.data[key]
+        all_imgs = np.concatenate((shape_imgs, chair_imgs), axis=0)
+        for i, ind in enumerate(u.make_array_ind_iterator(axs.shape)):
+            axs[ind].imshow(all_imgs[i])
+            axs[ind].set_xticks([])
+            axs[ind].set_yticks([])
+    
     def panel_preproc_img_null(self):
-        key = self.panel_keys[4]
+        key = self.panel_keys[1]
         axs = self.gss[key]
 
         if not key in self.data.keys():
@@ -1628,15 +1790,247 @@ class Figure5(DisentangledFigure):
 
         shape_col = self.params.getcolor('shape_color')
         chair_col = self.params.getcolor('chair_color')
-        colors = (shape_col, shape_col, chair_col, chair_col)
+        colors = (shape_col, chair_col)
 
-        labels = ('shape input', 'shape', 'chair input', 'chair')
+        labels = ('shape', 'chair')
 
-        plot_multi_bgp((id_shape[0], ppm_shape[0], id_chair[0], ppm_chair[0]),
-                       (id_shape[1], ppm_shape[1], id_chair[1], ppm_chair[1]),
+        plot_multi_bgp((id_shape[0], id_chair[0]),
+                       (id_shape[1], id_chair[1]),
                        axs[0, 0], axs[0, 1], colors=colors,
-                       legend_labels=labels)
+                       legend_labels=labels, labels=('', ''))
+        plot_multi_bgp((ppm_shape[0], ppm_chair[0]),
+                       (ppm_shape[1], ppm_chair[1]),
+                       axs[1, 0], axs[1, 1], colors=colors,
+                       legend_labels=('', ''), rotation=45)
 
+    def panel_preproc_img_learning(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        chair_nom_ind = self.params.getlist('chair_nom_ind')
+        chair_gen_ind = self.params.getlist('chair_gen_ind')
+        chair_extrap_ind = self.params.getlist('chair_extrap_ind')
+
+        twod_nom_ind = self.params.getlist('twod_nom_ind')
+        twod_gen_ind = self.params.getlist('twod_gen_ind')
+        twod_extrap_ind = self.params.getlist('twod_extrap_ind')
+
+        # run_inds = ((twod_nom_ind, chair_nom_ind),
+        #             (twod_gen_ind, chair_gen_ind),
+        #             (twod_extrap_ind, chair_extrap_ind))
+        run_inds = ((twod_nom_ind, chair_nom_ind),)
+        
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        shape_color = self.params.getcolor('shape_color')
+        chair_color = self.params.getcolor('chair_color')
+
+        labels = ('shapes', 'chairs')
+        colors = (shape_color, chair_color)
+
+        pv_mask = np.array([True])
+        for i, (ri_shape, ri_chair) in enumerate(run_inds):
+            dc.plot_recon_gen_summary(ri_shape, f_pattern, log_x=False, 
+                                      collapse_plots=False, folder=folder,
+                                      intermediate=False,
+                                      pv_mask=pv_mask,
+                                      axs=axs[i:i+1], legend=labels[0],
+                                      plot_hline=False, 
+                                      print_args=False, set_title=False,
+                                      color=colors[0], double_ind=None,
+                                      set_lims=True, list_run_ind=True)
+            dc.plot_recon_gen_summary(ri_chair, f_pattern, log_x=False, 
+                                      collapse_plots=False, folder=folder,
+                                      intermediate=False,
+                                      pv_mask=pv_mask,
+                                      axs=axs[i:i+1], legend=labels[1],
+                                      plot_hline=False, 
+                                      print_args=False, set_title=False,
+                                      color=colors[1], double_ind=None,
+                                      set_lims=True, list_run_ind=True)
+            gpl.add_vlines(3, axs[i, 0])
+            gpl.add_vlines(3, axs[i, 1])
+
+        # axs[0, 0].set_ylabel('')
+        # axs[0, 1].set_ylabel('')
+        # axs[2, 0].set_ylabel('')
+        # axs[2, 1].set_ylabel('')
+
+
+class SIFigureZeroshot(DisentangledFigure):
+
+    def __init__(self, fig_key='figure_img_zeroshot', colors=colors, **kwargs):
+        fsize = (6, 4)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.panel_keys = ('zero_gen_flips', 'schem_grids')
+        super().__init__(fsize, params, colors=colors, **kwargs)
+
+    def make_shape_dg(self, retrain=False):
+        try:
+            assert not retrain
+            shape_dg = self.shape_dg
+        except:
+            twod_file = self.params.get('shapes_path')
+            img_size = tuple(self.params.getlist('img_size', typefunc=int))
+            shape_dg = dg.TwoDShapeGenerator(twod_file, img_size=img_size,
+                                             max_load=10000,
+                                             convert_color=False)
+            self.shape_dg = shape_dg 
+        return shape_dg
+
+    def make_chair_dg(self, retrain=False):
+        try:
+            assert not retrain
+            chair_dg = self.chair_dg
+        except:
+            chair_file = self.params.get('chairs_path')
+            img_size = tuple(self.params.getlist('img_size', typefunc=int))
+            n_chairs = self.params.getint('n_chairs')
+            filter_edges = self.params.getfloat('filter_edges')
+            chair_dg = dg.ChairGenerator(chair_file, img_size=img_size,
+                                         max_load=np.inf,
+                                         include_position=True,
+                                         max_move=.6, filter_edges=filter_edges,
+                                         n_unique_chairs=n_chairs)
+            self.chair_dg = chair_dg 
+        return chair_dg
+
+    def make_preproc_model(self):
+        try:
+            preproc_model = self.preproc_model
+        except AttributeError:
+            preproc_path = self.params.get('preproc_path')
+            img_size = tuple(self.params.getlist('img_size', typefunc=int))
+            learned_lvs = self.params.getlist('learned_lvs', typefunc=bool)
+            preproc_model = dd.PretrainedModel(img_size, preproc_path)
+            preproc_model.learn_lvs = np.array(learned_lvs)
+            self.preproc_model = preproc_model
+        return preproc_model
+        
+    def make_gss(self):
+        gss = {}
+
+        schem_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100,
+                                           0, 40, 10, 5)
+        schem_axs = self.get_axs(schem_grids)
+        gss[self.panel_keys[1]] = schem_axs
+        
+        res_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100,
+                                        50, 100, 10, 5)
+        res_axs = self.get_axs(res_grids)
+        gss[self.panel_keys[0]] = res_axs
+
+        self.gss = gss
+
+    def panel_schem_grids(self):
+        key = self.panel_keys[1]
+        axs = self.gss[key]
+        
+        # plot a few different chair images
+        
+    def panel_zero_gen_flips(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        chair_nom_ind = self.params.getlist('chair_nom_ind')
+        chair_gen_ind = self.params.getlist('chair_gen_ind')
+        chair_extrap_ind = self.params.getlist('chair_extrap_ind')
+
+        twod_nom_ind = self.params.getlist('twod_nom_ind')
+        twod_gen_ind = self.params.getlist('twod_gen_ind')
+        twod_extrap_ind = self.params.getlist('twod_extrap_ind')
+
+        run_inds = ((twod_gen_ind, chair_gen_ind),
+                    (twod_extrap_ind, chair_extrap_ind))
+        
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        shape_color = self.params.getcolor('shape_color')
+        chair_color = self.params.getcolor('chair_color')
+
+        labels = ('shapes', 'chairs')
+        colors = (shape_color, chair_color)
+
+        pv_mask = np.array([True])
+        for i, (ri_shape, ri_chair) in enumerate(run_inds):
+            dc.plot_recon_gen_summary(ri_shape, f_pattern, log_x=False, 
+                                      collapse_plots=False, folder=folder,
+                                      intermediate=False,
+                                      pv_mask=pv_mask,
+                                      axs=axs[i:i+1], legend=labels[0],
+                                      plot_hline=False, 
+                                      print_args=False, set_title=False,
+                                      color=colors[0], double_ind=None,
+                                      set_lims=True, list_run_ind=True)
+            dc.plot_recon_gen_summary(ri_chair, f_pattern, log_x=False, 
+                                      collapse_plots=False, folder=folder,
+                                      intermediate=False,
+                                      pv_mask=pv_mask,
+                                      axs=axs[i:i+1], legend=labels[1],
+                                      plot_hline=False, 
+                                      print_args=False, set_title=False,
+                                      color=colors[1], double_ind=None,
+                                      set_lims=True, list_run_ind=True)
+            gpl.add_vlines(3, axs[i, 0])
+            gpl.add_vlines(3, axs[i, 1])
+
+
+        
+class SIFigureGen(DisentangledFigure):
+
+    def __init__(self, fig_key='si-fig-gen', colors=colors, **kwargs):
+        fsize = (5.5, 4.5)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.panel_keys = ('img_egs', 'rep_geometry', 'traversal_comparison',
+                           'preproc_img')
+        super().__init__(fsize, params, colors=colors, **kwargs)
+
+    def make_shape_dg(self, retrain=False):
+        try:
+            assert not retrain
+            shape_dg = self.shape_dg
+        except:
+            twod_file = self.params.get('shapes_path')
+            img_size = self.params.getlist('img_size', typefunc=int)
+            shape_dg = dg.TwoDShapeGenerator(twod_file, img_size=img_size,
+                                             max_load=np.inf,
+                                             convert_color=False)
+            self.shape_dg = shape_dg 
+        return shape_dg
+        
+    def make_gss(self):
+        gss = {}
+        
+        img_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 20,
+                                         0, 40, 3, 1)        
+        gss[self.panel_keys[0]] = self.get_axs(img_grids)
+
+        rep_geom_fd = self.gs[20:60, :18]
+        rep_geom_bvae = self.gs[20:60, 22:40]
+        rep_geom_class_perf = self.gs[65:80, :15]
+        rep_geom_regr_perf = self.gs[65:80, 25:40]
+        axs_3d = np.zeros(4, dtype=bool)
+        axs_3d[0:2] = self.params.getboolean('vis_3d')
+        gss[self.panel_keys[1]] = self.get_axs((rep_geom_fd, rep_geom_bvae,
+                                                rep_geom_class_perf,
+                                                rep_geom_regr_perf),
+                                               plot_3ds=axs_3d)
+
+        recon_grids = pu.make_mxn_gridspec(self.gs, 5, 6, 0, 80,
+                                           45, 100, 3, 1)        
+        gss[self.panel_keys[2]] = self.get_axs(recon_grids)
+
+        preproc_grids = pu.make_mxn_gridspec(self.gs, 1, 2, 80, 100,
+                                             50, 100, 3, 14)        
+        gss[self.panel_keys[3]] = self.get_axs(preproc_grids)
+
+        self.gss = gss
 
     def panel_img_egs(self):
         key = self.panel_keys[0]
@@ -1762,45 +2156,7 @@ class Figure5(DisentangledFigure):
         recs, di, dl, dr, lr = out
         dc.plot_img_series(dr, title='', axs=axs[3], cmap=cm)
         dc.plot_img_series(recs, title='', axs=axs[4], cmap=cm)
-
-    def panel_preproc_img_learning(self):
-        key = self.panel_keys[3]
-        axs = self.gss[key]
-
-        chair_nom_ind = self.params.getlist('chair_nom_ind')
-        chair_gen_ind = self.params.getlist('chair_gen_ind')
-        chair_extrap_ind = self.params.getlist('chair_extrap_ind')
-
-        twod_nom_ind = self.params.getlist('twod_nom_ind')
-        twod_gen_ind = self.params.getlist('twod_gen_ind')
-        twod_extrap_ind = self.params.getlist('twod_extrap_ind')
-
-        run_inds = (twod_nom_ind, twod_gen_ind, twod_extrap_ind,
-                    chair_nom_ind, chair_gen_ind, chair_extrap_ind)
         
-        f_pattern = self.params.get('f_pattern')
-        folder = self.params.get('mp_simulations_path')
-        shape_color = self.params.getcolor('shape_color')
-        chair_color = self.params.getcolor('chair_color')
-
-        labels = ('shapes', '', '', 'chairs', '', '')
-        colors = (shape_color, shape_color, shape_color,
-                  chair_color, chair_color, chair_color)
-
-        pv_mask = np.array([True])
-        for i, ri in enumerate(run_inds):
-            dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
-                                      collapse_plots=False, folder=folder,
-                                      intermediate=False,
-                                      pv_mask=pv_mask,
-                                      axs=axs, legend=labels[i],
-                                      plot_hline=False, 
-                                      print_args=False, set_title=False,
-                                      color=colors[i], double_ind=None,
-                                      set_lims=True, list_run_ind=True)
-        gpl.add_vlines(3, axs[0, 0])
-        gpl.add_vlines(3, axs[0, 1])
-
 def get_tasks_learned(task_hists, training_ind=-1, thresh=.8):
     frac_learned = np.zeros_like(task_hists)
     n_tasks = np.zeros(task_hists.shape[0])
@@ -1859,7 +2215,6 @@ class FigureRL(DisentangledFigure):
 
         rl_run, rl_info = self._get_rl_run()
         hist_all = rl_run['history']
-        print(rl_info['args'][0])
 
         tasks_ind = self.params.getint('hist_task_ind')
         rep_ind = self.params.getint('hist_rep_ind')
@@ -1868,7 +2223,8 @@ class FigureRL(DisentangledFigure):
         
         n_tasks, task_fractions = get_tasks_learned(np.squeeze(hist_all))
         ax, frac_ax = axs[:, 0]
-        frac_ax.plot(n_tasks, np.mean(task_fractions, axis=1))
+        frac_ax.plot(n_tasks, np.mean(task_fractions, axis=1),
+                     color=task_color)
         frac_ax.set_ylabel('fraction of\ntasks learned')
         frac_ax.set_xlabel('tasks')
         gpl.clean_plot(frac_ax, 0)
@@ -1890,7 +2246,7 @@ class FigureRL(DisentangledFigure):
         ri = self.params.getlist('run_ind_comb')
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
-        rl_color = self.params.getcolor('rl_color')
+        rl_color = self.params.getcolor('rl_gen_color')
         label = 'RL agent'
         pv_mask = np.array([True])
         print_args = True
