@@ -524,7 +524,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                              validation_data=eval_set, batch_size=batch_size,
                              **kwargs)
         if true_eval_x is not None and true_eval_y is not None:
-            targ_out = self.generate_target(eval_y)
+            targ_out = self.generate_target(true_eval_y)
             resp = self.model(true_eval_x)[0]
             final_loss = self.loss_dict[self.branch_names[0]](targ_out, resp)
             out.history['true_val'] = (targ_out, resp, final_loss)
