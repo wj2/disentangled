@@ -84,6 +84,19 @@ class DataGenerator(da.TFModel):
         rep_samps = self.get_representation(inp_samps)
         return inp_samps, rep_samps
 
+class IdentityDG(DataGenerator):
+
+    def __init__(self, distr):
+        self.model = dd.IdentityModel()
+        self.source_distribution = distr
+        self.input_dim = distr.dim
+
+    def generator(self, x):
+        return self.get_representation(x)
+        
+    def get_representation(self, x):
+        return self.model.get_representation(x)        
+    
 def visualize_gp(length_scale, inp_dim=2, dim=0, domain=(-2, 2), n_samples=1000,
                  func_samps=1, plot_dim=1, ax=None, fwid=5, **kwargs):
     if ax is None:

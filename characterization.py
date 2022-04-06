@@ -225,7 +225,7 @@ def evaluate_multiple_models_dims(dg_use, models, *args, n_train_samples=10**3,
 def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size=32,
                           n_train_samps=10**6, epochs=5, hide_print=False,
                           input_dim=None, use_mp=False, standard_loss=True,
-                          val_set=True, save_and_discard=False,
+                          val_set=True, save_and_discard=False, true_val=True,
                           save_templ='m_{}-{}.tfmod',
                           **kwargs):
     training_history = np.zeros((len(model_kinds), n_reps), dtype=object)
@@ -240,18 +240,17 @@ def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size
                 eval_set = dg_use.sample_reps(sample_size=n_train_samps)
             else:
                 eval_set = None
-            m = mk(dg_use.output_dim, layer_spec, input_dim, **kwargs)
-            if hide_print:
-                with u.HiddenPrints():
-                    th = m.fit_sets(train_set, eval_set=eval_set, epochs=epochs,
-                                    batch_size=batch_size,
-                                    standard_loss=standard_loss,
-                                    use_multiprocessing=use_mp)
+            if true_val:
+                true_eval_set = dg_use.sample_reps(sample_size=n_train_samps)
             else:
-                th = m.fit_sets(train_set, eval_set=eval_set, epochs=epochs,
-                                    batch_size=batch_size,
-                                    standard_loss=standard_loss,
-                                    use_multiprocessing=use_mp)
+                true_eval_set = None
+            m = mk(dg_use.output_dim, layer_spec, input_dim, **kwargs)
+            th = m.fit_sets(train_set, eval_set=eval_set, epochs=epochs,
+                            batch_size=batch_size,
+                            standard_loss=standard_loss,
+                            use_multiprocessing=use_mp,
+                            verbose=not hide_print,
+                            true_eval_set=true_eval_set)
             if save_and_discard:
                 m.save(save_templ.format(i, j))
             else:
@@ -1002,7 +1001,8 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
         f, axs = plt.subplots(n_ds, 1, sharey=True,
                               figsize=(fwid, n_ds*fwid))
     for i, sc in enumerate(scores):
-        title = plot_labels.format(n_plots[i])
+        # title = plot_labels.format(n_plots[i])
+        title = ''
         if collapse_plots:
             plot_ind = 0
             legend = title
@@ -1102,9 +1102,9 @@ def find_linear_mappings(dg_use, model_arr, n_train_samps=10**4, half_ns=100,
                 lr.append(lr_n)
                 sc.append(sc_n)
                 sim.append(sim_n)
-            lr = np.array(lr)
-            sc = np.array(sc)
-            sim = np.array(sim)
+            lr = np.stack(lr, axis=0)
+            sc = np.stack(sc, axis=0)
+            sim = np.stack(sim, axis=0)
         else:
             lr, sc, sim = find_linear_mapping(dg_use, model_arr[ind],
                                               n_train_samps=n_train_samps,
@@ -1578,7 +1578,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            print_args=True, set_title=True, color=None,
                            plot_hline=True, distr_parts=None, linestyle='solid',
                            double_ind=None, set_lims=True,
-                           intermediate=False, list_run_ind=False, **kwargs):
+                           intermediate=False, list_run_ind=False,
+                           multi_train=False, **kwargs):
     if double_ind is not None:
         merge_axis = 2
     else:
@@ -1589,7 +1590,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
             data, info = da.load_full_run(folder, ri, merge_axis=merge_axis,
                                           dg_type=dg_type, model_type=model_type,
                                           file_template=f_pattern, analysis_only=True,
-                                          **kwargs)
+                                          multi_train=multi_train, **kwargs)
             n_parts, _, _, _, p, c, _, sc, _ = data
             all_p.append(p)
             all_sc.append(sc)
@@ -1600,8 +1601,10 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         data, info = da.load_full_run(folder, run_ind, merge_axis=merge_axis,
                                       dg_type=dg_type, model_type=model_type,
                                       file_template=f_pattern, analysis_only=True,
-                                      **kwargs) 
+                                      multi_train=multi_train, **kwargs) 
         n_parts, _, _, _, p, c, _, sc, _ = data
+    if multi_train:
+        sc = np.moveaxis(sc, -2, 1)
     if 'beta_mult' in info['args'][0].keys():
         n_parts = np.array(n_parts)*info['args'][0]['beta_mult']
     if ('l2pr_weights_mult' in info['args'][0].keys()

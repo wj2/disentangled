@@ -181,6 +181,13 @@ def create_parser():
     parser.add_argument('--training_samples_seq', default=None, type=float,
                         nargs=3, help='different numbers of training examples '
                         'to use')
+    parser.add_argument('--use_early_stopping', default=False,
+                        action='store_true',
+                        help='whether to use early stopping')
+    parser.add_argument('--early_stopping_field',
+                        default='val_class_branch_loss',
+                        type=str, help='history field to use to decide early '
+                        'stopping')
     return parser
 
 if __name__ == '__main__':
@@ -356,7 +363,9 @@ if __name__ == '__main__':
                                   gp_task_length_scale=args.gp_task_length_scale,
                                   no_learn_lvs=no_learn_lvs,
                                   weight_reg_weight=args.weight_reg_weight,
-                                  readout_bias_reg_str=args.readout_bias_reg)
+                                  readout_bias_reg_str=args.readout_bias_reg,
+                                  use_early_stopping=args.use_early_stopping,
+                                  early_stopping_field=args.early_stopping_field)
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing

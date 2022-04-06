@@ -354,8 +354,13 @@ def load_objects(path, load_method, replace_head=True):
     return model_arr
    
 def load_histories(path):
-    load_method = lambda ind, p: pickle.load(open(p, 'rb'))
-    history_arr = load_objects(path, load_method)
+    print(path)
+    try:
+        load_method = lambda ind, p: pickle.load(open(p, 'rb'))
+        history_arr = load_objects(path, load_method)
+        print(history_arr.shape)
+    except ValueError:
+        history_arr = np.ones((1, 1, 10))*np.nan
     return history_arr
 
 def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
@@ -458,7 +463,7 @@ def load_generalization_output(folder, manifest='manifest.pkl',
         dg = None
     else:
         dg = dg_type.load(dg_file)
-    if history_file is None or analysis_only:
+    if history_file is None or not (not analysis_only or add_hist):
         th = None
     else:
         th = load_histories(history_file)
@@ -538,7 +543,11 @@ def load_all_autodis(run_ind, folder='disentangled/autodis/',
 
 def load_full_run(folder, run_ind, merge_axis=1,
                   file_template='bvae-n_([0-9])_{run_ind}',
-                  analysis_only=False, **kwargs):
+                  analysis_only=False, multi_train=False, **kwargs):
+    if multi_train:
+        sc_axis = 1
+    else:
+        sc_axis = merge_axis
     tomatch = file_template.format(run_ind=run_ind)
     fls = os.listdir(folder)
     targ_inds = []
@@ -598,7 +607,7 @@ def load_full_run(folder, run_ind, merge_axis=1,
                 models_all = _concatenate_none((models_all, models),
                                             axis=merge_axis)
             if th_all is not None:
-                th_all = _concatenate_none((th_all, th), axis=merge_axis)
+                th_all = _concatenate_none((th_all, th), axis=sc_axis)
             try:
                 sc.shape
             except AttributeError:
@@ -606,7 +615,7 @@ def load_full_run(folder, run_ind, merge_axis=1,
             p_all = _concatenate_none((p_all, p), axis=merge_axis)
             ch_all = _concatenate_none((c_all, c), axis=merge_axis)
             ld_all = _concatenate_none((ld_all, ld), axis=merge_axis)
-            sc_all = _concatenate_none((sc_all, sc), axis=merge_axis)
+            sc_all = _concatenate_none((sc_all, sc), axis=sc_axis)
             ls_all = _concatenate_none((ls_all, ls), axis=merge_axis)
             dgs_all = _concatenate_none((dgs_all, dgs), axis=merge_axis)
             rs_all = _concatenate_none((rs_all, rs), axis=merge_axis)

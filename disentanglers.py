@@ -162,13 +162,20 @@ class FlexibleDisentangler(da.TFModel):
         self.model.compile(optimizer, loss, loss_weights=loss_weights)
         self.compiled = True
 
-    def fit_sets(self, train_set, eval_set=None, **kwargs):
+    def fit_sets(self, train_set, eval_set=None, true_eval_set=None,
+                 **kwargs):
         train_y, train_x = train_set
         if eval_set is not None:
             eval_y, eval_x = eval_set
         else:
             eval_y, eval_x = None, None
-        return self.fit(train_x, train_y, eval_x=eval_x, eval_y=eval_y, **kwargs)
+        if true_eval_set is not None:
+            true_eval_y, true_eval_x = true_eval_set
+        else:
+            true_eval_y, true_eval_x = None, None
+        return self.fit(train_x, train_y, eval_x=eval_x, eval_y=eval_y,
+                        true_eval_x=true_eval_x, true_eval_y=true_eval_y,
+                        **kwargs)
 
     def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
             data_generator=None, batch_size=32, **kwargs):
@@ -320,7 +327,9 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  noise=0, context_offset=False, nan_salt=None,
                  grid_coloring=False, n_granules=2, granule_sparseness=.5,
                  n_grids=0, no_learn_lvs=None, use_gp_tasks=False,
-                 gp_tasks=0, gp_task_length_scale=.5, **layer_params):
+                 gp_tasks=0, gp_task_length_scale=.5, use_early_stopping=False,
+                 early_stopping_field='val_class_branch_loss',
+                 **layer_params):
         if true_inp_dim is None:
             true_inp_dim = encoded_size
         self.regularizer_weight = regularizer_weight
@@ -362,6 +371,8 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         self.loss_ratio = loss_ratio
         self.recon_model = autoenc_model
         self.layer_shapes = layer_shapes
+        self.use_early_stopping = use_early_stopping
+        self.early_stopping_field = early_stopping_field
 
     def generate_target(self, inps):
         inps_reduced = inps[:, self.learn_lvs]
@@ -460,12 +471,13 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                             self.branch_names[1]:loss_ratio}
         if self.n_partitions == 0:
             loss_dict[self.branch_names[0]] = lambda x, y: 0.
+        self.loss_dict = loss_dict
         super()._compile(*args, loss=loss_dict, loss_weights=loss_weights,
                          **kwargs)
     
     def fit(self, train_x, train_y, eval_x=None, eval_y=None, epochs=15,
             data_generator=None, batch_size=32, standard_loss=False,
-            nan_salt=None, **kwargs): 
+            nan_salt=None, true_eval_x=None, true_eval_y=None,  **kwargs): 
         if nan_salt is None:
             nan_salt = self.nan_salt
         if standard_loss or self.contextual_partitions or nan_salt is None:
@@ -474,6 +486,12 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             comp_kwargs = {'standard_loss':False}
         if not self.compiled:
             self._compile(**comp_kwargs)
+        if self.use_early_stopping:
+            cb = tfk.callbacks.EarlyStopping(monitor=self.early_stopping_field,
+                                             mode='min', patience=2)
+            curr_cb = kwargs.get('callbacks', [])
+            curr_cb.append(cb)
+            kwargs['callbacks'] = curr_cb
 
         train_y = self.generate_target(train_y)
         print(train_y)
@@ -505,6 +523,12 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         out = self.model.fit(x=train_x, y=train_y_dict, epochs=epochs,
                              validation_data=eval_set, batch_size=batch_size,
                              **kwargs)
+        if true_eval_x is not None and true_eval_y is not None:
+            targ_out = self.generate_target(eval_y)
+            resp = self.model(true_eval_x)[0]
+            final_loss = self.loss_dict[self.branch_names[0]](targ_out, resp)
+            out.history['true_val'] = (targ_out, resp, final_loss)
+            print(out.history['true_val'])
         return out
 
     def get_reconstruction(self, reps):

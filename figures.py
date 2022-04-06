@@ -233,10 +233,12 @@ def characterize_generalization(dg, model, c_reps, train_samples=1000,
             **kwargs)[0]
         
         results_regr[i, 0] = dc.find_linear_mapping_single(
-            dg, model, half=False, n_samps=train_samples,
+            dg, model, half=False, n_train_samps=train_samples,
+            n_test_samps=test_samples,
             repl_mean=repl_mean, **kwargs)[1]
         results_regr[i, 1] = dc.find_linear_mapping_single(
-            dg, model, n_samps=train_samples,
+            dg, model, n_train_samps=train_samples,
+            n_test_samps=test_samples,
             repl_mean=repl_mean, **kwargs)[1]
     if cut_zero:
         results_regr[results_regr < 0] = 0
@@ -280,6 +282,24 @@ class DisentangledFigure(pu.Figure):
                     train_samples=dg_train_egs, batch_size=dg_bs)
             self.fdg = fdg 
         return fdg
+
+    def load_run(self, run_ind, f_pattern_key='f_pattern', double_ind=None,
+                 multi_train=False, analysis_only=True, **kwargs):
+        f_pattern = self.params.get(f_pattern_key)
+        folder = self.params.get('mp_simulations_path')
+        if double_ind is not None:
+            merge_axis = 2
+        else:
+            merge_axis = 1
+        dg_type = None
+        model_type = None
+        data, info = da.load_full_run(folder, run_ind, merge_axis=merge_axis,
+                                      dg_type=dg_type, model_type=model_type,
+                                      file_template=f_pattern,
+                                      analysis_only=analysis_only,
+                                      multi_train=multi_train, **kwargs)
+        n_parts, _, _, th, p, c, _, sc, _ = data
+        return n_parts, p, c, sc, th, info
     
     def _standard_panel(self, fdg, model, run_inds, f_pattern, folder, axs,
                         labels=None, rep_scale_mag=5, source_scale_mag=.5,
@@ -537,7 +557,8 @@ class Figure2(DisentangledFigure):
         
         params = cf[fig_key]
         self.fig_key = fig_key
-        self.panel_keys = ('order_disorder', 'training_rep', 'rep_summary')
+        self.panel_keys = ('order_disorder', 'training_rep', 'rep_summary',
+                           'sample_efficiency')
         super().__init__(fsize, params, colors=colors, **kwargs)
     
     def make_gss(self):
@@ -572,13 +593,93 @@ class Figure2(DisentangledFigure):
         rep_axs = self.get_axs(rep_grids, sharex='vertical',
                                sharey='vertical', plot_3ds=plot_3d_axs)
         gss[self.panel_keys[1]] = train_ax, rep_axs
+
+
+        res_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 75, 100, 60, 100, 2, 2)
+        res_axs = self.get_axs(res_grids)
         
-        rep_classifier_grid = self.gs[75:, 60:75]
-        rep_regression_grid = self.gs[75:, 85:]
-        gss[self.panel_keys[2]] = self.get_axs((rep_classifier_grid,
-                                                rep_regression_grid))
+        # rep_classifier_grid = self.gs[75:, 60:75]
+        # rep_regression_grid = self.gs[75:, 85:]
+        # gss[self.panel_keys[2]] = self.get_axs((rep_classifier_grid,
+        #                                         rep_regression_grid))
+        gss[self.panel_keys[2]] = res_axs[0]
+
+        gss[self.panel_keys[3]] = res_axs[1]
         self.gss = gss
-    
+
+    def panel_sample_efficiency(self, recompute=False):
+        key = self.panel_keys[3]
+        axs = self.gss[key]
+
+        if self.data.get(key) is None or recompute:
+            fdg = self.make_fdg()
+            run_ind = self.params.get('efficiency_run_ind')
+            n_parts, p, c, sc, _, info = self.load_run(run_ind, double_ind=0,
+                                                       multi_train=True)
+
+            lg_args = info['args'][0]['training_samples_seq']
+            n_train_samples = np.logspace(*lg_args[:2], int(lg_args[2]),
+                                          dtype=int)
+            ident_models = [np.array([dd.IdentityModel()])]
+            ident_dg = dg.IdentityDG(fdg.source_distribution)
+            out_trad = dc.evaluate_multiple_models_dims(
+                fdg, ident_models, None, (fdg.source_distribution,),
+                n_iters=10, n_train_samples=n_train_samples)
+            out_trad_asymp = dc.evaluate_multiple_models_dims(
+                ident_dg, ident_models,
+                None, (fdg.source_distribution,),
+                n_iters=10, n_train_samples=n_train_samples)
+
+            train_distr = da.HalfMultidimensionalNormal.partition(
+                fdg.source_distribution)
+            test_distr = train_distr.flip()
+
+            out_gen = dc.evaluate_multiple_models_dims(
+                fdg, ident_models, None, (test_distr,),
+                train_distributions=(train_distr,), n_iters=10,
+                n_train_samples=n_train_samples)
+            out_gen_asymp = dc.evaluate_multiple_models_dims(
+                ident_dg, ident_models, None, (test_distr,),
+                train_distributions=(train_distr,), n_iters=10,
+                n_train_samples=n_train_samples)
+            standard = (out_trad[0], out_trad_asymp[0])
+            gen = (out_gen[0], out_gen_asymp[0])
+            self.data[key] = (fdg, n_parts, n_train_samples, standard,
+                              gen, p)
+        (fdg, n_parts, n_train_samples, standard, gen, p) = self.data[key]
+        p_standard = p[..., 0]
+        p_gen = p[..., 1]
+
+        plot_n_parts = self.params.getint('plot_n_parts')
+        n_part_ind = np.argmin(np.abs(np.array(plot_n_parts) - n_parts))
+
+        axs[0].plot(n_train_samples, np.mean(p_standard[0, :, n_part_ind], axis=1))
+        axs[0].plot(n_train_samples, np.squeeze(standard[0]))
+        axs[0].plot(n_train_samples, np.squeeze(standard[1]))
+        
+        axs[1].plot(n_train_samples, np.mean(p_gen[0, :, n_part_ind], axis=1))
+        axs[1].plot(n_train_samples, np.squeeze(gen[0]))
+        axs[1].plot(n_train_samples, np.squeeze(gen[1]))
+
+        axs[0].set_xscale('log')
+        axs[1].set_xscale('log')
+        axs[0].set_ylim([.5, 1])
+        axs[1].set_ylim([.5, 1])
+
+    def panel_learning_history(self, recompute=False):
+        key = 'blah'
+        if self.data.get(key) is None or recompute:
+            fdg = self.make_fdg()
+            run_ind = self.params.get('efficiency_run_ind')
+            n_parts, p, c, sc, hist, info = self.load_run(run_ind, double_ind=0,
+                                                          multi_train=True,
+                                                          add_hist=True)
+            print(hist)
+            self.data[key] = (n_parts, hist, info)
+        n_parts, hist, info = self.data[key]
+        print(hist.shape)
+        
+        
     def panel_order_disorder(self):
         key = self.panel_keys[0]
         (ax_inp, ax_hd, axs) = self.gss[key]
