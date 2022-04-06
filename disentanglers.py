@@ -526,9 +526,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         if true_eval_x is not None and true_eval_y is not None:
             targ_out = self.generate_target(true_eval_y)
             resp = self.model(true_eval_x)[0]
-            final_loss = self.loss_dict[self.branch_names[0]](targ_out, resp)
-            out.history['true_val'] = (targ_out, resp, final_loss)
-            print(out.history['true_val'])
+            out.history['true_val'] = (targ_out, resp)
         return out
 
     def get_reconstruction(self, reps):
