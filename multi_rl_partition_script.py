@@ -165,6 +165,10 @@ def create_parser():
                          'mobilenet_v3_small_100_224/feature_vector/5')
     parser.add_argument('--img_pre_net', default=default_pre_model, type=str,
                         help='string giving url for image model to use')
+    parser.add_argument('--tasks_per_samp', default=2**32, type=int,
+                        help='number of tasks to train for each sample')
+    parser.add_argument('--reward_eps', default=1, type=float,
+                        help='threshold for getting reward from task or not')
     return parser
 
 if __name__ == '__main__':
@@ -320,7 +324,8 @@ if __name__ == '__main__':
                        gp_task_length_scale=args.gp_task_length_scale)
     envs = list(drl.make_environment(dg_use, p, convert_tf=True,
                                      multi_reward=False, include_task_mask=True,
-                                     n_tasks_per_samp=p, **task_kwargs)
+                                     n_tasks_per_samp=min(p, args.tasks_per_samp),
+                                     eps=args.reward_eps, **task_kwargs)
                 for p in partitions)
 
 
