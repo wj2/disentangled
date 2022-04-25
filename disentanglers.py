@@ -523,10 +523,11 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         out = self.model.fit(x=train_x, y=train_y_dict, epochs=epochs,
                              validation_data=eval_set, batch_size=batch_size,
                              **kwargs)
+        out = out.history 
         if true_eval_x is not None and true_eval_y is not None:
             targ_out = self.generate_target(true_eval_y)
             resp = self.model(true_eval_x)[0]
-            out.history['true_val'] = (targ_out, resp)
+            out['true_val'] = (targ_out, resp)
         return out
 
     def get_reconstruction(self, reps):

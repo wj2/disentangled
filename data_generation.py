@@ -151,6 +151,8 @@ class GaussianProcessDataGenerator(DataGenerator):
             source_distribution=None, epochs=15, train_samples=1000,
             eval_samples=10**3, batch_size=32, **kwargs):
         in_samp = self.source_distribution.rvs(train_samples)
+        if self.input_dim == 1:
+            in_samp = in_samp.reshape((-1, 1))
         samp_proc = self.model.sample_y(in_samp, n_samples=self.output_dim,
                                         random_state=self.rand_state)
         self.model.fit(in_samp, samp_proc)

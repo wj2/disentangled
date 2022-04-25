@@ -359,8 +359,9 @@ def load_histories(path):
         load_method = lambda ind, p: pickle.load(open(p, 'rb'))
         history_arr = load_objects(path, load_method)
         print(history_arr.shape)
-    except ValueError:
-        history_arr = np.ones((1, 1, 10))*np.nan
+    except ValueError as e:
+        print(e)
+        history_arr = np.ones((2, 1, 10))*np.nan
     return history_arr
 
 def load_models(path, model_type=None, model_type_arr=None, replace_head=True):

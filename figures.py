@@ -595,7 +595,8 @@ class Figure2(DisentangledFigure):
         gss[self.panel_keys[1]] = train_ax, rep_axs
 
 
-        res_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 75, 100, 60, 100, 2, 2)
+        res_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 60, 100, 55, 100,
+                                         10, 10)
         res_axs = self.get_axs(res_grids)
         
         # rep_classifier_grid = self.gs[75:, 60:75]
@@ -650,22 +651,34 @@ class Figure2(DisentangledFigure):
         p_standard = p[..., 0]
         p_gen = p[..., 1]
 
+
+        ub_color = self.params.getcolor('upper_bound_color')
+        lb_color = self.params.getcolor('lower_bound_color')
+        run_color = self.params.getcolor('partition_color')
         plot_n_parts = self.params.getint('plot_n_parts')
         n_part_ind = np.argmin(np.abs(np.array(plot_n_parts) - n_parts))
 
-        axs[0].plot(n_train_samples, np.mean(p_standard[0, :, n_part_ind], axis=1))
-        axs[0].plot(n_train_samples, np.squeeze(standard[0]))
-        axs[0].plot(n_train_samples, np.squeeze(standard[1]))
+        gpl.plot_trace_wpts(n_train_samples, p_standard[0, :, n_part_ind].T,
+                            ax=axs[0], color=run_color)
+        axs[0].plot(n_train_samples, np.squeeze(standard[0]), color=lb_color)
+        axs[0].plot(n_train_samples, np.squeeze(standard[1]), color=ub_color)
         
-        axs[1].plot(n_train_samples, np.mean(p_gen[0, :, n_part_ind], axis=1))
-        axs[1].plot(n_train_samples, np.squeeze(gen[0]))
-        axs[1].plot(n_train_samples, np.squeeze(gen[1]))
+        gpl.plot_trace_wpts(n_train_samples, p_gen[0, :, n_part_ind].T, ax=axs[1],
+                            color=run_color)
+        axs[1].plot(n_train_samples, np.squeeze(gen[1]), color=ub_color,
+                    label='upper bound')
+        axs[1].plot(n_train_samples, np.squeeze(gen[0]), color=lb_color,
+                    label='lower bound')
 
         axs[0].set_xscale('log')
         axs[1].set_xscale('log')
         axs[0].set_ylim([.5, 1])
         axs[1].set_ylim([.5, 1])
-
+        axs[0].set_xlabel('novel samples')
+        axs[0].set_ylabel('novel task\nperformance')
+        axs[1].set_ylabel('novel task\ngeneralization')
+        axs[1].legend(frameon=False)
+        
     def panel_learning_history(self, recompute=False):
         key = 'blah'
         if self.data.get(key) is None or recompute:
@@ -674,11 +687,8 @@ class Figure2(DisentangledFigure):
             n_parts, p, c, sc, hist, info = self.load_run(run_ind, double_ind=0,
                                                           multi_train=True,
                                                           add_hist=True)
-            print(hist)
             self.data[key] = (n_parts, hist, info)
-        n_parts, hist, info = self.data[key]
-        print(hist.shape)
-        
+        n_parts, hist, info = self.data[key]        
         
     def panel_order_disorder(self):
         key = self.panel_keys[0]
@@ -1316,17 +1326,17 @@ class FigureGP(DisentangledFigure):
         gss[self.panel_keys[4]] = char_axs[0]
 
         task_schem = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 30,
-                                          0, 30, 10, 5)
+                                          70, 100, 10, 5)
         gss[self.panel_keys[5]] = self.get_axs(task_schem, squeeze=False)
 
         input_schem = pu.make_mxn_gridspec(self.gs, 3, 1, 0, 30,
-                                           77, 90, 5, 5)
+                                           15, 30, 5, 5)
         input_gp_axs = self.get_axs(input_schem, squeeze=True, sharex=True,
                                     sharey=True)
-        input_comb_ax = self.get_axs((self.gs[0:30, 40:70],),
+        input_comb_ax = self.get_axs((self.gs[0:30, 30:60],),
                                      plot_3ds=np.ones(1, dtype=bool),
                                      squeeze=False)
-        lv_ax = self.get_axs((self.gs[0:30, 90:],),
+        lv_ax = self.get_axs((self.gs[0:30, :10],),
                              squeeze=False)
         gss[self.panel_keys[6]] = (lv_ax[0], input_gp_axs, input_comb_ax[0])
 
@@ -1357,54 +1367,48 @@ class FigureGP(DisentangledFigure):
         
         ls = self.params.getfloat('eg_input_ls')
         if self.data.get(key) is None or retrain:
-            gp_inp = dg.GaussianProcessDataGenerator(2, 1, 3,
+            gp_inp = dg.GaussianProcessDataGenerator(1, 1, 3,
                                                      length_scale=ls)
             gp_inp.fit()
 
             mesh_pts = self.params.getint('mesh_pts')
             task_range = self.params.getfloat('task_range')
             
-            lv1 = np.zeros((mesh_pts, 2))
+            lv1 = np.zeros((mesh_pts, 1))
             lv1[:, 0] = np.linspace(-task_range, task_range, mesh_pts)
-            lv2 = np.zeros((mesh_pts, 2))
-            lv2[:, 1] = np.linspace(-task_range, task_range, mesh_pts)
 
             rep1 = gp_inp.get_representation(lv1)
-            rep2 = gp_inp.get_representation(lv2)
 
-            self.data[key] = ((lv1, rep1), (lv2, rep2), gp_inp)
-        (lv1, rep1), (lv2, rep2), gp_inp = self.data[key]
+            self.data[key] = ((lv1, rep1), gp_inp)
+        (lv1, rep1), gp_inp = self.data[key]
 
-        cmap1, cmap2 = self.params.getlist('schem_cmaps')
+        cmap1, _ = self.params.getlist('schem_cmaps')
         
-        gpl.plot_colored_line(lv1[:, 0], lv1[:, 1], ax=lv_ax, cmap=cmap1)
-        gpl.plot_colored_line(lv2[:, 0], lv2[:, 1], ax=lv_ax, cmap=cmap2)
+        gpl.plot_colored_line(np.zeros(len(lv1)), lv1[:, 0], ax=lv_ax,
+                              cmap=cmap1)
 
         for i in range(rep1.shape[1]):
             gpl.plot_colored_line(lv1[:, 0], rep1[:, i], ax=gp_axs[i],
                                   cmap=cmap1)
-            gpl.plot_colored_line(lv2[:, 1], rep2[:, i], ax=gp_axs[i],
-                                  cmap=cmap2)
             gpl.clean_plot(gp_axs[i], 0)
             gp_axs[i].set_ylabel('GP {}'.format(i+1))
 
-        gp_axs[-1].set_xlabel('LV 1/2')
+        gp_axs[-1].set_xlabel('LV 1')
         gpl.plot_colored_line(rep1[:, 0], rep1[:, 1], rep1[:, 2], ax=comb_ax,
                               cmap=cmap1)
-        gpl.plot_colored_line(rep2[:, 0], rep2[:, 1], rep2[:, 2], ax=comb_ax,
-                              cmap=cmap2)
 
         lv_ax.set_aspect('equal')
         gpl.clean_plot(lv_ax, 0)
-        gpl.make_xaxis_scale_bar(lv_ax, 1)
+        # gpl.make_xaxis_scale_bar(lv_ax, 1)
+        lv_ax.set_xlim([-.2, .2])
         gpl.make_yaxis_scale_bar(lv_ax, 1)
+        gpl.clean_plot_bottom(lv_ax)
 
-        lv_ax.set_xlabel('LV 1')
-        lv_ax.set_ylabel('LV 2')
+        lv_ax.set_ylabel('LV 1')
 
         gpl.clean_3d_plot(comb_ax)
         gpl.make_3d_bars(comb_ax, bar_len=1)
-            
+
     def panel_gp_task_schem(self, retrain=False):
         key = self.panel_keys[5]
         task_axs = self.gss[key]
@@ -1436,10 +1440,10 @@ class FigureGP(DisentangledFigure):
             tm_x, tm_y = np.where(tm)
             tm_x = task_vals[tm_x]
             tm_y = task_vals[tm_y]
-            m = gpl.pcolormesh(task_vals, task_vals, task_map, ax=task_axs[i, 0],
+            m = gpl.pcolormesh(task_vals, task_vals, task_map, ax=task_axs[i, 1],
                                cmap=cmap, vmin=-extreme, vmax=extreme)
             task_axs[i, 0].plot(tm_y, tm_x, color='k', linewidth=1)
-            gpl.pcolormesh(task_vals, task_vals, task_map > 0, ax=task_axs[i, 1],
+            gpl.pcolormesh(task_vals, task_vals, task_map > 0, ax=task_axs[i, 0],
                            cmap=cmap, vmin=0, vmax=1)
             task_axs[i, 0].set_xticks([-task_range, 0, task_range])
             task_axs[i, 0].set_yticks([-task_range, 0, task_range])
@@ -1457,6 +1461,9 @@ class FigureGP(DisentangledFigure):
             pt = np.array([[task_vals[i], task_vals[j]]])
             out = func(pt)
             task_map[i, j] = out
+        sigma = np.std(task_map)
+        mu = np.mean(task_map)
+        task_map = (task_map - mu)/sigma
         return task_map            
             
     def panel_gp_tasks(self, **kwargs):
@@ -1957,16 +1964,16 @@ class FigureImg(DisentangledFigure):
         # axs[2, 0].set_ylabel('')
         # axs[2, 1].set_ylabel('')
 
-
 class SIFigureZeroshot(DisentangledFigure):
 
     def __init__(self, fig_key='figure_img_zeroshot', colors=colors, **kwargs):
-        fsize = (6, 4)
+        fsize = (6, 3)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
         params = cf[fig_key]
-        self.panel_keys = ('zero_gen_flips', 'schem_grids')
+        self.panel_keys = ('zero_gen_flips', 'schem_grids_gen',
+                           'schem_grids_extrap')
         super().__init__(fsize, params, colors=colors, **kwargs)
 
     def make_shape_dg(self, retrain=False):
@@ -2014,24 +2021,79 @@ class SIFigureZeroshot(DisentangledFigure):
     def make_gss(self):
         gss = {}
 
-        schem_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100,
-                                           0, 40, 10, 5)
-        schem_axs = self.get_axs(schem_grids)
-        gss[self.panel_keys[1]] = schem_axs
+        spacing = 1
+        schem_grids1 = pu.make_mxn_gridspec(self.gs, 4, 4, 0, 45,
+                                            0, 23, spacing, spacing)
+        schem_axs1 = self.get_axs(schem_grids1)
+        schem_grids2 = pu.make_mxn_gridspec(self.gs, 4, 4, 0, 45,
+                                            27, 50, spacing, spacing)
+        schem_axs2 = self.get_axs(schem_grids2)
+        gss[self.panel_keys[1]] = (schem_axs1, schem_axs2)
+
+        
+        schem_grids1 = pu.make_mxn_gridspec(self.gs, 4, 4, 55, 100,
+                                            0, 23, spacing, spacing)
+        schem_axs1 = self.get_axs(schem_grids1)
+        schem_grids2 = pu.make_mxn_gridspec(self.gs, 4, 4, 55, 100,
+                                            27, 50, spacing, spacing)
+        schem_axs2 = self.get_axs(schem_grids2)
+        gss[self.panel_keys[2]] = (schem_axs1, schem_axs2)
+
+        
         
         res_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 100,
-                                        50, 100, 10, 5)
+                                         65, 100, 15, 12)
         res_axs = self.get_axs(res_grids)
         gss[self.panel_keys[0]] = res_axs
 
         self.gss = gss
 
-    def panel_schem_grids(self):
+    def _mult_schem_grids(self, axs1, axs2, g_col=None, r_col=None):
+        if g_col is None:
+            g_col = axs2
+        if r_col is None:
+            r_col = axs2
+        chair_dg = self.make_chair_dg()
+        n_axs = np.product(axs1.shape)
+        _, imgs = chair_dg.sample_reps(n_axs)
+
+        n_rots, n_pos = axs1.shape
+        rot_range = self.params.getfloat('rot_range')
+        pos_range = self.params.getfloat('pos_range')
+        tr_chair_ind = self.params.getint('tr_chair')
+        te_chair_ind = self.params.getint('te_chair')
+
+        rots = np.linspace(-rot_range, rot_range, n_rots)
+        poss = np.linspace(-pos_range, pos_range, n_pos)
+
+        pos_mask = poss < 0
+        for k, ind in enumerate(u.make_array_ind_iterator(axs1.shape)):
+            rot_i, pos_i = ind
+            tr_img = chair_dg.get_representation([tr_chair_ind, rots[rot_i],
+                                                  0, poss[pos_i], 0])
+            te_img = chair_dg.get_representation([te_chair_ind, rots[rot_i],
+                                                  0, poss[pos_i], 0])
+            axs1[ind].imshow(tr_img[0])
+            axs2[ind].imshow(te_img[0])
+            axs1[ind].set_xticks([])
+            axs1[ind].set_yticks([])
+            axs2[ind].set_xticks([])
+            axs2[ind].set_yticks([])
+            if pos_mask[pos_i]:
+                gpl.set_ax_color(g_col[ind], 'g')
+            else:
+                gpl.set_ax_color(r_col[ind], 'r')
+
+    def panel_schem_grids_gen(self):
         key = self.panel_keys[1]
-        axs = self.gss[key]
-        
-        # plot a few different chair images
-        
+        axs1, axs2 = self.gss[key]
+        self._mult_schem_grids(axs1, axs2)
+
+    def panel_schem_grids_extrap(self):
+        key = self.panel_keys[2]
+        axs1, axs2 = self.gss[key]
+        self._mult_schem_grids(axs1, axs2, g_col=axs1)
+
     def panel_zero_gen_flips(self):
         key = self.panel_keys[0]
         axs = self.gss[key]
