@@ -6,6 +6,7 @@ import sklearn.decomposition as skd
 import sklearn.svm as skc
 import scipy.linalg as spla
 import itertools as it
+import matplotlib.pyplot as plt
 
 import general.plotting as gpl
 import general.plotting_styles as gps
@@ -1325,9 +1326,16 @@ class FigureGP(DisentangledFigure):
         gss[self.panel_keys[3]] = char_axs[1:]
         gss[self.panel_keys[4]] = char_axs[0]
 
-        task_schem = pu.make_mxn_gridspec(self.gs, 2, 2, 0, 30,
-                                          70, 100, 10, 5)
-        gss[self.panel_keys[5]] = self.get_axs(task_schem, squeeze=False)
+        task_schem = pu.make_mxn_gridspec(self.gs, 2, 1, 5, 25,
+                                          68, 80, 16, 5)
+        task_bar = self.get_axs(task_schem, squeeze=False,
+                                               sharex=True, sharey=True)
+        task_schem = pu.make_mxn_gridspec(self.gs, 2, 1, 0, 30,
+                                          90, 100, 10, 5)
+        resp_bar = self.get_axs(task_schem, squeeze=False,
+                                sharex=True, sharey=True)
+        ts_arr = np.concatenate((task_bar, resp_bar), axis=1)
+        gss[self.panel_keys[5]] = ts_arr
 
         input_schem = pu.make_mxn_gridspec(self.gs, 3, 1, 0, 30,
                                            15, 30, 5, 5)
@@ -1416,24 +1424,71 @@ class FigureGP(DisentangledFigure):
         n_tasks = task_axs.shape[0]
         ls = self.params.getfloat('eg_task_ls')
         if self.data.get(key) is None or retrain:
-            task = dg.GaussianProcessDataGenerator(2, 1, n_tasks,
+            task_dims = 1
+            task = dg.GaussianProcessDataGenerator(task_dims, 1, n_tasks,
                                                    length_scale=ls)
             task.fit()
             mesh_pts = self.params.getint('mesh_pts')
             task_range = self.params.getfloat('task_range')
             task_vals = np.linspace(-task_range, task_range, mesh_pts)
-            task_coords = np.array(list(it.product(range(mesh_pts), repeat=2)))
+            task_coords = np.array(list(it.product(range(mesh_pts),
+                                                   repeat=task_dims)))
             task_maps = []
             for i in range(n_tasks):
                 task_func = lambda x: task.get_representation(x)[:, i]
-                task_map = self._get_task_map(task_func, task_coords,
-                                              task_vals)
+                if task_dims > 1:
+                    task_map = self._get_task_map(task_func, task_coords,
+                                                  task_vals)
+                else:
+                    task_map = task_func(np.expand_dims(task_vals, 1))
+                    mu = np.mean(task_map)
+                    sigma = np.std(task_map)
+                    task_map = (task_map - mu)/sigma
                 task_maps.append(task_map)
-            self.data[key] = (task_range, task_vals, task_maps)
+            self.data[key] = (task_range, task_vals, task_maps, task_dims)
             
-        task_range, task_vals, task_maps = self.data.get(key)
-        cmap = self.params.get('task_cmap')
+        task_range, task_vals, task_maps, task_dims = self.data.get(key)
+        if task_dims > 1:
+            self._plot_task_map(task_range, task_vals, task_maps, task_axs)
+        else:
+            self._plot_task_line(task_range, task_vals, task_maps, task_axs)
 
+    def _plot_task_line(self, task_range, task_vals, task_maps, task_axs):
+        cmap = self.params.get('task_cmap')
+        cmap = plt.get_cmap(cmap)
+        for i, task_map in enumerate(task_maps):
+            extreme = np.max(np.abs(task_map))
+
+            col_func = lambda x, y: (y + extreme)/(2*extreme)
+            gpl.plot_colored_line(task_vals, task_map, func=col_func,
+                                  cmap=cmap, ax=task_axs[i, 1], norm=None)
+            gpl.add_hlines(0, task_axs[i, 1])
+            
+            tm = np.expand_dims(task_map, 0)
+            tm_new = np.zeros_like(tm)
+            tm_new[tm > 0] = extreme
+            tm_new[tm <= 0] = -extreme
+            n_tiles = 3
+            tm_tile = np.concatenate((tm_new,)*n_tiles, axis=0)
+            m = gpl.pcolormesh(task_vals, np.linspace(-.1, .1, n_tiles),
+                               tm_tile,
+                               ax=task_axs[i, 0], cmap=cmap, vmin=-extreme,
+                               vmax=extreme)
+            task_axs[i, 1].set_xticks([-task_range, 0, task_range])
+            task_axs[i, 0].set_xticks([-task_range, 0, task_range])
+            task_axs[i, 1].set_yticks([-1, 0, 1])
+            task_axs[i, 0].set_yticks([])
+            gpl.clean_plot(task_axs[i, 0], 0)
+            gpl.clean_plot(task_axs[i, 1], 0)
+            task_axs[i, 0].spines['left'].set_visible(False)
+            task_axs[i, 1].set_ylabel('GP response')
+            task_axs[i, 0].set_xlabel('LV 1')
+            if i < len(task_maps) - 1:
+                gpl.clean_plot_bottom(task_axs[i, 1], 0)
+            else:
+                task_axs[i, 1].set_xlabel('LV 1')
+
+    def _plot_task_map(self, task_range, task_vals, task_maps):
         for i, task_map in enumerate(task_maps):
             extreme = np.max(np.abs(task_map))
             tm = np.diff(task_map > 0, n=1, axis=0)
