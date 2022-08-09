@@ -704,7 +704,8 @@ class RFDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=0.001,
                  distrib_variance=1, setup_distribution=None, total_out=True,
-                 width_scaling=4, input_noise=0, low_thr=.01):
+                 width_scaling=1, input_noise=0, low_thr=.01,
+                 random_widths=False):
         if source_distribution is None:
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)
@@ -719,7 +720,8 @@ class RFDataGenerator(DataGenerator):
             out_dim = int(np.round(.5*out_dim**(1/inp_dim))*2)
         self.input_dim = inp_dim
         out = self.make_generator(out_dim, sd_list, input_noise_var=input_noise,
-                                  noise=noise, width_scaling=width_scaling)
+                                  noise=noise, width_scaling=width_scaling,
+                                  random_widths=random_widths)
         self.generator, self.rf_cents, self.rf_wids = out
         self.output_dim = len(self.rf_cents)
         self.low_thr = low_thr
@@ -747,12 +749,16 @@ class RFDataGenerator(DataGenerator):
             gpl.clean_plot(ax, 0)
         
     def make_generator(self, out_dim, source_distribution, noise=.01,
-                       scale=1, baseline=0, width_scaling=1, input_noise_var=0):
-        out = rfm.get_distribution_gaussian_resp_func(out_dim,
-                                                      source_distribution,
-                                                      scale=scale,
-                                                      baseline=baseline,
-                                                      wid_scaling=width_scaling)
+                       scale=1, baseline=0, width_scaling=1, input_noise_var=0,
+                       random_widths=False):
+        out = rfm.get_distribution_gaussian_resp_func(
+            out_dim,
+            source_distribution,
+            scale=scale,
+            baseline=baseline,
+            wid_scaling=width_scaling,
+            random_widths=random_widths
+        )
         rfs, _, ms, ws = out
         noise_distr = sts.multivariate_normal(np.zeros(len(ms)), noise,
                                               allow_singular=True)
