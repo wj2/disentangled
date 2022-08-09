@@ -337,6 +337,35 @@ def _model_linreg(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
     f = lambda x: (np.dot(x, ob).T + exp_inter).T
     return f # p.predict
 
+def plot_dg_rfs(fdg, extent=2, n_pts=100, n_plots_rows=5, axs=None):
+    rng = np.random.default_rng()
+    if axs is None:
+        f, axs = plt.subplots(n_plots_rows, n_plots_rows, sharex=True,
+                              sharey=True)
+    vals_x = np.linspace(-extent, extent, n_pts)
+    vals_y = np.linspace(-extent, extent, n_pts)
+    vals = np.array(list(it.product(vals_x, vals_y)))
+    zs = np.zeros((vals.shape[0], 1))
+
+    input_map = np.concatenate((vals, zs, zs ,zs), axis=1)
+    rep = fdg.get_representation(input_map).numpy()
+    rep_map = np.reshape(rep, (n_pts, n_pts, rep.shape[1]))
+
+    on_mask = np.any(rep_map > 0, axis=(0, 1))
+    rep_map_masked = rep_map[..., on_mask]
+    axs_flat = axs.flatten()
+    inds = rng.choice(rep_map_masked.shape[-1], len(axs_flat), replace=False)
+    for i, ax in enumerate(axs_flat):
+        gpl.pcolormesh(vals_x, vals_y, rep_map_masked[..., inds[i]], ax=ax)
+        ax.set_xticks([-extent, 0, extent])
+        ax.set_yticks([-extent, 0, extent])
+    return axs
+
+def compute_sparsity(model, n_samps=10000):
+    _, reps = model.sample_reps(n_samps)
+    fracs = np.mean(reps != 0, axis=1)
+    return fracs
+
 def empirical_model_manifold(ls_pts, rep_pts, rads=(0, .2, .4, .6),
                              rad_eps=.05, near_eps=.5, ax=None,
                              subdims=(0, 1), use_lr=False,
