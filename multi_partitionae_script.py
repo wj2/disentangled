@@ -109,6 +109,8 @@ def create_parser():
     parser.add_argument('--rf_output_noise', default=0, type=float,
                         help='noise applied to the output of the RF '
                         'functions (default 0)')
+    parser.add_argument('--rf_random_widths', default=False, action='store_true',
+                        help='whether to randomize RF widths')    
     parser.add_argument('--nan_salt', default=None, type=float,
                         help='probability an output is replaced with nan')
     parser.add_argument('--no_train_dg', default=False, action='store_true',
@@ -239,7 +241,8 @@ if __name__ == '__main__':
                                     width_scaling=args.rf_width,
                                     noise=args.rf_output_noise,
                                     input_noise=args.rf_input_noise,
-                                    source_distribution=sd)
+                                    source_distribution=sd,
+                                    random_widths=args.rf_random_widths)
     elif args.use_rbf_dg:
         dg_use = dg.KernelDataGenerator(true_inp_dim, None, args.dg_dim,
                                         source_distribution=sd)
