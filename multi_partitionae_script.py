@@ -90,6 +90,9 @@ def create_parser():
                         help='the weight for L2 regularization')
     parser.add_argument('--l1_weight', default=None, type=float,
                         help='the weight for L1 regularization')
+    parser.add_argument('--full_reg', default=False, action='store_true',
+                        help='use regularization on all layers, rather than just'
+                        ' the rep layer')    
     parser.add_argument('--rep_noise', default=0, type=float,
                         help='std of noise to use in representation layer '
                         'during training')
@@ -343,32 +346,35 @@ if __name__ == '__main__':
         nan_salt = 'single'
     else:
         nan_salt = args.nan_salt
-    model_kinds = list(ft.partial(net_type,
-                                  true_inp_dim=true_inp_dim,
-                                  n_partitions=p,
-                                  contextual_partitions=contextual_partitions,
-                                  orthog_partitions=orthog_partitions,
-                                  offset_distr=offset_distr,
-                                  loss_ratio=args.loss_ratio,
-                                  no_autoenc=args.no_autoencoder,
-                                  dropout_rate=args.dropout,
-                                  regularizer_type=reg,
-                                  regularizer_weight=reg_weight,
-                                  noise=args.rep_noise,
-                                  context_offset=context_offset,
-                                  act_func=act_func,
-                                  nan_salt=nan_salt,
-                                  n_grids=args.n_grids,
-                                  n_granules=args.n_granules,
-                                  granule_sparseness=args.granule_sparseness,
-                                  grid_coloring=args.use_grids_only,
-                                  use_gp_tasks=args.use_gp_tasks_only,
-                                  gp_task_length_scale=args.gp_task_length_scale,
-                                  no_learn_lvs=no_learn_lvs,
-                                  weight_reg_weight=args.weight_reg_weight,
-                                  readout_bias_reg_str=args.readout_bias_reg,
-                                  use_early_stopping=args.use_early_stopping,
-                                  early_stopping_field=args.early_stopping_field)
+    model_kinds = list(ft.partial(
+        net_type,
+        true_inp_dim=true_inp_dim,
+        n_partitions=p,
+        contextual_partitions=contextual_partitions,
+        orthog_partitions=orthog_partitions,
+        offset_distr=offset_distr,
+        loss_ratio=args.loss_ratio,
+        no_autoenc=args.no_autoencoder,
+        dropout_rate=args.dropout,
+        regularizer_type=reg,
+        regularizer_weight=reg_weight,
+        noise=args.rep_noise,
+        context_offset=context_offset,
+        act_func=act_func,
+        nan_salt=nan_salt,
+        n_grids=args.n_grids,
+        n_granules=args.n_granules,
+        granule_sparseness=args.granule_sparseness,
+        grid_coloring=args.use_grids_only,
+        use_gp_tasks=args.use_gp_tasks_only,
+        gp_task_length_scale=args.gp_task_length_scale,
+        no_learn_lvs=no_learn_lvs,
+        weight_reg_weight=args.weight_reg_weight,
+        readout_bias_reg_str=args.readout_bias_reg,
+        use_early_stopping=args.use_early_stopping,
+        early_stopping_field=args.early_stopping_field,
+        full_reg=args.full_reg
+    )
                        for p in partitions)
         
     use_mp = not args.no_multiprocessing

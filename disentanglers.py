@@ -395,6 +395,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                      weight_reg_type=tfk.regularizers.l2,
                      readout_bias_reg_str=0,
                      readout_bias_reg_type=tfk.regularizers.l2,
+                     full_reg=False,
                      **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
@@ -406,17 +407,23 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
             readout_bias_reg = readout_bias_reg_type(readout_bias_reg_str)
         else:
             readout_bias_reg = None
+
+        # representation layer
+        act_reg = regularizer_type(regularizer_weight)
+        if full_reg:
+            layer_act_reg = act_reg
+        else:
+            layer_act_reg = None
             
         for lp in layer_shapes:
             x = layer_type(*lp, activation=act_func,
                            kernel_regularizer=kernel_reg,
+                           activity_regularizer=layer_act_reg,
                            **layer_params)(x)
 
         if dropout_rate > 0:
             x = tfkl.Dropout(dropout_rate)(x)
 
-        # representation layer
-        act_reg = regularizer_type(regularizer_weight)
         rep = tfkl.Dense(encoded_size, activation=None,
                          activity_regularizer=act_reg,
                          kernel_regularizer=kernel_reg,
