@@ -156,6 +156,7 @@ def create_parser():
                         help='number of latent variables to learn for tasks')
     parser.add_argument('--use_weight_decay', default=False, action='store_true',
                         help='use AdamW optimizer to train model')
+    parser.add_argument('--weight_reg_type', default='l2', type=str)
     parser.add_argument('--weight_reg_weight', default=0, type=float,
                         help='weight of L2 regularization on weights')
     parser.add_argument('--eval_intermediate', default=False,
@@ -317,6 +318,10 @@ if __name__ == '__main__':
     else:
         reg = tfk.regularizers.l2
         reg_weight = 0
+
+    reg_dict = {'l1':tfk.regularizers.l1,
+                'l2':tfk.regularizers.l2}
+    weight_reg_type = reg_dict[args.weight_reg_type]
         
     if args.use_tanh:
         act_func = tf.nn.tanh
@@ -374,6 +379,7 @@ if __name__ == '__main__':
         use_early_stopping=args.use_early_stopping,
         early_stopping_field=args.early_stopping_field,
         full_reg=args.full_reg
+        weight_reg_type=weight_reg_type
     )
                        for p in partitions)
         
