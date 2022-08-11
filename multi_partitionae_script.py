@@ -378,7 +378,7 @@ if __name__ == '__main__':
         readout_bias_reg_str=args.readout_bias_reg,
         use_early_stopping=args.use_early_stopping,
         early_stopping_field=args.early_stopping_field,
-        full_reg=args.full_reg
+        full_reg=args.full_reg,
         weight_reg_type=weight_reg_type
     )
                        for p in partitions)
