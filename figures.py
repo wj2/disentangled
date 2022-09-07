@@ -257,13 +257,15 @@ class DisentangledFigure(pu.Figure):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, find_panel_keys=False, **kwargs)
 
-    def make_fdg(self, retrain=False):
+    def make_fdg(self, retrain=False, dg_dim=None):
         try:
             assert not retrain
             fdg = self.fdg
         except:
             inp_dim = self.params.getint('inp_dim')
-            dg_dim = self.params.getint('dg_dim')
+            if dg_dim is None:
+                dg_dim = self.params.getint('dg_dim')
+            
             dg_epochs = self.params.getint('dg_epochs')
             dg_noise = self.params.getfloat('dg_noise')
             dg_regweight = self.params.getlist('dg_regweight', typefunc=float)
@@ -280,7 +282,8 @@ class DisentangledFigure(pu.Figure):
                                              use_pr_reg=dg_pr_reg,
                                              l2_weight=dg_regweight)
             fdg.fit(source_distribution=source_distr, epochs=dg_epochs,
-                    train_samples=dg_train_egs, batch_size=dg_bs)
+                    train_samples=dg_train_egs, batch_size=dg_bs,
+                    verbose=False)
             self.fdg = fdg 
         return fdg
 
@@ -301,31 +304,17 @@ class DisentangledFigure(pu.Figure):
                                       multi_train=multi_train, **kwargs)
         n_parts, _, _, th, p, c, _, sc, _ = data
         return n_parts, p, c, sc, th, info
-    
-    def _standard_panel(self, fdg, model, run_inds, f_pattern, folder, axs,
-                        labels=None, rep_scale_mag=5, source_scale_mag=.5,
-                        x_label=True, y_label=True, colors=None, view_init=None,
-                        multi_num=1, set_lims=True, **kwargs):
-        model = model[0, 0]
+
+    def _abstraction_panel(self, run_inds, res_axs, f_pattern=None,
+                           folder=None, labels=None, colors=None,
+                           multi_num=1, set_lims=True,
+                           collapse_plots=False, **kwargs):
+        if f_pattern is None:
+            f_pattern = self.params.get('f_pattern')
+        if folder is None:
+            folder = self.params.get('mp_simulations_path')
         if labels is None:
             labels = ('',)*len(run_inds)
-        if len(axs) == 3:
-            ax_break = 1
-        else:
-            ax_break = 2
-        manifold_axs = axs[:ax_break]
-        res_axs = np.expand_dims(axs[ax_break:], 0)
-        rs = self.params.getlist('manifold_radii', typefunc=float)
-        n_arcs = self.params.getint('manifold_arcs')
-        vis_3d = self.params.getboolean('vis_3d')
-
-        # print(characterize_generalization(fdg, model, 10))
-        dc.plot_source_manifold(fdg, model, rs, n_arcs, 
-                                source_scale_mag=source_scale_mag,
-                                rep_scale_mag=rep_scale_mag,
-                                markers=False, axs=manifold_axs,
-                                titles=False, plot_model_3d=vis_3d,
-                                model_view_init=view_init)
         if colors is None:
             colors = (None,)*len(run_inds)
         if multi_num > 1:
@@ -338,13 +327,54 @@ class DisentangledFigure(pu.Figure):
             double_inds = (None,)*len(run_inds)
         for i, ri in enumerate(run_inds):
             dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
-                                      collapse_plots=False, folder=folder,
+                                      collapse_plots=collapse_plots,
+                                      folder=folder,
                                       axs=res_axs, legend=labels[i],
                                       print_args=False, set_title=False,
                                       color=colors[i], double_ind=double_inds[i],
                                       set_lims=set_lims, **kwargs)
         res_axs[0, 0].set_yticks([.5, 1])
         res_axs[0, 1].set_yticks([0, .5, 1])
+
+    def _manifold_panel(self, fdg, model, axs, rep_scale_mag=5,
+                        source_scale_mag=.5, x_label=True, y_label=True,
+                        view_init=None, **kwargs):
+        rs = self.params.getlist('manifold_radii', typefunc=float)
+        n_arcs = self.params.getint('manifold_arcs')
+        vis_3d = self.params.getboolean('vis_3d')
+
+        # print(characterize_generalization(fdg, model, 10))
+        dc.plot_source_manifold(fdg, model, rs, n_arcs, 
+                                source_scale_mag=source_scale_mag,
+                                rep_scale_mag=rep_scale_mag,
+                                markers=False, axs=manifold_axs,
+                                titles=False, plot_model_3d=vis_3d,
+                                model_view_init=view_init, **kwargs)
+
+
+    def _standard_panel(self, fdg, model, run_inds, f_pattern=None, folder=None,
+                        axs=None, labels=None, rep_scale_mag=5,
+                        source_scale_mag=.5, x_label=True, y_label=True,
+                        colors=None, view_init=None,
+                        multi_num=1, set_lims=True, **kwargs):
+        model = model[0, 0]
+        if len(axs) == 3:
+            ax_break = 1
+        else:
+            ax_break = 2
+        manifold_axs = axs[:ax_break]
+        res_axs = np.expand_dims(axs[ax_break:], 0)
+        
+        self._manifold_panel(fdg, model, manifold_axs,
+                             rep_scale_mag=rep_scale_mag,
+                             source_scale_mag=source_scale_mag,
+                             x_label=x_label, y_label=y_label,
+                             view_init=view_init)
+                             
+        self._abstraction_panel(run_inds, res_axs, f_pattern, folder, 
+                                labels=labels, colors=colors,
+                                multi_num=multi_num, set_lims=set_lims)
+        
 
 class Figure1(DisentangledFigure):
     
@@ -549,6 +579,199 @@ class Figure1(DisentangledFigure):
         # class_ax.set_ylim([.5, 1])
         # regr_ax.set_ylim([0, 1])
 
+class Figure1Alt(Figure1):
+
+    def make_gss(self):
+        gss = {}
+
+        part_schem_grid = self.gs[:80, :30]
+        gss[self.panel_keys[0]] = self.get_axs((part_schem_grid,))
+
+        metric_schem_grid = self.gs[:80, 36:55]
+        gss[self.panel_keys[4]] = self.get_axs((metric_schem_grid,))
+
+        rep_schem_grid = pu.make_mxn_gridspec(self.gs, 2, 2,
+                                                25, 100, 0, 55,
+                                                0, 0)
+        gss[self.panel_keys[1]] = self.get_axs(rep_schem_grid, all_3d=True)
+        
+        encoder_schem_grid = self.gs[:40, 70:]
+        gss[self.panel_keys[2]] = self.get_axs((encoder_schem_grid,))
+
+        plot_3d_axs = np.zeros((2, 2), dtype=bool)
+        plot_3d_axs[0, 1] = self.params.getboolean('vis_3d')
+
+        latent_vis = pu.make_mxn_gridspec(self.gs, 1, 2,
+                                          50, 70, 65, 75,
+                                          2, 0)
+        lv_axs = self.get_axs(latent_vis)
+        
+        rep_vis = pu.make_mxn_gridspec(self.gs, 3, 3,
+                                       50, 70, 80, 100,
+                                       2, 2)
+        rep_axs = self.get_axs(rep_vis)
+
+        perf_vis = pu.make_mxn_gridspec(self.gs, 1, 2,
+                                        79, 100, 65, 100,
+                                        8, 15)
+        perf_axs = self.get_axs(perf_vis)
+        
+        gss[self.panel_keys[3]] = (lv_axs, rep_axs, perf_axs)
+
+        self.gss = gss
+
+    def panel_encoder_visualization(self):
+        key = self.panel_keys[3]
+        axs = self.gss[key]
+        vis_axs = axs[0]
+        lv_axs, rep_axs, (class_ax, regr_ax) = axs[1]
+        if self.data.get(key) is None:
+            fdg = self.make_fdg()
+            exp_dim = fdg.representation_dimensionality(
+                participation_ratio=True)
+            pass_model = dd.IdentityModel()
+
+            c_reps = self.params.getint('dg_classifier_reps')
+            gen_perf = characterize_generalization(fdg, pass_model,
+                                                   c_reps)
+            self.data[key] = (fdg, pass_model, exp_dim, gen_perf)
+        fdg, pass_model, exp_dim, gen_perf = self.data[key]
+
+        print('PR = {}'.format(exp_dim))
+        rs = self.params.getlist('manifold_radii', typefunc=float)
+        n_arcs = self.params.getint('manifold_arcs')
+        vis_3d = self.params.getboolean('vis_3d')
+        
+        dc.plot_source_manifold(fdg, pass_model, rs, n_arcs, 
+                                source_scale_mag=.5,
+                                rep_scale_mag=.03,
+                                markers=False, axs=vis_axs,
+                                titles=False, plot_model_3d=vis_3d,
+                                l_axlab_str='latent dim {} (au)')
+        dg_color = self.params.getcolor('dg_color')
+        plot_bgp(gen_perf[0], gen_perf[1], class_ax, regr_ax, color=dg_color)
+        # plot_single_gen(gen_perf[0], class_ax, color=dg_color)
+        # plot_single_gen(gen_perf[1], regr_ax, color=dg_color)
+        # class_ax.set_ylabel('classifier\ngeneralization')
+        # regr_ax.set_ylabel('regression\ngeneralization')
+        # gpl.add_hlines(.5, class_ax)
+        # gpl.add_hlines(0, regr_ax)
+        # class_ax.set_ylim([.5, 1])
+        # regr_ax.set_ylim([0, 1])
+
+
+class FigureInp(DisentangledFigure):
+
+    def __init__(self, fig_key='figure_inp', colors=colors, **kwargs):
+        fsize = (6, 5)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = ('schem', 'rfs', 'info', 'rep_vis',
+                           'abstraction')
+        super().__init__(fsize, params, colors=colors, **kwargs)
+
+    def make_gss(self):
+        gss = {}
+
+        schem_grid = self.gs[:55, :50]
+        gss[self.panel_keys[0]] = self.get_axs((schem_grid,))
+
+        rfs_grid = pu.make_mxn_gridspec(self.gs, 5, 5,
+                                        0, 55, 60, 100,
+                                        2, 2)
+        gss[self.panel_keys[1]] = self.get_axs(rfs_grid, aspect='equal')
+
+        rest_grid = pu.make_mxn_gridspec(self.gs, 1, 4, 70, 90, 50, 100,
+                                         0, 10)
+        axs = self.get_axs(rest_grid)
+        gss[self.panel_keys[2]] = axs[0, :2]
+        gss[self.panel_keys[4]] = axs[0, 2:]
+
+        vis_grid = pu.make_mxn_gridspec(self.gs, 2, 1, 60, 100, 0, 40,
+                                         0, 10)
+        plot_3d_axs = np.zeros((2, 1), dtype=bool)
+        plot_3d_axs[1, 0] = self.params.getboolean('vis_3d')
+        vis_axs = self.get_axs(vis_grid, plot_3ds=plot_3d_axs)
+        gss[self.panel_keys[3]] = vis_axs
+
+        self.gss = gss
+
+    def panel_rfs(self):
+        key = self.panel_keys[1]
+        axs = self.gss[key]
+
+        fdg = self.make_fdg()
+        cmap = self.params.get('rf_cmap')
+        dc.plot_dg_rfs(fdg, axs=axs, cmap=cmap)
+        for ind in u.make_array_ind_iterator(axs.shape):
+            if ind[1] > 0:
+                axs[ind].set_yticks([])
+            if ind[0] < axs.shape[0] - 1:
+                axs[ind].set_xticks([])
+
+    def panel_info(self):
+        key = self.panel_keys[2]
+        (sp_ax, dim_ax) = self.gss[key]
+
+        fdg = self.make_fdg()
+        _, reps = fdg.sample_reps()
+        sparseness = dc.quantify_sparseness(reps)
+        dimensionality = fdg.representation_dimensionality(
+            participation_ratio=True)
+        dg_color = self.params.getcolor('dg_color')
+
+        gpl.plot_trace_werr([0], np.expand_dims(sparseness, 1), points=True,
+                              ax=sp_ax, color=dg_color)
+        sp_ax.set_ylim([0, 1])
+        dim_ax.plot([0], dimensionality, 'o', color=dg_color)
+        dim_ax.set_ylim([0, 200])
+        sp_ax.set_ylabel('sparseness')
+        dim_ax.set_ylabel('dimensionality')
+        gpl.clean_plot(sp_ax, 0)
+        gpl.clean_plot_bottom(sp_ax)
+        gpl.clean_plot(dim_ax, 0)
+        gpl.clean_plot_bottom(dim_ax)
+
+    def panel_rep_vis(self):
+        key = self.panel_keys[3]
+        vis_axs = self.gss[key]
+
+        fdg = self.make_fdg()
+        pass_model = dd.IdentityModel()
+
+        rs = self.params.getlist('manifold_radii', typefunc=float)
+        n_arcs = self.params.getint('manifold_arcs')
+        vis_3d = self.params.getboolean('vis_3d')
+
+        dc.plot_source_manifold(fdg, pass_model, rs, n_arcs, 
+                                source_scale_mag=.5,
+                                rep_scale_mag=.03,
+                                markers=False, axs=vis_axs.T[0],
+                                titles=False, plot_model_3d=vis_3d,
+                                l_axlab_str='latent dim {} (au)')
+
+    def panel_abstraction(self):
+        key = self.panel_keys[4]
+        (class_ax, regr_ax) = self.gss[key]
+
+        if self.data.get(key) is None:
+            fdg = self.make_fdg()
+            pass_model = dd.IdentityModel()
+
+            c_reps = self.params.getint('dg_classifier_reps')
+            gen_perf = characterize_generalization(fdg, pass_model,
+                                                   c_reps)
+            self.data[key] = gen_perf
+        gen_perf = self.data[key]
+        dg_color = self.params.getcolor('dg_color')
+        plot_bgp(gen_perf[0], gen_perf[1], class_ax, regr_ax, color=dg_color)
+
+        
+        
+        
 class Figure2(DisentangledFigure):
     
     def __init__(self, fig_key='figure2', colors=colors, **kwargs):
@@ -766,40 +989,47 @@ class Figure2(DisentangledFigure):
                             scale_mag=.2, markers=False, ax=axs[0, 1])
         axs[0, 1].set_xlabel('PC 1')
 
+
+    def _generate_panel_training_rep_data(self):
+        fdg = self.make_fdg()
+        n_parts = self.params.getlist('n_parts', typefunc=int)
+        latent_dim = self.params.getint('latent_dim')
+        n_reps = self.params.getint('n_reps')
+        dg_epochs = self.params.getint('dg_epochs')
+        n_epochs = self.params.getint('n_epochs')
+        n_train_bounds = self.params.getlist('n_train_eg_bounds',
+                                             typefunc=float)
+        n_train_diffs = self.params.getint('n_train_eg_diffs')
+        layer_spec = self.params.getlist('layers', typefunc=tuple_int)
+        no_autoencoder = self.params.getboolean('no_autoencoder')
+        
+        model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
+                                      true_inp_dim=fdg.input_dim, 
+                                      n_partitions=num_p,
+                                      no_autoenc=no_autoencoder,
+                                      noise=.1,
+                                      use_early_stopping=True) 
+                           for num_p in n_parts)
+        
+        out = dc.test_generalization_new(
+            dg_use=fdg, layer_spec=layer_spec,
+            est_inp_dim=latent_dim,
+            inp_dim=fdg.output_dim,
+            dg_train_epochs=dg_epochs,
+            model_n_epochs=n_epochs,
+            n_reps=n_reps, model_kinds=model_kinds,
+            models_n_diffs=n_train_diffs,
+            models_n_bounds=n_train_bounds,
+            p_mean=False, plot=False)
+        self.data[key] = (out, (n_parts, n_epochs))
+        
     def panel_training_rep(self):
         key = self.panel_keys[1]
         train_ax, rep_axs = self.gss[key]
         
         if self.data.get(key) is None:
-            fdg = self.make_fdg()
-            n_parts = self.params.getlist('n_parts', typefunc=int)
-            latent_dim = self.params.getint('latent_dim')
-            n_reps = self.params.getint('n_reps')
-            dg_epochs = self.params.getint('dg_epochs')
-            n_epochs = self.params.getint('n_epochs')
-            n_train_bounds = self.params.getlist('n_train_eg_bounds',
-                                                 typefunc=float)
-            n_train_diffs = self.params.getint('n_train_eg_diffs')
-            layer_spec = self.params.getlist('layers', typefunc=tuple_int)
-            no_autoencoder = self.params.getboolean('no_autoencoder')
-
-            model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
-                                          true_inp_dim=fdg.input_dim, 
-                                          n_partitions=num_p,
-                                          no_autoenc=no_autoencoder) 
-                               for num_p in n_parts)
+            self._generate_panel_training_rep_data()
             
-            out = dc.test_generalization_new(
-                dg_use=fdg, layer_spec=layer_spec,
-                est_inp_dim=latent_dim,
-                inp_dim=fdg.output_dim,
-                dg_train_epochs=dg_epochs,
-                model_n_epochs=n_epochs,
-                n_reps=n_reps, model_kinds=model_kinds,
-                models_n_diffs=n_train_diffs,
-                models_n_bounds=n_train_bounds,
-                p_mean=False, plot=False)
-            self.data[key] = (out, (n_parts, n_epochs))
         fdg, (models, th), (p, _), (_, scrs, _), _ = self.data[key][0]
         n_parts, n_epochs = self.data[key][1]
 
@@ -810,7 +1040,7 @@ class Figure2(DisentangledFigure):
         vis_3d = self.params.getboolean('vis_3d')
         view_inits = (None, (50, 30), (40, -20))
         for i, num_p in enumerate(n_parts):
-            hist = th[0, i, 0].history['loss']
+            hist = th[0, i, 0]['loss']
             epochs = np.arange(1, len(hist) + 1)
             train_ax.plot(epochs, hist,
                           label='r${} = {}$'.format(npart_signifier,
@@ -845,6 +1075,89 @@ class Figure2(DisentangledFigure):
                                   axs=axs, print_args=False,
                                   pv_mask=pv_mask,
                                   set_title=False, color=part_color)
+
+class Figure2Alt(Figure2):
+
+    def make_gss(self):
+        gss = {}
+
+        inp_grid = pu.make_mxn_gridspec(self.gs, 1, 2,
+                                            50, 68, 10, 50,
+                                            5, 10)
+        high_d_grid = (self.gs[75:, :5],)
+        hypoth_grids = pu.make_mxn_gridspec(self.gs, 1, 2,
+                                            75, 100, 10, 50,
+                                            5, 5)
+        gss[self.panel_keys[0]] = (self.get_axs(inp_grid),
+                                   self.get_axs(high_d_grid),
+                                   self.get_axs(hypoth_grids))
+        
+        train_grid = self.gs[:15, 35:55]
+        train_ax = self.get_axs((train_grid,))[0]
+        n_parts = len(self.params.getlist('n_parts'))
+        rep_grids = pu.make_mxn_gridspec(self.gs, n_parts, 2,
+                                         0, 65, 60, 100,
+                                         5, 0)
+        rep_axs = self.get_axs(rep_grids, sharex='vertical',
+                               sharey='vertical')
+        gss[self.panel_keys[1]] = train_ax, rep_axs
+
+
+        res_grids = pu.make_mxn_gridspec(self.gs, 2, 2, 60, 100, 55, 100,
+                                         10, 10)
+        res_axs = self.get_axs(res_grids)
+        
+        gss[self.panel_keys[2]] = res_axs[0]
+
+        gss[self.panel_keys[3]] = res_axs[1]
+        self.gss = gss
+
+    
+    def panel_training_rep(self):
+        key = self.panel_keys[1]
+        train_ax, rep_axs = self.gss[key]
+        
+        if self.data.get(key) is None:
+            self._generate_panel_training_rep_data()
+            
+        fdg, (models, th), (p, _), (_, scrs, _), _ = self.data[key][0]
+        n_parts, n_epochs = self.data[key][1]
+
+        vis_3d = self.params.getboolean('vis_3d')
+        colormap = self.params.get('vis_colormap')
+        cmap = plt.get_cmap(colormap)
+        task_colors = cmap([.1, .9])
+        for i, num_p in enumerate(n_parts):
+            dc.plot_grid(fdg, models[0, i, 0], ms=.5, ax=rep_axs[i, 0],
+                         colormap=colormap)
+
+            dc.plot_task_reps(fdg, models[0, i, 0], axs=(rep_axs[i, 1],),
+                              plot_tasks=(0,), colors=task_colors,
+                              density=True)
+            gpl.clean_plot(rep_axs[i, 1], 1)
+            gpl.make_xaxis_scale_bar(rep_axs[i, 1], 10)
+            gpl.make_xaxis_scale_bar(rep_axs[i, 1], 10)
+            gpl.make_yaxis_scale_bar(rep_axs[i, 1], .02, double=False)
+            
+        #     hist = th[0, i, 0]['loss']
+        #     epochs = np.arange(1, len(hist) + 1)
+        #     train_ax.plot(epochs, hist,
+        #                   label='r${} = {}$'.format(npart_signifier,
+        #                                             num_p))
+        #     dc.plot_source_manifold(fdg, models[0, i, 0], rs, n_arcs, 
+        #                             source_scale_mag=.5,
+        #                             rep_scale_mag=10, plot_model_3d=vis_3d,
+        #                             markers=False, axs=rep_axs[i],
+        #                             titles=False, model_view_init=view_inits[i])
+        #     if mid_i != i:
+        #         rep_axs[i, 0].set_ylabel('')
+        #         rep_axs[i, 1].set_ylabel('')
+        #     if i < len(n_parts) - 1:
+        #         rep_axs[i, 0].set_xlabel('')
+        #         rep_axs[i, 1].set_xlabel('')
+        # gpl.clean_plot(train_ax, 0)
+        # train_ax.set_yscale('log')
+    
 
 class Figure4Beta(DisentangledFigure):
 
@@ -2416,8 +2729,24 @@ class FigureRL(DisentangledFigure):
         gss[self.panel_keys[1]] = gen_axs
         self.gss = gss
 
-    def _get_rl_run(self):
-        ri = self.params.getlist('run_ind_comb')[0]
+    def _get_rl_hists(self):
+        run_inds = self.params.getlist('run_ind_comb')
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        for i, ri in enumerate(run_inds):
+            out = da.load_full_run(folder, ri, merge_axis=1, file_template=f_pattern,
+                                   analysis_only=False, add_hist=True)
+            print(i)
+            hist = out[0][2]
+            if i == 0:
+                hist_all = hist
+            else:
+                hist_all = np.concatenate((hist_all, hist), axis=-1)
+        return hist_all
+        
+    def _get_rl_run(self, ind=0):
+        
+        ri = self.params.getlist('run_ind_comb')[ind]
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
         out = da.load_full_run(folder, ri, merge_axis=1, file_template=f_pattern,
@@ -2438,9 +2767,13 @@ class FigureRL(DisentangledFigure):
         rep_ind = self.params.getint('hist_rep_ind')
         task_color = self.params.getcolor('rl_task_color')
         epoch_cut = self.params.getint('epoch_cutoff')
+
+        hist_all = self._get_rl_hists()
+        print(hist_all.shape)
         
         n_tasks, task_fractions = get_tasks_learned(np.squeeze(hist_all))
         ax, frac_ax = axs[:, 0]
+        print(task_fractions.shape)
         frac_ax.plot(n_tasks, np.mean(task_fractions, axis=1),
                      color=task_color)
         frac_ax.set_ylabel('fraction of\ntasks learned')
@@ -2480,6 +2813,332 @@ class FigureRL(DisentangledFigure):
                                   set_lims=True, list_run_ind=True)
         gpl.add_vlines(5, axs[0, 0])
         gpl.add_vlines(5, axs[0, 1])
+        
+class SIFigureRepWidth(DisentangledFigure):
+
+    def __init__(self, fig_key='sifigure_rep_width', colors=colors, **kwargs):
+        fsize = (3, 1)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = ('panel_uniform',)
+        super().__init__(fsize, params, colors=colors, **kwargs)
+    
+    def make_gss(self):
+        gss = {}
+
+        unif_grid = pu.make_mxn_gridspec(self.gs, 1, 2,
+                                         0, 100, 0, 100,
+                                         20, 20)
+        unif_axs = self.get_axs(unif_grid, squeeze=False)
+        gss[self.panel_keys[0]] = unif_axs
+        self.gss = gss
+
+    def panel_uniform(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        norm_ind = self.params.get('normative_run')
+        unif_ind = self.params.get('unif_width_run')
+        norm_col = self.params.getcolor('partition_color')
+        unif_col = self.params.getcolor('unif_width_color')
+        labels = ('standard layers',
+                  'uniform width layers')
+        pv_mask = np.array([1])
+
+        run_inds = (norm_ind, unif_ind)
+        colors = (norm_col, unif_col)
+        print(norm_col, unif_col)
+
+        self._abstraction_panel(run_inds, axs, labels=labels,
+                                pv_mask=pv_mask,
+                                colors=colors)
+
+class SIFigureInpWidth(DisentangledFigure):
+
+    def __init__(self, fig_key='sifigure_inp_width', colors=colors, **kwargs):
+        fsize = (3.5, 2.5)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = (
+            'panel_inps',
+            'panel_inp_info',
+        )
+        super().__init__(fsize, params, colors=colors, **kwargs)
+    
+    def make_gss(self):
+        gss = {}
+
+        inps_grid = pu.make_mxn_gridspec(self.gs, 2, 2,
+                                         0, 100, 0, 100,
+                                         20, 20)
+        inps_axs = self.get_axs(inps_grid, squeeze=False)
+        gss[self.panel_keys[0]] = inps_axs[1:]
+        gss[self.panel_keys[1]] = inps_axs[0]
+        self.gss = gss
+
+    def panel_inp_info(self):
+        key = self.panel_keys[1]
+        dim_ax, sparse_ax = self.gss[key]
+        fdg_list = []
+
+        if self.data.get(key) is None:
+            inp_wids = self.params.getlist('input_widths',
+                                           typefunc=int)
+            for i, iw in enumerate(inp_wids):
+                fdg_i = self.make_fdg(dg_dim=iw, retrain=True)
+                fdg_list.append(fdg_i)
+                
+            self.data[key] = (inp_wids, fdg_list)
+        inp_wids, fdg_list = self.data[key]
+        dims = np.zeros(len(fdg_list))
+        sparses = np.zeros_like(dims)
+        for i, fdg in enumerate(fdg_list):
+            dims[i] = fdg.representation_dimensionality(
+                participation_ratio=True)
+            _, reps = fdg.sample_reps()
+            sparses[i] = np.nanmean(dc.quantify_sparseness(reps))
+
+        inps_cmap = self.params.get('inp_color_cmap')
+        inps_cmap = plt.get_cmap(inps_cmap)
+        color = inps_cmap(.5)
+        gpl.plot_trace_werr(inp_wids, dims, points=True, ax=dim_ax,
+                            ms=2, lw=.2, color=color)
+        gpl.plot_trace_werr(inp_wids, sparses, points=True, ax=sparse_ax,
+                            ms=2, lw=.2, color=color)
+        dim_ax.set_xlabel('input width')
+        dim_ax.set_ylabel('dimensionality')
+        sparse_ax.set_ylabel('sparseness')
+
+    def panel_inps(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        norm_ind = self.params.get('normative_run')
+        inps = self.params.getlist('inp_width_runs')
+        norm_col = self.params.getcolor('partition_color')
+        
+        inps_cmap = self.params.get('inp_color_cmap')
+        inps_cmap = plt.get_cmap(inps_cmap)
+        labels = ('standard input, 500',
+                  '750', '1000', '1250')
+        pv_mask = np.array([1])
+
+        run_inds = (norm_ind,) + tuple(inps)
+        colors = (norm_col,) + tuple(inps_cmap([.6, .4, .2]))
+
+        self._abstraction_panel(run_inds, axs, labels=labels,
+                                pv_mask=pv_mask,
+                                colors=colors)
+
+class SIFigureIntermediate(DisentangledFigure):
+
+    def __init__(self, fig_key='sifigure_intermediate', colors=colors, **kwargs):
+        fsize = (4, 3)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = ('panel_nominal', 'panel_uniform',)
+        super().__init__(fsize, params, colors=colors, **kwargs)
+    
+    def make_gss(self):
+        gss = {}
+
+        abs_grid = pu.make_mxn_gridspec(self.gs, 2, 2,
+                                        0, 100, 0, 100,
+                                        20, 15)
+        abs_axs = self.get_axs(abs_grid, squeeze=False)
+        
+        gss[self.panel_keys[0]] = abs_axs[:1]
+        gss[self.panel_keys[1]] = abs_axs[1:2]
+        self.gss = gss
+
+    def panel_nominal(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        ri = self.params.get('nom_intermediate')
+        cmap = gpl.make_linear_cmap(self.params.getcolor('partition_color'))        
+        inter_colors = cmap(np.linspace(.4, 1, 3))
+        inter_labels = ('hidden 1', 'hidden 2', 'representation layer')                                    
+        pv_mask = np.array([1])
+
+        self._abstraction_panel((ri,), axs, inter_labels=inter_labels,
+                                pv_mask=pv_mask, inter_colors=inter_colors,
+                                intermediate=True)
+
+    def panel_uniform(self):
+        key = self.panel_keys[1]
+        axs = self.gss[key]
+
+        ri = self.params.get('unif_intermediate')
+        cmap = gpl.make_linear_cmap(self.params.getcolor('unif_width_color'))
+        inter_colors = cmap(np.linspace(.4, 1, 3))
+        inter_labels = ('hidden 1', 'hidden 2', 'representation layer')
+
+        pv_mask = np.array([1])
+
+        self._abstraction_panel((ri,), axs, inter_labels=inter_labels,
+                                pv_mask=pv_mask, inter_colors=inter_colors,
+                                intermediate=True)
+
+class SIFigureReg(DisentangledFigure):
+
+    def __init__(self, fig_key='sifigure_reg', colors=colors, **kwargs):
+        fsize = (5, 3)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = ('panel_l1', 'panel_l2', 'panel_sparseness_l1',
+                           'panel_sparseness_l2')
+        super().__init__(fsize, params, colors=colors, **kwargs)
+    
+    def make_gss(self):
+        gss = {}
+
+        reg_grid = pu.make_mxn_gridspec(self.gs, 2, 3,
+                                        0, 100, 0, 100,
+                                        20, 15)
+        abs_axs = self.get_axs(reg_grid[:, 1:], squeeze=False)
+        sparse_axs = self.get_axs(reg_grid[:, 0], squeeze=False,
+                                  sharex=True, sharey=True)
+        
+        gss[self.panel_keys[0]] = abs_axs[:1]
+        gss[self.panel_keys[1]] = abs_axs[1:2]
+        gss[self.panel_keys[2]] = sparse_axs[0, 0]
+        gss[self.panel_keys[3]] = sparse_axs[0, 1]
+        self.gss = gss
+
+    def panel_sparseness_l1(self):
+        key = self.panel_keys[2]
+        ax = self.gss[key]
+
+        if self.data.get(key) is None:
+            f_pattern = self.params.get('f_pattern')
+            folder = self.params.get('mp_simulations_path')
+
+            use_runs = self.params.getint('use_runs')
+            norm_ind = self.params.get('normative_run')
+            l1s = self.params.getlist('l1_reg_runs')[::-1]
+            run_inds = (norm_ind,) + tuple(l1s)
+
+            ind = (1, 12)
+            l1_weights = []
+            avg_sparse = []
+            for i, ri in enumerate(run_inds):
+                out = da.load_full_run(folder, ri, file_template=f_pattern,
+                                       analysis_only=False, skip_gd=False)
+                ls_l1, inps_l1, reps_l1 = out[0][-1]
+                l1 = out[1]['args'][0]['l1_weight']
+                if l1 is None:
+                    l1 = 0 
+                l1_weights.append(l1)
+            
+                s = dc.quantify_sparseness(reps_l1[ind], axis=1)
+                avg_sparse.append(np.mean(s, axis=1)[:use_runs])
+            self.data[key] = (np.array(l1_weights),
+                              np.stack(avg_sparse, axis=0))
+        l1_weights, avg_sparse = self.data[key]
+
+        cmap = plt.get_cmap(self.params.get('l1_color_cmap'))
+        gpl.plot_trace_werr(l1_weights, avg_sparse.T, ax=ax,
+                            color=cmap(.5))
+        ax.set_xlabel('L1 weight')
+        ax.set_ylabel('sparseness')
+        
+        
+
+    def panel_sparseness_l2(self):
+        key = self.panel_keys[3]
+        ax = self.gss[key]
+
+        if self.data.get(key) is None:
+            f_pattern = self.params.get('f_pattern')
+            folder = self.params.get('mp_simulations_path')
+            use_runs = self.params.getint('use_runs')
+
+            norm_ind = self.params.get('normative_run')
+            l2s = self.params.getlist('l2_reg_runs')[::-1]
+            run_inds = (norm_ind,) + tuple(l2s)
+
+            ind = (1, 12)
+            l2_weights = []
+            avg_sparse = []
+            for i, ri in enumerate(run_inds):
+                out = da.load_full_run(folder, ri, file_template=f_pattern,
+                                       analysis_only=False, skip_gd=False)
+                ls_l2, inps_l2, reps_l2 = out[0][-1]
+                l2 = out[1]['args'][0]['l2_weight']
+                if l2 is None:
+                    l2 = 0 
+                l2_weights.append(l2)
+            
+                s = dc.quantify_sparseness(reps_l2[ind], axis=1)
+                avg_sparse.append(np.mean(s, axis=1)[:use_runs])
+            self.data[key] = (np.array(l2_weights),
+                              np.stack(avg_sparse, axis=0))
+        l2_weights, avg_sparse = self.data[key]
+
+        cmap = plt.get_cmap(self.params.get('l2_color_cmap'))
+        gpl.plot_trace_werr(l2_weights, avg_sparse.T, ax=ax,
+                            color=cmap(.5))
+        ax.set_xlabel('L2 weight')
+        ax.set_ylabel('sparseness')
+
+        
+    def panel_l1(self):
+        key = self.panel_keys[0]
+        axs = self.gss[key]
+
+        norm_ind = self.params.get('normative_run')
+        norm_col = self.params.getcolor('partition_color')
+
+        l1s = self.params.getlist('l1_reg_runs')[::-1]
+        l1_cmap = self.params.get('l1_color_cmap')
+        l1_cmap = plt.get_cmap(l1_cmap)
+        labels = ('no regularization',) + ('',)*len(l1s)
+        pv_mask = np.array([1])
+
+        run_inds = (norm_ind,) + tuple(l1s)
+        col_pts = np.linspace(.3, .9, len(l1s))
+        colors = (norm_col,) + tuple(l1_cmap(col_pts))
+
+        self._abstraction_panel(run_inds, axs, labels=labels,
+                                pv_mask=pv_mask,
+                                colors=colors,
+                                label_field='l1_weight')
+
+    def panel_l2(self):
+        key = self.panel_keys[1]
+        axs = self.gss[key]
+
+        norm_ind = self.params.get('normative_run')
+        norm_col = self.params.getcolor('partition_color')
+
+        l2s = self.params.getlist('l2_reg_runs')[::-1]
+        l2_cmap = self.params.get('l2_color_cmap')
+        l2_cmap = plt.get_cmap(l2_cmap)
+        labels = ('no regularization',) + ('',)*len(l2s)
+        pv_mask = np.array([1])
+
+        run_inds = (norm_ind,) + tuple(l2s)
+        col_pts = np.linspace(.3, .9, len(l2s))
+        colors = (norm_col,) + tuple(l2_cmap(col_pts))
+
+        self._abstraction_panel(run_inds, axs, labels=labels,
+                                pv_mask=pv_mask,
+                                colors=colors,
+                                label_field='l2_weight')
+
         
 class SIFigureMultiverse(DisentangledFigure):
     
