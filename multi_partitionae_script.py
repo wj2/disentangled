@@ -194,6 +194,8 @@ def create_parser():
                         default='val_class_branch_loss',
                         type=str, help='history field to use to decide early '
                         'stopping')
+    parser.add_argument('--gp_test_task_length_scale', default=None, type=float,
+                        help='the length scale for test tasks to use')
     return parser
 
 if __name__ == '__main__':
@@ -398,7 +400,9 @@ if __name__ == '__main__':
         categ_var=args.categ_frac,
         extrapolate_test=args.extrapolation,
         evaluate_intermediate=args.eval_intermediate,
-        samples_seq=args.training_samples_seq)
+        samples_seq=args.training_samples_seq,
+        use_test_gp_tasks=args.gp_test_task_length_scale,
+    )
     dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,

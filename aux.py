@@ -116,8 +116,19 @@ def _make_gp_task(dim, source_distr, offset_distr, length_scale=.5,
     gp_t.fit(in_samps, samp_proc)
     return ft.partial(_gp_task, gp=gp_t)    
 
+def generate_partition_functions(dim, task_type='linear', **kwargs):
+    if task_type == 'linear':
+        out = generate_partition_functions_linear(dim, **kwargs)
+    elif task_type == 'gp':
+        funcs = generate_gp_task_functions(dim, **kwargs)
+        out = (funcs, None, None)
+    else:
+        raise IOError('unrecognized argument for task_type {}, must be one of'
+                      '(gp, linear)'.format(task_type))
+    return out
+    
 def generate_gp_task_functions(dim, source_distr=None, offset_distribution=None,
-                               n_funcs=100, length_scale=.5):
+                               n_funcs=100, length_scale=.5, **kwargs):
     if source_distr is None:
         source_distr = sts.multivariate_normal(np.zeros(dim), 1)
     funcs = []
@@ -127,11 +138,14 @@ def generate_gp_task_functions(dim, source_distr=None, offset_distribution=None,
         funcs.append(f)
     return np.array(funcs)
 
-def generate_partition_functions(dim, offset_distribution=None, n_funcs=100,
-                                 orth_vec=None, orth_off=None,
-                                 orth_basis=False, contextual=False,
-                                 smaller=False, context_offset=False,
-                                 offset_var=None):
+
+def generate_partition_functions_linear(
+        dim, offset_distribution=None, n_funcs=100,
+        orth_vec=None, orth_off=None,
+        orth_basis=False, contextual=False,
+        smaller=False, context_offset=False,
+        offset_var=None, **kwargs
+):
     if orth_basis:
         orth_vecs = u.generate_orthonormal_basis(dim)
         seq_inds = np.arange(n_funcs, dtype=int) % dim

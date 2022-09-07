@@ -28,7 +28,14 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                               n_iters=2, mean=True,
                               shuffle=False, use_orthogonal=True,
                               learn_lvs='ignore', balance_samples=False,
-                              repl_mean=None, **classifier_params):
+                              repl_mean=None, gp_task_ls=None,
+                              **classifier_params):
+    if gp_task_ls is not None:
+        task_type = 'gp'
+        kernel = 'rbf'
+        print('use gp')
+    else:
+        task_type = 'linear'
     if train_func is None:
         lv_mask = np.ones(gen.input_dim, dtype=bool)
         if use_orthogonal and hasattr(train_distrib, 'partition'):
@@ -38,24 +45,33 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                 out = da.generate_partition_functions(gen.input_dim,
                                                       n_funcs=n_iters,
                                                       orth_vec=orth_vec,
-                                                      orth_off=orth_off)
+                                                      orth_off=orth_off,
+                                                      task_type=task_type,
+                                                      length_scale=gp_task_ls)
             elif learn_lvs == 'trained':
                 lv_mask = vae.learn_lvs
                 out = da.generate_partition_functions(
                     sum(vae.learn_lvs), n_funcs=n_iters,
-                    orth_vec=orth_vec[lv_mask], orth_off=orth_off)
+                    orth_vec=orth_vec[lv_mask], orth_off=orth_off,
+                    task_type=task_type,
+                    length_scale=gp_task_ls)
             elif learn_lvs == 'untrained':
                 n_untrained = gen.input_dim - sum(vae.learn_lvs)
                 lv_mask = np.logical_not(vae.learn_lvs)
                 out = da.generate_partition_functions(
                     n_untrained, n_funcs=n_iters, orth_vec=orth_vec[lv_mask],
-                    orth_off=orth_off)
+                    orth_off=orth_off,
+                    task_type=task_type,
+                    length_scale=gp_task_ls)
             else:
                 raise IOError('{} is not an understood option for '
                               'learn_lvs'.format(learn_lvs))
         else:
-            out = da.generate_partition_functions(gen.input_dim, n_funcs=n_iters)
+            out = da.generate_partition_functions(gen.input_dim, n_funcs=n_iters,
+                                                  task_type=task_type,
+                                                  length_scale=gp_task_ls)
         train_func, _, _ = out
+    print(train_func)
     # print(vae.learn_lvs)
     # print(lv_mask)
     if train_distrib is None:
@@ -337,7 +353,8 @@ def _model_linreg(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
     f = lambda x: (np.dot(x, ob).T + exp_inter).T
     return f # p.predict
 
-def plot_dg_rfs(fdg, extent=2, n_pts=100, n_plots_rows=5, axs=None):
+def plot_dg_rfs(fdg, extent=2, n_pts=100, n_plots_rows=5, axs=None,
+                **kwargs):
     rng = np.random.default_rng()
     if axs is None:
         f, axs = plt.subplots(n_plots_rows, n_plots_rows, sharex=True,
@@ -356,7 +373,8 @@ def plot_dg_rfs(fdg, extent=2, n_pts=100, n_plots_rows=5, axs=None):
     axs_flat = axs.flatten()
     inds = rng.choice(rep_map_masked.shape[-1], len(axs_flat), replace=False)
     for i, ax in enumerate(axs_flat):
-        gpl.pcolormesh(vals_x, vals_y, rep_map_masked[..., inds[i]], ax=ax)
+        gpl.pcolormesh(vals_x, vals_y, rep_map_masked[..., inds[i]], ax=ax,
+                       **kwargs)
         ax.set_xticks([-extent, 0, extent])
         ax.set_yticks([-extent, 0, extent])
     return axs
@@ -477,6 +495,139 @@ def make_square(n_pts_per_side=100, lpt=0, rpt=1):
                         [lpt, lpt]])
 
     return pts, corners
+
+def plot_task_reps(dg_use, model, axs=None, fwid=3, n_samps=1000,
+                   plot_tasks=None, bins=20, colors=None, **kwargs):
+    if plot_tasks is None:
+        plot_tasks = np.arange(model.n_partitions)
+    if axs is None:
+        f, axs = plt.subplots(1, len(plot_tasks),
+                              figsize=(len(plot_tasks)*fwid, fwid),
+                              squeeze=False)
+        axs = axs[0]
+    out_mat, out_bias = model.class_model.weights[-2:]
+    out_mat, out_bias = out_mat.numpy(), np.expand_dims(out_bias.numpy(), 1)
+    stim, inp_reps = dg_use.sample_reps(n_samps)
+    corr = model.generate_target(stim)
+    u_corrs_all = np.unique(corr)
+    if colors is None:
+        colors = (None,)*len(u_corrs_all)
+    lat_reps = model.get_representation(inp_reps).numpy()
+    out_act = (np.dot(out_mat.T, lat_reps.T) + out_bias).T
+    for i, task_ind in enumerate(plot_tasks):
+        ax = axs[i]
+        for j, c_val in enumerate(np.unique(corr)):
+            mask = corr[:, task_ind] == c_val
+            ax.hist(out_act[mask, task_ind], bins=bins,
+                    color=colors[j], **kwargs)    
+
+def train_dim_dec(stim, rep, use_inds=(0, 1), use_thr=0,
+                  model=sklm.Ridge):
+        
+    m_half = model()
+    if use_thr is not None:
+        half_mask = stim[:, use_inds[1]] < use_thr
+    else:
+        half_mask = np.ones(stim.shape[0], dtype=bool)
+    m_half.fit(rep[half_mask], stim[half_mask, use_inds[0]])
+
+    m_full = model()
+    m_full.fit(rep, stim[:, use_inds[1]])
+    return m_full, m_half
+
+def make_rep_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
+                  dims=None):
+    dims = dg_use.input_dim
+    side_pts = np.linspace(-grid_len, grid_len, grid_pts)
+    grid_pts = np.array(list(it.product(side_pts,
+                                        repeat=2)))
+    stim = np.zeros((grid_pts.shape[0], dims))
+    stim[:, use_inds] = grid_pts
+    inp_rep = dg_use.get_representation(stim)
+    lat_rep = model.get_representation(inp_rep)
+    return stim, inp_rep, lat_rep
+
+def plot_tasks(model, use_inds=(0, 1), extent=1, buff=.2,
+               ax=None, fwid=3):
+    if ax is None:
+        f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
+    tasks = u.make_unit_vector(model.p_vectors[:, use_inds],
+                               squeeze=False)*np.sqrt(2*extent**2)
+    for i, task in enumerate(tasks):
+        ax.plot([-task[use_inds[0]], task[use_inds[0]]],
+                [task[use_inds[1]], -task[use_inds[1]]],
+                linestyle='dashed',
+                color=(.3, .3, .3))
+    ax.set_xlim([-extent - buff, extent + buff])
+    ax.set_ylim([-extent - buff, extent + buff])
+
+def plot_task_groups(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
+                     ax=None, fwid=3, colormap='Spectral',
+                     class_thr=.5, ms=.5, buff=.2):  
+    cmap = plt.get_cmap(colormap)
+    if ax is None:
+        f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
+    stim, inp_rep, lat_rep = make_rep_grid(dg_use, model, use_inds=use_inds,
+                                           grid_len=grid_len, grid_pts=grid_pts)
+    class_out = model.class_model(lat_rep).numpy() < class_thr
+    u_classes = np.unique(class_out, axis=0)
+    n_classes = len(u_classes)
+
+    train_stim, train_inp = dg_use.sample_reps(stim.shape[0])
+    train_rep = model.get_representation(train_inp)
+    m_x, m_y = train_dim_dec(train_stim, train_rep, use_inds=use_inds,
+                             use_thr=None)
+
+    x_coords = m_x.predict(lat_rep)
+    y_coords = m_y.predict(lat_rep)
+    for i, c in enumerate(u_classes):
+        mask = np.all(class_out == c, axis=1)
+        xs = x_coords[mask]
+        ys = y_coords[mask]
+        ax.plot(xs, ys, 'o', ms=ms, color=cmap(i/n_classes))
+
+    if model.p_vectors is not None:
+        plot_tasks(model, use_inds=use_inds, extent=grid_len, buff=buff, ax=ax)        
+        
+    gpl.make_xaxis_scale_bar(ax, 1, label='changed feature')
+    gpl.make_yaxis_scale_bar(ax, 1, label='learned feature')
+    gpl.clean_plot(ax, 0)
+
+        
+def plot_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
+              ax=None, fwid=3, n_digis=8, eps=.01, colormap='Spectral',
+              ms=1, buff=.2):
+    cmap = plt.get_cmap(colormap)
+    if ax is None:
+        f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
+
+    stim, inp_rep, lat_rep = make_rep_grid(dg_use, model, grid_len=grid_len,
+                                           grid_pts=grid_pts,
+                                           use_inds=use_inds)
+        
+    train_stim, train_inp = dg_use.sample_reps(stim.shape[0])
+    train_rep = model.get_representation(train_inp)
+
+    m_full, m_half = train_dim_dec(train_stim, train_rep, use_inds=use_inds)
+    
+    y_coords = m_half.predict(lat_rep)
+    x_coords = m_full.predict(lat_rep)
+    digi_bins = np.linspace(-grid_len, grid_len + eps, n_digis + 1)
+    stim_bins = np.digitize(stim[:, use_inds[0]], digi_bins) - 1
+    norm_bins = np.max(stim_bins)
+    for i, sb in enumerate(np.unique(stim_bins)):
+        coord_mask = sb == stim_bins
+        ax.plot(x_coords[coord_mask], y_coords[coord_mask], 'o',
+                ms=ms, color=cmap(sb/norm_bins))
+
+    if len(model.p_vectors) > 0:
+        plot_tasks(model, use_inds=use_inds, extent=grid_len, buff=buff, ax=ax)
+    
+    gpl.make_xaxis_scale_bar(ax, 1, label='changed feature')
+    gpl.make_yaxis_scale_bar(ax, 1, label='learned feature')
+    gpl.clean_plot(ax, 0)
+
+                              
 
 def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
@@ -1041,9 +1192,18 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
         if not set_title and collapse_plots:
             kwargs['label'] = ''
         if n_inter > 0:
-            for j in range(n_inter):
+            labels = kwargs.get('inter_labels')
+            if labels is None:
+                labels = (None,)*(n_inter - 1)
+            colors = kwargs.get('inter_colors')
+            if colors is None:
+                colors = (None,)*(n_inter - 1)
+            for j in range(1, n_inter):
+                kwargs['label'] = labels[j - 1]
+                kwargs['color'] = colors[j - 1]
                 plot_recon_accuracy_partition(sc[..., j], ax=axs[plot_ind],
-                                              mks=xs, **kwargs)
+                                              mks=xs, 
+                                              **kwargs)
         else:
             plot_recon_accuracy_partition(sc, ax=axs[plot_ind], mks=xs,
                                           **kwargs)
@@ -1261,7 +1421,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             categ_var=None,
                             extrapolate_test=False, 
                             evaluate_intermediate=False,
-                            samples_seq=None):
+                            samples_seq=None,
+                            use_test_gp_tasks=None):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1401,13 +1562,15 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             pt, ct = evaluate_multiple_models_dims(
                 dg_use, models, None, test_ds, train_distributions=train_ds,
                 n_iters=eval_n_iters, n_train_samples=n_train_samples_c,
-                n_test_samples=n_test_samples, mean=p_mean, learn_lvs='trained')
+                n_test_samples=n_test_samples, mean=p_mean, learn_lvs='trained',
+                gp_task_ls=use_test_gp_tasks)
             if compute_untrained:
                 pu, cu = evaluate_multiple_models_dims(
                     dg_use, models, None, test_ds, train_distributions=train_ds,
                     n_iters=eval_n_iters, n_train_samples=n_train_samples_c,
                     n_test_samples=n_test_samples, mean=p_mean,
-                    learn_lvs='untrained')
+                    learn_lvs='untrained',
+                    gp_task_ls=use_test_gp_tasks)
                 p = np.stack((pt, pu), axis=0)
                 c = np.stack((ct, cu), axis=0)
             else:
@@ -1417,7 +1580,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
             p, c = evaluate_multiple_models_dims(
                 dg_use, models, None, test_ds, train_distributions=train_ds,
                 n_iters=eval_n_iters, n_train_samples=n_train_samples_c,
-                n_test_samples=n_test_samples, mean=p_mean)
+                n_test_samples=n_test_samples, mean=p_mean,
+                gp_task_ls=use_test_gp_tasks)
     else:
         p, c = p_c
 
@@ -1598,6 +1762,11 @@ def plot_distgen(perfs, plot_labels, x_labels, p_ind, axs=None, fwid=3,
         if not log_y:
             ax.set_ylim([-1, 1])    
 
+def quantify_sparseness(reps, axis=0):
+    a = (np.mean(reps, axis=axis)**2)/np.mean(reps**2, axis=axis)
+    s = (1 - a)/(1 - 1/reps.shape[axis])
+    return s
+            
 def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
                            model_type=dd.FlexibleDisentanglerAE, axs=None,
@@ -1608,14 +1777,16 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            plot_hline=True, distr_parts=None, linestyle='solid',
                            double_ind=None, set_lims=True,
                            intermediate=False, list_run_ind=False,
-                           multi_train=False, **kwargs):
+                           multi_train=False, label_field=None,
+                           inter_labels=None, inter_colors=None,
+                           **kwargs):
     if double_ind is not None:
         merge_axis = 2
     else:
         merge_axis = 1
     if list_run_ind:
         all_p, all_sc = [], []
-        for ri in run_ind: 
+        for i, ri in enumerate(run_ind): 
             data, info = da.load_full_run(folder, ri, merge_axis=merge_axis,
                                           dg_type=dg_type, model_type=model_type,
                                           file_template=f_pattern, analysis_only=True,
@@ -1632,6 +1803,9 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       file_template=f_pattern, analysis_only=True,
                                       multi_train=multi_train, **kwargs) 
         n_parts, _, _, _, p, c, _, sc, _ = data
+        if len(legend) == 0 and label_field is not None:
+            legend = '{:1.0e}'.format(info['args'][0][label_field])
+
     if multi_train:
         sc = np.moveaxis(sc, -2, 1)
     if 'beta_mult' in info['args'][0].keys():
@@ -1672,7 +1846,9 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       fwid=fwid, set_title=set_title,
                                       color=color, plot_hline=plot_hline,
                                       linestyle=linestyle, thresh=thresh,
-                                      intermediate=intermediate)
+                                      intermediate=intermediate,
+                                      inter_labels=inter_labels,
+                                      inter_colors=inter_colors)
     if ret_info:
         out_all = (out, info)
     else:
