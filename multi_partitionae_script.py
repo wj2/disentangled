@@ -244,7 +244,8 @@ if __name__ == '__main__':
         dg_use = dg.FunctionalDataGenerator.load(args.data_generator)
         inp_dim = dg_use.input_dim
     elif args.use_rf_dg:
-        dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim, total_out=True,
+        dg_use = dg.RFDataGenerator(true_inp_dim, args.dg_dim,
+                                    total_out=not args.use_random_rfs,
                                     width_scaling=args.rf_width,
                                     noise=args.rf_output_noise,
                                     input_noise=args.rf_input_noise,
