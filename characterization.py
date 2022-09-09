@@ -84,7 +84,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
     for i in range(n_iters):
         if balance_samples:
             candidates = train_distrib.rvs(n_train_samples*10)
-            cats = train_func[i](candidates[:, lv_mask])
+            cats = np.squeeze(train_func[i](candidates[:, lv_mask]))
             cat1_samps = candidates[cats == 0]
             cat2_samps = candidates[cats == 1]
             max_iter = 1000
