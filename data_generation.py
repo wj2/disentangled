@@ -18,6 +18,8 @@ import disentangled.aux as da
 import disentangled.regularizer as dr
 import disentangled.disentanglers as dd
 
+import superposition_codes.codes as spc
+
 tfk = tf.keras
 tfkl = tf.keras.layers
 tfpl = tfp.layers
@@ -705,7 +707,7 @@ class RFDataGenerator(DataGenerator):
     def __init__(self, inp_dim, out_dim, source_distribution=None, noise=0.001,
                  distrib_variance=1, setup_distribution=None, total_out=True,
                  width_scaling=1, input_noise=0, low_thr=.01,
-                 random_widths=False):
+                 random_widths=False, use_random_rfs=False):
         if source_distribution is None:
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)
@@ -721,7 +723,8 @@ class RFDataGenerator(DataGenerator):
         self.input_dim = inp_dim
         out = self.make_generator(out_dim, sd_list, input_noise_var=input_noise,
                                   noise=noise, width_scaling=width_scaling,
-                                  random_widths=random_widths)
+                                  random_widths=random_widths,
+                                  use_random_rfs=use_random_rfs)
         self.generator, self.rf_cents, self.rf_wids = out
         self.output_dim = len(self.rf_cents)
         self.low_thr = low_thr
@@ -750,22 +753,32 @@ class RFDataGenerator(DataGenerator):
         
     def make_generator(self, out_dim, source_distribution, noise=.01,
                        scale=1, baseline=0, width_scaling=1, input_noise_var=0,
-                       random_widths=False):
-        out = rfm.get_distribution_gaussian_resp_func(
-            out_dim,
-            source_distribution,
-            scale=scale,
-            baseline=baseline,
-            wid_scaling=width_scaling,
-            random_widths=random_widths
-        )
-        rfs, _, ms, ws = out
+                       random_widths=False, use_random_rfs=False, inp_pwr=100):
+        if use_random_rfs:
+            rf_code = spc.Code(inp_pwr, out_dim, dims=len(source_distribution),
+                               sigma_n=1)
+            rfs = rf_code.rf
+            ms = rf_code.rf_cents
+            ws = rf_code.wid
+        else:
+            out = rfm.get_distribution_gaussian_resp_func(
+                out_dim,
+                source_distribution,
+                scale=scale,
+                baseline=baseline,
+                wid_scaling=width_scaling,
+                random_widths=random_widths
+            )
+            rfs, _, ms, ws = out
+        
         noise_distr = sts.multivariate_normal(np.zeros(len(ms)), noise,
                                               allow_singular=True)
         in_distr = sts.multivariate_normal(np.zeros(self.input_dim),
                                            input_noise_var,
                                            allow_singular=True)
         def gen(x, input_noise=True, output_noise=True):
+            if use_random_rfs:
+                x = (x + 1)/2
             if input_noise:
                 in_noise = in_distr.rvs(x.shape[0])
             else:

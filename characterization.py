@@ -33,7 +33,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
     if gp_task_ls is not None:
         task_type = 'gp'
         kernel = 'rbf'
-        print('use gp')
+        classifier = skc.SVC
     else:
         task_type = 'linear'
     if train_func is None:
@@ -71,7 +71,6 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                                                   task_type=task_type,
                                                   length_scale=gp_task_ls)
         train_func, _, _ = out
-    print(train_func)
     # print(vae.learn_lvs)
     # print(lv_mask)
     if train_distrib is None:
@@ -522,18 +521,30 @@ def plot_task_reps(dg_use, model, axs=None, fwid=3, n_samps=1000,
                     color=colors[j], **kwargs)    
 
 def train_dim_dec(stim, rep, use_inds=(0, 1), use_thr=0,
-                  model=sklm.Ridge):
+                  regr_model=sklm.Ridge, class_model=skc.SVC,
+                  y_axis='regression'):
         
-    m_half = model()
     if use_thr is not None:
         half_mask = stim[:, use_inds[1]] < use_thr
     else:
         half_mask = np.ones(stim.shape[0], dtype=bool)
-    m_half.fit(rep[half_mask], stim[half_mask, use_inds[0]])
+    if y_axis == 'regression':
+        m_half = regr_model()
+        targ = stim[:, use_inds[0]]
+        m_half_func = m_half.predict
+    elif y_axis == 'classification':
+        m_half = class_model(kernel='linear')
+        targ = stim[:, use_inds[0]] > use_thr
+        m_half_func = m_half.decision_function
+    else:
+        raise IOError('y_axis {} is not recognized'.format(y_axis))
+            
+    m_half.fit(rep[half_mask], targ[half_mask])
 
-    m_full = model()
+    m_full = regr_model()
     m_full.fit(rep, stim[:, use_inds[1]])
-    return m_full, m_half
+    
+    return m_full.predict, m_half_func
 
 def make_rep_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
                   dims=None):
@@ -548,18 +559,22 @@ def make_rep_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     return stim, inp_rep, lat_rep
 
 def plot_tasks(model, use_inds=(0, 1), extent=1, buff=.2,
-               ax=None, fwid=3):
+               ax=None, fwid=3, color=(.3, .3, .3),
+               linestyle='dashed', y_extent=None, **kwargs):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
+    if y_extent is None:
+        y_extent = extent
     tasks = u.make_unit_vector(model.p_vectors[:, use_inds],
                                squeeze=False)*np.sqrt(2*extent**2)
     for i, task in enumerate(tasks):
         ax.plot([-task[use_inds[0]], task[use_inds[0]]],
                 [task[use_inds[1]], -task[use_inds[1]]],
-                linestyle='dashed',
-                color=(.3, .3, .3))
+                linestyle=linestyle, 
+                color=color,
+                **kwargs)
     ax.set_xlim([-extent - buff, extent + buff])
-    ax.set_ylim([-extent - buff, extent + buff])
+    ax.set_ylim([-y_extent - buff, y_extent + buff])
 
 def plot_task_groups(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
                      ax=None, fwid=3, colormap='Spectral',
@@ -593,10 +608,20 @@ def plot_task_groups(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     gpl.make_yaxis_scale_bar(ax, 1, label='learned feature')
     gpl.clean_plot(ax, 0)
 
+def plot_regr_grid(*args, **kwargs):
+    return plot_grid(*args, y_axis='regression',  **kwargs)
+
+def plot_class_grid(*args, ax=None, y_label='learned\nclassification', **kwargs):
+    out =  plot_grid(*args, y_axis='classification', n_digis=2,
+                     ax=ax, y_label=y_label, use_max_out=True, **kwargs)
+    gpl.add_hlines(0, ax)
+    return out
         
 def plot_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
               ax=None, fwid=3, n_digis=8, eps=.01, colormap='Spectral',
-              ms=1, buff=.2):
+              ms=1, buff=.2, y_axis='regression',
+              y_label='learned feature', x_label='generalized feature',
+              use_max_out=False):
     cmap = plt.get_cmap(colormap)
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
@@ -608,26 +633,84 @@ def plot_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     train_stim, train_inp = dg_use.sample_reps(stim.shape[0])
     train_rep = model.get_representation(train_inp)
 
-    m_full, m_half = train_dim_dec(train_stim, train_rep, use_inds=use_inds)
+    m_full, m_half = train_dim_dec(train_stim, train_rep, use_inds=use_inds,
+                                   y_axis=y_axis)
     
-    y_coords = m_half.predict(lat_rep)
-    x_coords = m_full.predict(lat_rep)
+    y_coords = m_half(lat_rep)
+    x_coords = m_full(lat_rep)
+
     digi_bins = np.linspace(-grid_len, grid_len + eps, n_digis + 1)
     stim_bins = np.digitize(stim[:, use_inds[0]], digi_bins) - 1
     norm_bins = np.max(stim_bins)
+    if use_max_out:
+        y_grid_len = np.round(max(np.max(np.abs(y_coords)), 1), 0)
+    else:
+        y_grid_len = grid_len
     for i, sb in enumerate(np.unique(stim_bins)):
         coord_mask = sb == stim_bins
         ax.plot(x_coords[coord_mask], y_coords[coord_mask], 'o',
                 ms=ms, color=cmap(sb/norm_bins))
 
     if len(model.p_vectors) > 0:
-        plot_tasks(model, use_inds=use_inds, extent=grid_len, buff=buff, ax=ax)
+        plot_tasks(model, use_inds=use_inds, extent=grid_len, buff=buff, ax=ax,
+                   linewidth=1,
+                   y_extent=y_grid_len)
     
-    gpl.make_xaxis_scale_bar(ax, 1, label='changed feature')
-    gpl.make_yaxis_scale_bar(ax, 1, label='learned feature')
+    gpl.make_xaxis_scale_bar(ax, grid_len/2, label=x_label)
+    gpl.make_yaxis_scale_bar(ax, y_grid_len/2, label=y_label)
     gpl.clean_plot(ax, 0)
+    gpl.add_vlines(0, ax)
 
-                              
+def _get_rep_seq(fdg, model, hold_val, hold_feats=(1,),
+                 zero_feats=(), n_samps=10000):
+    samps, inps = fdg.sample_reps(n_samps)
+    samps[:, zero_feats] = 0
+    samps[:, hold_feats] = hold_val
+    inps = fdg.get_representation(samps)
+    reps = model.get_representation(inps)
+    targs = model.generate_target(samps)
+    return samps, inps, reps, targs
+    
+    
+def compute_pointwise_generalization(fdg, model, grid_pts=10, extent=2,
+                                     dec_feat=0, hold_feat=1, other_zeros=True,
+                                     dec_type='regression', use_targ=False,
+                                     regr_model=sklm.Ridge, class_model=skc.SVC,
+                                     n_train_test=10000):
+    pts = np.linspace(-extent, extent, grid_pts)
+    if other_zeros:
+        use_feats = (dec_feat, hold_feat)
+        zero_feats = set(np.arange(fdg.input_dim)).difference(use_feats)
+        zero_feats = tuple(zero_feats)
+    else:
+        zero_feats = ()
+    out_sc = np.zeros((grid_pts, grid_pts))
+    out_pr = np.zeros((grid_pts, grid_pts, n_train_test))
+    for i, j in it.product(range(grid_pts), repeat=2):
+        pt1, pt2 = pts[i], pts[j]
+        out_tr = _get_rep_seq(fdg, model, pt1, zero_feats=zero_feats,
+                              hold_feats=(hold_feat,), n_samps=n_train_test)
+        samps_tr, inps_tr, reps_tr, targs_tr = out_tr
+
+        out_te = _get_rep_seq(fdg, model, pt2, zero_feats=zero_feats,
+                              hold_feats=(hold_feat,), n_samps=n_train_test)
+        samps_te, inps_te, reps_te, targs_te = out_te
+        if use_targ:
+            rep_data_tr = targs_tr
+            rep_data_te = targs_te
+        else:
+            rep_data_tr = reps_tr
+            rep_data_te = reps_te
+        if dec_type == 'regression':
+            m = regr_model()
+            m.fit(rep_data_tr, samps_tr[:, dec_feat])
+            out_sc[i, j] = m.score(rep_data_te, samps_te[:, dec_feat])
+        elif dec_type == 'classification':
+            m = class_model(kernel='linear')
+            m.fit(rep_data_tr, samps_tr[:, dec_feat] < 0)
+            out_sc[i, j] = m.score(rep_data_te, samps_te[:, dec_feat] < 0)
+        out_pr[i, j] = m.predict(rep_data_te)
+    return pts, out_sc, out_pr
 
 def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      n_dim_red=10**4, pt_size=2, line_style='solid',
@@ -637,7 +720,8 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
                      plot_source=False, square=True, start_vals=(0,),
                      supply_range=1, plot_3d=False, dim_red_func=None,
                      compute_pr=False, ret_dim_red=False, buff=0,
-                     model_trs=_model_pca, view_init=None, **pca_args):
+                     model_trs=_model_pca, view_init=None,
+                     linewidth=1, **pca_args):
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
         
@@ -702,7 +786,8 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
             else:
                 to_plot = (mod_reps[:, 0], mod_reps[:, 1])
             l = ax.plot(*to_plot, linestyle=line_style,
-                        alpha=line_alpha, color=arc_col)
+                        alpha=line_alpha, color=arc_col,
+                        linewidth=linewidth)
             if markers:
                 ax.plot(*to_plot, 'o', markersize=pt_size,
                         color=l[0].get_color())
@@ -724,7 +809,8 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
         else:
             to_plot = (mod_reps[:, 0], mod_reps[:, 1])
         l = ax.plot(*to_plot,
-                    linestyle=line_style, alpha=line_alpha)
+                    linestyle=line_style, alpha=line_alpha,
+                    linewidth=linewidth)
         if markers:
             ax.plot(*to_plot, 'o', markersize=pt_size,
                     color=l[0].get_color())
@@ -737,8 +823,9 @@ def plot_diagnostics(dg_use, model, rs, n_arcs, ax=None, n=1000, dim_red=True,
             v_o = os[i]*v_unit
             orth_v = u.generate_orthonormal_vectors(v_unit, 1)/(1*rs[-1])
             xs = np.array([-orth_v[0], orth_v[0]]) 
-            ys = np.array([-orth_v[1], orth_v[1]]) 
-            ax.plot(xs + v_o[0], ys + v_o[1], color='r')
+            ys = np.array([-orth_v[1], orth_v[1]])
+            ax.plot(xs + v_o[0], ys + v_o[1], color='r',
+                    linewidth=linewidth)
 
     gpl.clean_plot(ax, 0)
     if plot_3d:

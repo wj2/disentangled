@@ -196,6 +196,7 @@ def create_parser():
                         'stopping')
     parser.add_argument('--gp_test_task_length_scale', default=None, type=float,
                         help='the length scale for test tasks to use')
+    parser.add_argument('--use_random_rfs', default=False, action='store_true')
     return parser
 
 if __name__ == '__main__':
@@ -248,7 +249,8 @@ if __name__ == '__main__':
                                     noise=args.rf_output_noise,
                                     input_noise=args.rf_input_noise,
                                     source_distribution=sd,
-                                    random_widths=args.rf_random_widths)
+                                    random_widths=args.rf_random_widths,
+                                    use_random_rfs=args.use_random_rfs)
     elif args.use_rbf_dg:
         dg_use = dg.KernelDataGenerator(true_inp_dim, None, args.dg_dim,
                                         source_distribution=sd)
