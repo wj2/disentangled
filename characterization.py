@@ -93,7 +93,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
                     or len(cat2_samps) < n_train_samples)
                    and curr_iter < max_iter):
                 candidates = train_distrib.rvs(n_train_samples*10)
-                cats = train_func[i](candidates[:, lv_mask])
+                cats = np.squeeze(train_func[i](candidates[:, lv_mask]))
                 cat1_samps = np.concatenate((cat1_samps, candidates[cats == 0]))
                 cat2_samps = np.concatenate((cat2_samps, candidates[cats == 1]))
                 curr_iter += 1
@@ -104,7 +104,7 @@ def classifier_generalization(gen, vae, train_func=None, train_distrib=None,
             train_samples = train_distrib.rvs(n_train_samples)
         if repl_mean is not None:
             train_samples[:, repl_mean] = train_distrib.mean[repl_mean]
-        train_labels = train_func[i](train_samples[:, lv_mask])
+        train_labels = np.squeeze(train_func[i](train_samples[:, lv_mask]))
         inp_reps = gen.generator(train_samples)
         train_rep = vae.get_representation(inp_reps)
         # print('tr', train_rep)
@@ -608,6 +608,20 @@ def plot_task_groups(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     gpl.make_yaxis_scale_bar(ax, 1, label='learned feature')
     gpl.clean_plot(ax, 0)
 
+def plot_grids_tasks(fdg, model_list, axs=None, fwid=3, add_ident=True):
+    i_thr = -1
+    if add_ident:
+        model_list = (dd.IdentityModel(),) + tuple(model_list)
+        i_thr = 0
+    if axs is None:
+        f, axs = plt.subplots(len(model_list), 3,
+                              figsize=(fwid*3, fwid*len(model_list)))
+    for i, m in enumerate(model_list):
+        plot_class_grid(fdg, m, ax=axs[i, 0])
+        plot_regr_grid(fdg, m, ax=axs[i, 1])
+        if i > i_thr:
+            plot_task_reps(fdg, m, axs=(axs[i, 2],), plot_tasks=(0,))
+    
 def plot_regr_grid(*args, **kwargs):
     return plot_grid(*args, y_axis='regression',  **kwargs)
 
