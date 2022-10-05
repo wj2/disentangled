@@ -152,6 +152,8 @@ def generate_partition_functions_linear(
         plane_vec = orth_vecs[:, seq_inds].T
     elif orth_vec is not None:
         plane_vec = u.generate_orthonormal_vectors(orth_vec, n_funcs)
+        if len(plane_vec.shape) == 1:
+            plane_vec = np.expand_dims(plane_vec, 0)
     else:
         direction = np.random.randn(n_funcs, dim)
         norms = np.expand_dims(np.sqrt(np.sum(direction**2, axis=1)), 1)
@@ -244,6 +246,7 @@ class MultivariateUniform(object):
         self.distr = sts.uniform(0, 1)
         self.mags = np.expand_dims(self.bounds[:, 1] - self.bounds[:, 0], 0)
         self.mean = np.mean(bounds, axis=1)
+        self.cov = np.identity(n_dims)*(1/12)*(bounds[:, 1] - bounds[:, 0])**2
 
     def get_indiv_distributions(self):
         sd_list = list(sts.uniform(b[0], self.mags[0, i])
@@ -346,6 +349,7 @@ def save_models(path, model_arr):
     save_object_arr(path, model_arr, lambda p, m: m.save(p))
 
 def save_histories(path, hist_arr):
+    print('saving histories')
     def hist_save_func(path_ind, hist):
         # hist.model = None
         pickle.dump(hist, open(path_ind, 'wb'))

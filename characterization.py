@@ -5,6 +5,7 @@ import os
 import itertools as it
 import tensorflow as tf
 import scipy.linalg as spla
+import scipy.special as ss
 
 import sklearn.decomposition as skd
 import sklearn.svm as skc
@@ -363,8 +364,9 @@ def plot_dg_rfs(fdg, extent=2, n_pts=100, n_plots_rows=5, axs=None,
     vals = np.array(list(it.product(vals_x, vals_y)))
     zs = np.zeros((vals.shape[0], 1))
 
-    input_map = np.concatenate((vals, zs, zs ,zs), axis=1)
-    rep = fdg.get_representation(input_map).numpy()
+    n_zeros = fdg.input_dim - 2
+    input_map = np.concatenate((vals,) + (zs,)*n_zeros, axis=1)
+    rep = np.array(fdg.get_representation(input_map))
     rep_map = np.reshape(rep, (n_pts, n_pts, rep.shape[1]))
 
     on_mask = np.any(rep_map > 0, axis=(0, 1))
@@ -608,7 +610,8 @@ def plot_task_groups(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     gpl.make_yaxis_scale_bar(ax, 1, label='learned feature')
     gpl.clean_plot(ax, 0)
 
-def plot_grids_tasks(fdg, model_list, axs=None, fwid=3, add_ident=True):
+def plot_grids_tasks(fdg, model_list, axs=None, fwid=3, add_ident=True,
+                     **kwargs):
     i_thr = -1
     if add_ident:
         model_list = (dd.IdentityModel(),) + tuple(model_list)
@@ -617,8 +620,8 @@ def plot_grids_tasks(fdg, model_list, axs=None, fwid=3, add_ident=True):
         f, axs = plt.subplots(len(model_list), 3,
                               figsize=(fwid*3, fwid*len(model_list)))
     for i, m in enumerate(model_list):
-        plot_class_grid(fdg, m, ax=axs[i, 0])
-        plot_regr_grid(fdg, m, ax=axs[i, 1])
+        plot_class_grid(fdg, m, ax=axs[i, 0], **kwargs)
+        plot_regr_grid(fdg, m, ax=axs[i, 1], **kwargs)
         if i > i_thr:
             plot_task_reps(fdg, m, axs=(axs[i, 2],), plot_tasks=(0,))
     
@@ -634,7 +637,7 @@ def plot_class_grid(*args, ax=None, y_label='learned\nclassification', **kwargs)
 def plot_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
               ax=None, fwid=3, n_digis=8, eps=.01, colormap='Spectral',
               ms=1, buff=.2, y_axis='regression',
-              y_label='learned feature', x_label='generalized feature',
+              y_label='learned feature', x_label='contextual feature',
               use_max_out=False):
     cmap = plt.get_cmap(colormap)
     if ax is None:
@@ -1264,17 +1267,28 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
                                  plot_labels='train egs = {}', n_plots=None,
                                  ylabel='', ylim=None, num_dims=None,
                                  xlab='partitions', collapse_plots=False,
-                                 set_title=True, intermediate=False, **kwargs):
+                                 set_title=True, intermediate=False,
+                                 plot_intermediate=True, **kwargs):
     print(scores.shape)
     if len(scores.shape) == 4 and not intermediate:
         scores = np.mean(scores, axis=3)
         n_ds, n_mks, n_reps = scores.shape
         n_inter = 0
     elif len(scores.shape) == 4 and intermediate:
-        n_ds, n_mks, n_reps, n_inter = scores.shape
+        if plot_intermediate:
+            n_ds, n_mks, n_reps, n_inter = scores.shape
+        else:
+            n_ds, n_mks, n_reps, _ = scores.shape
+            n_inter = 0
+            scores = scores[..., -1]
     elif len(scores.shape) == 5:
         scores = np.mean(scores, axis=-1)
-        n_ds, n_mks, n_reps, n_inter = scores.shape
+        if plot_intermediate:
+            n_ds, n_mks, n_reps, n_inter = scores.shape
+        else:
+            n_ds, n_mks, n_reps, _ = scores.shape
+            n_inter = 0
+            scores = scores[..., -1]            
     else:
         n_ds, n_mks, n_reps = scores.shape
         n_inter = 0
@@ -1318,6 +1332,43 @@ def plot_recon_accuracies_ntrain(scores, xs=None, axs=None, fwid=2,
             gpl.add_vlines(num_dims, axs[plot_ind])
     axs[plot_ind].set_xlabel(xlab)
     return axs        
+
+def input_dim_tasks(inp_dims, n_tasks, input_distr='normal',
+                    model=sklm.Ridge, dec_dim=0, hold_dim=1,
+                    thr=0, n_samps=100000, n_reps=10, norm_dist=False,
+                    offset_std=0, **kwargs):
+    offset_distr = sts.norm(0, offset_std)
+    sc_arr = np.zeros((len(inp_dims), len(n_tasks), n_reps))
+    pred_arr = np.zeros_like(sc_arr, dtype=object)
+    samp_arr = np.zeros_like(sc_arr, dtype=object)
+    pred_in_arr = np.zeros_like(sc_arr, dtype=object)
+    samp_in_arr = np.zeros_like(sc_arr, dtype=object)
+    for i, inp_d in enumerate(inp_dims):
+        if input_distr == 'normal':
+            sd = sts.multivariate_normal((0,)*inp_d, 1)
+        elif input_distr == 'uniform':
+            sd = da.MultivariateUniform(inp_d, (-1, 1))
+        for j, nt in enumerate(n_tasks):
+            for k in range(n_reps):
+                samps = sd.rvs(n_samps)
+                if norm_dist:
+                    samps = samps/np.sqrt(np.sum(samps**2, axis=1, keepdims=True))
+                tasks, _, _ = dd.make_tasks(inp_d, nt, offset_distr=offset_distr,
+                                            **kwargs)
+                targ = np.stack(list(task(samps) for task in tasks),
+                                axis=1)
+                m = model()
+                mask = samps[:, hold_dim] < thr
+                m.fit(targ[mask], samps[mask, dec_dim])
+                sc = m.score(targ[~mask], samps[~mask, dec_dim])
+                pred = m.predict(targ[~mask])
+                pred_in = m.predict(targ[mask])
+                pred_arr[i, j, k] = pred
+                samp_arr[i, j, k] = samps[~mask, dec_dim]
+                pred_in_arr[i, j, k] = pred_in
+                samp_in_arr[i, j, k] = samps[mask, dec_dim]
+                sc_arr[i, j, k] = sc
+    return sc_arr, samp_arr, pred_arr, samp_in_arr, pred_in_arr
 
 def expand_intermediate_models(mod_arr):
     for i, ind in enumerate(u.make_array_ind_iterator(mod_arr.shape)):
@@ -1438,7 +1489,8 @@ def find_linear_mapping_single(dg_use, model, n_train_samps=10**4,
                                lr_type=sklm.Ridge,
                                correct=False, repl_mean=None,
                                partition_vec=None, learn_lvs='ignore',
-                               eval_dg=None, flip_cat=False, **kwargs):
+                               eval_dg=None, flip_cat=False,
+                               norm_samples=False, **kwargs):
     if learn_lvs == 'trained':
         feat_mask = model.learn_lvs
     elif learn_lvs == 'untrained':
@@ -1481,6 +1533,10 @@ def find_linear_mapping_single(dg_use, model, n_train_samps=10**4,
     if feat_mask is None:
         feat_mask = np.ones(stim.shape[1], dtype=bool)
     lr = lr_type(**kwargs)
+    if norm_samples:
+        stim = stim/np.sqrt(np.sum(stim**2, axis=1, keepdims=True))
+        test_stim = test_stim/np.sqrt(np.sum(test_stim**2, axis=1,
+                                             keepdims=True))
     if not np.any(np.isnan(enc_pts)):
         lr.fit(enc_pts, stim[:, feat_mask])
         score = lr.score(test_enc_pts, test_stim[:, feat_mask])
@@ -1867,7 +1923,149 @@ def quantify_sparseness(reps, axis=0):
     a = (np.mean(reps, axis=axis)**2)/np.mean(reps**2, axis=axis)
     s = (1 - a)/(1 - 1/reps.shape[axis])
     return s
-            
+
+def centered_hyperplane_regions(dim, planes):
+    ms = np.arange(dim)
+    return 2*np.sum(ss.binom(planes - 1, ms))
+
+def compute_label_means(resps, labels):
+    u_labels = np.unique(labels)
+    out = np.zeros((len(u_labels), resps.shape[1]))
+    for i, l in enumerate(u_labels):
+        l_mask = labels == l
+        out[i] = np.mean(resps[l_mask], axis=0)
+    return out
+
+def predict_decoding(dim, n_tasks, n_samps=10000):
+    # only works for 2D now, but works all right
+    # need to test for generalization (has different terms)
+    samps = np.abs(2*(sts.beta((dim - 1)/2, (dim - 1)/2).rvs(n_samps)
+                      - .5))
+    c = 2/np.pi
+    t = np.arccos(samps)
+    m_t = np.mean(t)
+    v_t = np.mean(t**2)
+    std_t = np.std(t)/np.sqrt(n_tasks)
+    
+    t_agree = (m_t - c*v_t)/(1 - c*m_t)
+    t_dis = c*v_t/(c*m_t)
+    p_agree = 1 - c*m_t
+    r = p_agree*(1 - c*t_agree) - (1 - p_agree)*(1 - c*t_dis)
+
+    # not sure why not mult by tasks here but it works well not to
+    # (maybe something to do with correlation between additional tasks
+    # in the low-d space
+    # probably need to account for it in more detail
+    # mult tasks also probably have diff normalization than doing now
+    err = sts.norm(0, 1).cdf(-r/std_t)
+
+    
+    r_gen = 0
+    gen_err = sts.norm(0, 1).cdf(-r_gen/std_t)
+    return 1 - err
+    
+def sample_planes(dim, n_samps=1000, lv_samps=10000):
+    lv_samps = sts.norm(0, 1).rvs((lv_samps, dim))
+    tfs, samp, _ = dd.make_tasks(dim, n_samps)
+    
+    task_out_samps = np.stack(list(tf_i(lv_samps) for tf_i in tfs), axis=1)
+    task_out_samps[task_out_samps < .5] = -1
+    (nov_func,), nov_vec, _ = dd.make_tasks(dim, 1)
+    (gen_func,), gen_vec, _ = da.generate_partition_functions(dim, n_funcs=1,
+                                                              orth_vec=nov_vec)
+    flip_mask = np.sum(samp*nov_vec, axis=1) < 0
+    mult_mask = np.where(flip_mask, -1, 1)
+    task_out_samps = task_out_samps*mult_mask
+    samp = samp*np.expand_dims(mult_mask, 1)
+
+    tr_mask = gen_func(lv_samps) == 0
+    te_mask = gen_func(lv_samps) == 1
+    
+    mask_c1 = nov_func(lv_samps) == 0
+    mask_c2 = nov_func(lv_samps) == 1
+
+    task_tr_c1 = task_out_samps[np.logical_and(tr_mask, mask_c1)]
+    task_tr_c2 = task_out_samps[np.logical_and(tr_mask, mask_c2)]
+
+    task_te_c1 = task_out_samps[np.logical_and(te_mask, mask_c1)]
+    task_te_c2 = task_out_samps[np.logical_and(te_mask, mask_c2)]
+
+    
+    m1 = sklm.Ridge()
+    # m = skc.LinearSVC()
+    task_tr = np.concatenate((task_tr_c1, task_tr_c2), axis=0)
+    task_labels = np.concatenate((np.ones(len(task_tr_c1)),
+                                  np.ones(len(task_tr_c2))*-1),
+                                 axis=0)
+    m1.fit(task_tr, task_labels)
+    emp1_err = np.mean(m1.predict(task_tr_c1) > 0)
+    emp2_err = np.mean(m1.predict(task_tr_c2) < 0)
+    emp_err = np.mean([emp1_err, emp2_err])
+    # print(emp_err, np.mean(m.predict(task_tr_c2) < 0))
+    gen_err = np.mean(m1.predict(task_te_c1) > 0)
+
+    m2 = sklm.Ridge()
+    regr_targ = np.sum(lv_samps*nov_vec, axis=1)
+    m2.fit(task_out_samps[tr_mask], regr_targ[tr_mask])
+    print(m2.score(task_out_samps[tr_mask], regr_targ[tr_mask]),
+          m2.score(task_out_samps[te_mask], regr_targ[te_mask]))
+    
+    angs = list(np.sum(samp*v, axis=1)
+                for v in (nov_vec, gen_vec))
+    return (samp, angs, (emp_err, gen_err), (task_tr_c1, task_tr_c2),
+            (task_te_c1, task_te_c2), (nov_func, gen_func))
+
+def correlation_length(dim, planes, n_samps=10000, thr=0,
+                       cond_dim=1, dec_dim=0, n_bins=10, extent=2,
+                       grid_pts=100,
+                       eps=1e-10):
+    samps = sts.norm(0, 1).rvs((grid_pts**2, dim))
+    grid = np.array(list(it.product(np.linspace(-extent, extent, grid_pts),
+                                    repeat=2)))
+    samps[:, (dec_dim, cond_dim)] = grid
+    funcs, _, _ = dd.make_tasks(dim, planes)
+    resps = np.stack(list(f(samps) for f in funcs), axis=1)
+
+    tr_mask =  samps[:, cond_dim] < thr
+    te_mask = np.logical_not(tr_mask)
+
+    tr_samps = samps[tr_mask]
+    te_samps = samps[te_mask]
+
+    tr_resps = resps[tr_mask]
+    te_resps = resps[te_mask]
+
+    digi_bins = np.linspace(-extent - eps, extent + eps, n_bins + 1)
+    labels = np.digitize(samps[:, dec_dim], digi_bins)
+
+    ref_means = compute_label_means(tr_resps, labels[tr_mask])
+    
+    dist_digi_bins = np.linspace(thr, extent + eps, n_bins + 1)
+    dists = dist_digi_bins[:-1] + np.diff(dist_digi_bins)[0]/2 
+    dist_labels = np.digitize(te_samps[:, cond_dim], dist_digi_bins)
+    u_dist_labels = np.unique(dist_labels)
+    
+    te_labels = labels[te_mask]
+
+    out = np.zeros((n_bins, n_bins, planes))
+    corr = np.zeros((n_bins, planes))
+    for i, dl in enumerate(u_dist_labels):
+        dist_label_mask = dist_labels == dl
+        lresps = te_resps[dist_label_mask]
+        
+        out[i] = compute_label_means(lresps, te_labels[dist_label_mask])
+        corr[i] = list(sts.pearsonr(ref_means[:, j], out[i, :, j])[0]
+                       for j in range(planes))
+    corr[np.isnan(corr)] = 0
+    return ref_means, dists, out, corr
+
+def centered_hyperplane_regions_empirical(dim, planes, n_samps=100000):
+    samps = sts.norm(0, 1).rvs((n_samps, dim))
+    funcs, _, _ = dd.make_tasks(dim, planes)
+    resps = np.stack(list(f(samps) for f in funcs), axis=1)
+    u_resps = np.unique(resps, axis=0)
+    return u_resps.shape[0]
+
 def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            dg_type=dg.FunctionalDataGenerator,
                            model_type=dd.FlexibleDisentanglerAE, axs=None,
@@ -1880,6 +2078,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            intermediate=False, list_run_ind=False,
                            multi_train=False, label_field=None,
                            inter_labels=None, inter_colors=None,
+                           plot_intermediate=True,
                            **kwargs):
     if double_ind is not None:
         merge_axis = 2
@@ -1896,8 +2095,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
             all_p.append(p)
             all_sc.append(sc)
         
-        p = np.concatenate(all_p, axis=-2)
-        sc = np.concatenate(all_sc, axis=-2)
+        p = np.concatenate(all_p, axis=2)
+        sc = np.concatenate(all_sc, axis=2)
     else:
         data, info = da.load_full_run(folder, run_ind, merge_axis=merge_axis,
                                       dg_type=dg_type, model_type=model_type,
@@ -1949,7 +2148,8 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       linestyle=linestyle, thresh=thresh,
                                       intermediate=intermediate,
                                       inter_labels=inter_labels,
-                                      inter_colors=inter_colors)
+                                      inter_colors=inter_colors,
+                                      plot_intermediate=plot_intermediate)
     if ret_info:
         out_all = (out, info)
     else:

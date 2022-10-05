@@ -950,8 +950,8 @@ class BetaVAE(da.TFModel):
             eval_data = data_generator.rvs(10*5)
             eval_set = (eval_data, eval_data)
 
-        print(eval_set[0].dtype, eval_set[1].dtype)
-        print(train_x.dtype, train_y.dtype)
+        if 'true_eval_set' in kwargs.keys():
+            _ = kwargs.pop('true_eval_set')
         out = self.vae.fit(x=train_x, y=train_y, epochs=epochs,
                            validation_data=eval_set, batch_size=batch_size,
                            **kwargs)

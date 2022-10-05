@@ -729,24 +729,33 @@ class RFDataGenerator(DataGenerator):
         self.output_dim = len(self.rf_cents)
         self.low_thr = low_thr
         self.compiled = True
+        self.random_rfs = use_random_rfs
         self.source_distribution = source_distribution
 
     def plot_rfs(self, ax=None, plot_dots=False, color=None, make_scales=True,
-                 thin=1):
+                 thin=1, x_scale=None, y_scale=None, **kwargs):
         if ax is None:
             f, ax = plt.subplots(1, 1)
         cps = da.get_circle_pts(100, 2)
-        for i, rfc in enumerate(self.rf_cents[::thin]):
-            rfw = np.sqrt(self.rf_wids[i])
+        if self.random_rfs:
+            rf_wids = self.rf_wids*np.ones((self.output_dim, self.input_dim))
+            rf_cents = (self.rf_cents - .5)*2
+        else:
+            rf_wids = np.sqrt(self.rf_wids)
+            rf_cents = self.rf_cents
+        for i, rfc in enumerate(rf_cents[::thin]):
+            rfw = rf_wids[i]
             l = ax.plot(cps[:, 0]*rfw[0] + rfc[0],
                         cps[:, 1]*rfw[1] + rfc[1],
-                        color=color)
+                        color=color, **kwargs)
             if plot_dots:
                 ax.plot(rfc[0], rfc[1], 'o',
                         color=l[0].get_color())
         if make_scales:
-            x_scale = self.source_distribution.cov[0, 0]
-            y_scale = self.source_distribution.cov[1, 1]
+            if x_scale is None:
+                x_scale = self.source_distribution.cov[0, 0]
+            if y_scale is None:
+                y_scale = self.source_distribution.cov[1, 1]
             gpl.make_xaxis_scale_bar(ax, x_scale, label='dimension 1')
             gpl.make_yaxis_scale_bar(ax, y_scale, label='dimension 2')
             gpl.clean_plot(ax, 0)
