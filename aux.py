@@ -69,10 +69,29 @@ class InputGenerator(object):
 def _binary_classification(x, plane=None, off=0):
     return np.sum(plane*x, axis=1) - off > 0
 
+def decontextualize_tasks(tasks):
+    out = np.zeros_like(tasks)
+    for i, task in enumerate(tasks):
+        kwargs_i = task.keywords.copy()
+        kwargs_i.pop('context')
+        out[i] = ft.partial(_contextual_binary_classification,
+                            **kwargs_i)
+    return out
+
+def flip_contextual_tasks(tasks):
+    out = np.zeros_like(tasks)
+    for i, task in enumerate(tasks):
+        kwargs_i = task.keywords.copy()
+        new_con = -kwargs_i.pop('context')
+        kwargs_i['context'] = new_con
+        out[i] = ft.partial(_contextual_binary_classification,
+                            **kwargs_i)
+    return out
+
 def _contextual_binary_classification(x, plane=None, off=0, context=None,
                                       context_off=0):
     ret = (np.sum(plane*x, axis=1) - off > 0).astype(float)
-    if context[0] is not None:
+    if context is not None and context[0] is not None:
         mask = np.sum(context*x, axis=1) - context_off < 0
         ret[mask] = np.nan
     return ret
@@ -393,7 +412,7 @@ def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
     return model_arr
 
 def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
-                               gd=None, seed_str='genout_{}.tfmod',
+                               gd=None, other=None, seed_str='genout_{}.tfmod',
                                save_tf_models=True, save_args=None,
                                save_hists=True):
     os.mkdir(folder)
@@ -427,6 +446,10 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
     if gd is not None:
         gd_file = seed_str.format('gd')
         pickle.dump(gd, open(os.path.join(folder, gd_file), 'wb'))
+
+    if other is not None:
+        other_file = seed_str.format('other')
+        pickle.dump(other, open(os.path.join(folder, other_file), 'wb'))
 
     if save_tf_models:
         manifest = (dg_file, models_file,)

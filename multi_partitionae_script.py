@@ -197,6 +197,8 @@ def create_parser():
     parser.add_argument('--gp_test_task_length_scale', default=None, type=float,
                         help='the length scale for test tasks to use')
     parser.add_argument('--use_random_rfs', default=False, action='store_true')
+    parser.add_argument('--contextual_extrapolation', default=False,
+                        action='store_true')
     return parser
 
 if __name__ == '__main__':
@@ -348,6 +350,9 @@ if __name__ == '__main__':
     orthog_partitions = args.use_orthog_partitions
     contextual_partitions = args.contextual_partitions
     context_offset = args.context_offset
+    if args.contextual_extrapolation and not contextual_partitions:
+        contextual_partitions = True
+        print('setting contextual partitions')
     if pre_net:
         net_type = dd.FlexibleDisentanglerPre
     else:
@@ -405,9 +410,11 @@ if __name__ == '__main__':
         evaluate_intermediate=args.eval_intermediate,
         samples_seq=args.training_samples_seq,
         use_test_gp_tasks=args.gp_test_task_length_scale,
+        contextual_extrapolation=args.contextual_extrapolation,
     )
-    dg, (models, th), (p, c), (lrs, scrs, sims), gd = out
+    dg, (models, th), (p, c), (lrs, scrs, sims), gd, other = out
 
     da.save_generalization_output(args.output_folder, dg, models, th, p, c,
-                                  lrs, (scrs, sims), gd, save_args=args,
+                                  lrs, (scrs, sims), gd, other,
+                                  save_args=args,
                                   save_tf_models=save_tf_models)

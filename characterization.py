@@ -351,14 +351,26 @@ def _model_linreg(dg_use, model, n_dim_red=10**4, use_arc_dim=False,
     ob = spla.orth(p.coef_.T)
     exp_inter = np.expand_dims(p.intercept_, 1)
     f = lambda x: (np.dot(x, ob).T + exp_inter).T
-    return f # p.predict
+    return f # p.predict                         
 
-def plot_dg_rfs(fdg, extent=2, n_pts=100, n_plots_rows=5, axs=None,
-                **kwargs):
+def compute_task_performance(fdg, m, flip_tasks=False, decon_tasks=False,
+                             n_samps=10000):
+    stim, inps = fdg.sample_reps(n_samps)
+    outs = np.array(m.class_model(m.get_representation(inps)))
+    tasks = m.p_funcs
+    if flip_tasks:
+        tasks = da.flip_contextual_tasks(tasks)
+    elif decon_tasks:
+        tasks = da.decontextualize_tasks(tasks)
+    targs = np.stack(list(t(stim) for t in tasks), axis=1)
+    resps = (outs < .5).astype(int)
+    perf = np.nanmean((targs - resps)**2, axis=0)
+    return perf
+    
+def plot_func_rfs(fdg, func=None, extent=2, n_pts=100,
+                  axs_flat=None, mask=True, fwid=3,
+                  random_order=False, **kwargs):
     rng = np.random.default_rng()
-    if axs is None:
-        f, axs = plt.subplots(n_plots_rows, n_plots_rows, sharex=True,
-                              sharey=True)
     vals_x = np.linspace(-extent, extent, n_pts)
     vals_y = np.linspace(-extent, extent, n_pts)
     vals = np.array(list(it.product(vals_x, vals_y)))
@@ -367,17 +379,48 @@ def plot_dg_rfs(fdg, extent=2, n_pts=100, n_plots_rows=5, axs=None,
     n_zeros = fdg.input_dim - 2
     input_map = np.concatenate((vals,) + (zs,)*n_zeros, axis=1)
     rep = np.array(fdg.get_representation(input_map))
+    if func is not None:
+        rep = func(rep)
     rep_map = np.reshape(rep, (n_pts, n_pts, rep.shape[1]))
-
-    on_mask = np.any(rep_map > 0, axis=(0, 1))
-    rep_map_masked = rep_map[..., on_mask]
-    axs_flat = axs.flatten()
-    inds = rng.choice(rep_map_masked.shape[-1], len(axs_flat), replace=False)
+    if axs_flat is None:
+        f, axs_flat = plt.subplots(1, rep.shape[1],
+                                   figsize=(fwid*rep.shape[1], fwid),
+                                   squeeze=False,
+                                   sharex=True,
+                                   sharey=True)
+        axs_flat = axs_flat[0]
+    
+    if mask:
+        on_mask = np.any(rep_map > 0, axis=(0, 1))
+        rep_map = rep_map[..., on_mask]
+    if rep.shape[1] < len(axs_flat):
+        replace = True
+        print('replacing')
+    else:
+        replace = False
+    if random_order:
+        inds = rng.choice(rep_map.shape[-1], len(axs_flat), replace=replace)
+    else:
+        inds = np.arange(len(axs_flat), dtype=int)
     for i, ax in enumerate(axs_flat):
-        gpl.pcolormesh(vals_x, vals_y, rep_map_masked[..., inds[i]], ax=ax,
+        gpl.pcolormesh(vals_x, vals_y, rep_map[..., inds[i]], ax=ax,
                        **kwargs)
         ax.set_xticks([-extent, 0, extent])
         ax.set_yticks([-extent, 0, extent])
+    return axs_flat
+    
+
+def plot_dg_rfs(fdg, func=None, n_plots_rows=5, axs=None, fwid=1,
+                **kwargs):
+    rng = np.random.default_rng()
+    if axs is None:
+        f, axs = plt.subplots(n_plots_rows, n_plots_rows, sharex=True,
+                              sharey=True, figsize=(fwid*n_plots_rows,
+                                                    fwid*n_plots_rows))
+
+    axs_flat = axs.flatten()
+    plot_func_rfs(fdg, func=func, axs_flat=axs_flat, random_order=True,
+                  **kwargs)
     return axs
 
 def compute_sparsity(model, n_samps=10000):
@@ -559,6 +602,16 @@ def make_rep_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     inp_rep = dg_use.get_representation(stim)
     lat_rep = model.get_representation(inp_rep)
     return stim, inp_rep, lat_rep
+
+def make_task_mask(task, grid_len=2, grid_pts=100, use_inds=(0, 1),
+                   dims=5):
+    side_pts = np.linspace(-grid_len, grid_len, grid_pts)
+    grid = np.array(list(it.product(side_pts, side_pts)))
+    stim = np.zeros((grid.shape[0], dims))
+    stim[:, use_inds] = grid
+    task_out = task(stim)
+    mask = np.reshape(task_out, (grid_pts, grid_pts))
+    return mask
 
 def plot_tasks(model, use_inds=(0, 1), extent=1, buff=.2,
                ax=None, fwid=3, color=(.3, .3, .3),
@@ -1556,6 +1609,18 @@ def find_linear_mapping_single(dg_use, model, n_train_samps=10**4,
         out = (None, None), np.nan, np.nan
     return out
 
+def compute_contextual_extrapolation(fdg, models, **kwargs):
+    perf_all = np.zeros_like(models)
+    flip_perf_all = np.zeros_like(models)
+    for ind in u.make_array_ind_iterator(models.shape):
+        m = models[ind]
+        perf = compute_task_performance(fdg, m, **kwargs)
+        flip_perf = compute_task_performance(fdg, m, flip_tasks=True,
+                                             **kwargs)
+        perf_all[ind] = np.mean(perf)
+        flip_perf_all[ind] = np.mean(flip_perf)
+    return perf_all, flip_perf_all
+
 def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             train_models_blind=False, inp_dim=2,
                             p_c=None, dg_kind=dg_kind_default,
@@ -1579,7 +1644,8 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
                             extrapolate_test=False, 
                             evaluate_intermediate=False,
                             samples_seq=None,
-                            use_test_gp_tasks=None):
+                            use_test_gp_tasks=None,
+                            contextual_extrapolation=False):
     # train data generator
     if dg_args is None:
         out_dim = dg_dim
@@ -1680,6 +1746,11 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     if plot:
         plot_model_dimensionality(dg_use, models, use_x, log_x=models_log_x)
 
+    other = {}
+    if contextual_extrapolation:
+        out = compute_contextual_extrapolation(dg_use, models)
+        other['contextual_extrapolation'] = out
+        
     if train_test_distrs is None:
         try:
             train_d2 = dg_use.source_distribution.make_partition()
@@ -1787,7 +1858,7 @@ def test_generalization_new(dg_use=None, models_ths=None, lts_scores=None,
     else:
         gd = None
 
-    return dg_use, (models, th), (p, c), lts_scores, gd
+    return dg_use, (models, th), (p, c), lts_scores, gd, other
 
 def model_eval(dg_use, models, eval_n_iters=10, n_train_samples=500,
                n_test_samples=500, mean=False):
@@ -2079,6 +2150,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                            multi_train=False, label_field=None,
                            inter_labels=None, inter_colors=None,
                            plot_intermediate=True,
+                           rl_model=False,
                            **kwargs):
     if double_ind is not None:
         merge_axis = 2
@@ -2092,9 +2164,11 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                           file_template=f_pattern, analysis_only=True,
                                           multi_train=multi_train, **kwargs)
             n_parts, _, _, _, p, c, _, sc, _ = data
+            if rl_model:
+                p = p[0]
+                sc = sc[0]
             all_p.append(p)
             all_sc.append(sc)
-        
         p = np.concatenate(all_p, axis=2)
         sc = np.concatenate(all_sc, axis=2)
     else:
@@ -2116,8 +2190,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
     if print_args:
         print(info['args'][0])
     p = p[..., 1]
-    print(p.shape, sc.shape)
-    if double_ind is not None:
+    if double_ind is not None and not rl_model:
         p = p[double_ind]
         sc = sc[double_ind]
     if distr_parts is not None:
@@ -2126,7 +2199,13 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
         n_parts = n_parts[sort_inds]
         p = p[:, sort_inds]
         sc = sc[:, sort_inds]
-    panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
+    if rl_model:
+        panel_vals = info.get('initial_collects')
+        if panel_vals is None:
+            panel_vals = (1000, 5000, 10000)
+        panel_vals = np.array(panel_vals)
+    else:
+        panel_vals = np.logspace(*info['training_eg_args'], dtype=int)
     if pv_mask is not None:
         panel_vals = panel_vals[pv_mask]
         p = p[pv_mask]

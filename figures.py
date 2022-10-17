@@ -783,6 +783,8 @@ class FigureInp(DisentangledFigure):
         sparseness = dc.quantify_sparseness(reps)
         dimensionality = fdg.representation_dimensionality(
             participation_ratio=True)
+        print('sparseness' np.nanmean(sparseness))
+        print('dimensionality', dimensionality)
         dg_color = self.params.getcolor('dg_color')
         lv_color = self.params.getcolor('lv_color')
         ms = self.params.getfloat('markersize')
@@ -980,7 +982,7 @@ class SIFigureGPTask(DisentangledFigure):
             
         axs[i, 0].set_xlabel('novel samples')
         axs[i, 1].legend(frameon=False)
-        
+
 class Figure2(DisentangledFigure):
     
     def __init__(self, fig_key='figure2', colors=colors, **kwargs):
@@ -1265,6 +1267,7 @@ class Figure2(DisentangledFigure):
             layer_spec = self.params.getlist('layers', typefunc=tuple_int)
             no_autoencoder = self.params.getboolean('no_autoencoder')
             task_offset_var = self.params.getfloat('task_offset_var')
+            context_bounds = self.params.getboolean('contextual_boundaries')
             task_offset_distr = sts.norm(0, task_offset_var)
             
             model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
@@ -1272,6 +1275,7 @@ class Figure2(DisentangledFigure):
                                           n_partitions=num_p,
                                           no_autoenc=no_autoencoder,
                                           noise=.1,
+                                          contextual_partitions=context_bounds,
                                           offset_distr=task_offset_distr,
                                           use_early_stopping=True) 
                                for num_p in n_parts)
@@ -1303,7 +1307,7 @@ class Figure2(DisentangledFigure):
         npart_signifier = self.params.get('npart_signifier')
         mid_i = np.floor(len(n_parts)/2)
         vis_3d = self.params.getboolean('vis_3d')
-        view_inits = (None, (50, 30), (40, -20))
+        view_inits = (None, (50, 30), (40, -20), (40, -20), (40, -20))
         for i, num_p in enumerate(n_parts):
             hist = th[0, i, 0]['loss']
             epochs = np.arange(1, len(hist) + 1)
@@ -1340,6 +1344,12 @@ class Figure2(DisentangledFigure):
                                   axs=axs, print_args=False,
                                   pv_mask=pv_mask,
                                   set_title=False, color=part_color)
+
+class Figure2Context(Figure2):
+    
+    def __init__(self, fig_key='figure2_context', **kwargs):
+        super().__init__(fig_key=fig_key, **kwargs)
+        
 
 class Figure2TwoD(Figure2):
     
@@ -3252,14 +3262,16 @@ class FigureRL(DisentangledFigure):
         folder = self.params.get('mp_simulations_path')
         print(run_inds)
         for i, ri in enumerate(run_inds):
-            out = da.load_full_run(folder, ri, merge_axis=1, file_template=f_pattern,
+            out = da.load_full_run(folder, ri, merge_axis=0, file_template=f_pattern,
                                    analysis_only=False, add_hist=True)
             hist = out[0][3]
+            parts = out[0][0]
             if i == 0:
                 hist_all = hist
             else:
                 hist_all = np.concatenate((hist_all, hist), axis=-1)
-        return hist_all
+        hist_all = np.swapaxes(hist_all, 0, 1)
+        return parts, hist_all
         
     def _get_rl_run(self, ind=0):
         
@@ -3284,15 +3296,17 @@ class FigureRL(DisentangledFigure):
         rep_ind = self.params.getint('hist_rep_ind')
         task_color = self.params.getcolor('rl_task_color')
         epoch_cut = self.params.getint('epoch_cutoff')
+        init_collect_ind = self.params.getint('initial_collect_ind')
 
-        hist_all = self._get_rl_hists()
-        print(hist_all.shape)
+        parts, hist_all = self._get_rl_hists()
         
         n_tasks, task_fractions = get_tasks_learned(np.squeeze(hist_all))
         ax, frac_ax = axs[:, 0]
-        print(task_fractions.shape)
-        frac_ax.plot(n_tasks, np.mean(task_fractions, axis=1),
-                     color=task_color)
+        use_tf = np.array(task_fractions[init_collect_ind], dtype=float).T
+        gpl.plot_trace_werr(parts, use_tf,
+                            color=task_color, ax=frac_ax)
+        # frac_ax.plot(parts, np.mean(task_fractions[init_collect_ind, axis=1),
+        #              color=task_color)
         frac_ax.set_ylabel('fraction of\ntasks learned')
         frac_ax.set_xlabel('tasks')
         gpl.clean_plot(frac_ax, 0)
@@ -3316,7 +3330,7 @@ class FigureRL(DisentangledFigure):
         folder = self.params.get('mp_simulations_path')
         rl_color = self.params.getcolor('rl_gen_color')
         label = 'RL agent'
-        pv_mask = np.array([True])
+        pv_mask = np.array([True, False, False])
         print_args = True
 
         dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
@@ -3326,8 +3340,9 @@ class FigureRL(DisentangledFigure):
                                   axs=axs, legend=label,
                                   plot_hline=False, 
                                   print_args=print_args, set_title=False,
-                                  color=rl_color, double_ind=0,
-                                  set_lims=True, list_run_ind=True)
+                                  color=rl_color, double_ind=0, 
+                                  set_lims=True, list_run_ind=True,
+                                  rl_model=True)
         gpl.add_vlines(5, axs[0, 0])
         gpl.add_vlines(5, axs[0, 1])
         
