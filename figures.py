@@ -358,8 +358,8 @@ class DisentangledFigure(pu.Figure):
                                       file_template=f_pattern,
                                       analysis_only=analysis_only,
                                       multi_train=multi_train, **kwargs)
-        n_parts, _, _, th, p, c, _, sc, _ = data
-        return n_parts, p, c, sc, th, info
+        n_parts, _, _, th, p, c, _, sc, _, other = data
+        return n_parts, p, c, sc, th, info, other
 
     def _abstraction_panel(self, run_inds, res_axs, f_pattern=None,
                            folder=None, labels=None, colors=None,
@@ -783,7 +783,7 @@ class FigureInp(DisentangledFigure):
         sparseness = dc.quantify_sparseness(reps)
         dimensionality = fdg.representation_dimensionality(
             participation_ratio=True)
-        print('sparseness' np.nanmean(sparseness))
+        print('sparseness', np.nanmean(sparseness))
         print('dimensionality', dimensionality)
         dg_color = self.params.getcolor('dg_color')
         lv_color = self.params.getcolor('lv_color')
@@ -815,7 +815,7 @@ class FigureInp(DisentangledFigure):
         grid_pts = self.params.getint('grid_pts')
         
         dc.plot_class_grid(fdg, pass_model, grid_pts=30,
-                          ax=class_ax)
+                           ax=class_ax, col_eps=.15)
         dc.plot_regr_grid(fdg, pass_model, grid_pts=30,
                           ax=regr_ax)
         
@@ -1051,14 +1051,14 @@ class Figure2(DisentangledFigure):
         axs = self.gss[key]
 
         out = self._generate_panel_training_rep_data()            
-        fdg, (models, th), (p, _), (_, scrs, _), _ = out[0]
+        fdg, (models, th), (p, _), (_, scrs, _) = out[0][:4]
         n_parts, n_epochs = out[1]
 
         grid_pts = self.params.getint('grid_pts')
         for i, num_p in enumerate(n_parts):
             model = models[0, i, 0]
             dc.plot_class_grid(fdg, model, grid_pts=grid_pts,
-                               ax=axs[i, 0])
+                               ax=axs[i, 0], col_eps=.15)
             dc.plot_regr_grid(fdg, model, grid_pts=grid_pts,
                               ax=axs[i, 1])
             
@@ -1067,8 +1067,8 @@ class Figure2(DisentangledFigure):
         key = self.panel_keys[4]
         axs = self.gss[key]
 
-        out = self._generate_panel_training_rep_data()            
-        fdg, (models, th), (p, _), (_, scrs, _), _ = out[0]
+        out = self._generate_panel_training_rep_data()
+        fdg, (models, th), (p, _), (_, scrs, _) = out[0][:4]
         n_parts, n_epochs = out[1]
 
         vis_3d = self.params.getboolean('vis_3d')
@@ -1299,7 +1299,7 @@ class Figure2(DisentangledFigure):
 
         out = self._generate_panel_training_rep_data()
             
-        fdg, (models, th), (p, _), (_, scrs, _), _ = out[0]
+        fdg, (models, th), (p, _), (_, scrs, _) = out[0][:4]
         n_parts, n_epochs = out[1]
 
         rs = self.params.getlist('manifold_radii', typefunc=float)
@@ -1399,8 +1399,7 @@ class Figure2Alt(Figure2):
         train_ax, rep_axs = self.gss[key]
         
         out = self._generate_panel_training_rep_data()
-            
-        fdg, (models, th), (p, _), (_, scrs, _), _ = out[0]
+        fdg, (models, th), (p, _), (_, scrs, _) = out[0][:4]
         n_parts, n_epochs = self.data[key][1]
 
         vis_3d = self.params.getboolean('vis_3d')
@@ -2578,6 +2577,49 @@ class Figure4(DisentangledFigure):
         gpl.add_vlines(rfdg.input_dim, res_axs[0, 0])
         gpl.add_vlines(rfdg.input_dim, res_axs[0, 1])
 
+
+class SIFigureContext(DisentangledFigure):
+
+    def __init__(self, fig_key='sifigure_context', colors=colors, **kwargs):
+        fsize = (2, 5)
+        cf = u.ConfigParserColor()
+        cf.read(config_path)
+        
+        params = cf[fig_key]
+        self.fig_key = fig_key
+        self.panel_keys = ('extrapolation',
+                           'task_egs',
+                           'resp_egs')
+        super().__init__(fsize, params, colors=colors, **kwargs)
+
+    def make_gss(self):
+        gss = {}
+
+        grids = pu.make_mxn_gridspec(self.gs, 3, 1, 0, 100, 0, 100,
+                                     10, 10)
+        axs = self.get_axs(grids)
+        gss[self.panel_keys[0]] = axs[2, 0]
+        gss[self.panel_keys[1]] = axs[0, 0]
+        gss[self.panel_keys[2]] = axs[1, 0]
+        self.gss = gss
+
+    def panel_extrapolation(self):
+        key = self.panel_keys[0]
+        ax = self.gss[key]
+        
+        extrap_run_inds = self.params.getlist('extrap_inds')
+        pts = []
+        for ri in extrap_run_inds:
+            out = self.load_run(ri)
+            n_parts = out[0]
+            extrap = out[-1]
+            for i, n in enumerate(n_parts):
+                reg, extr = extrap[i]['contextual_extrapolation']
+                nps = (n,)*extr.shape[-1]
+                es = extr[0, 0]
+                pts.extend(zip(nps, es))
+        pts = np.array(pts)
+        ax.plot(pts[:, 0], pts[:, 1], 'o')
         
 class SIFigureRandomRF(Figure4):
 

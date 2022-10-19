@@ -363,8 +363,8 @@ def compute_task_performance(fdg, m, flip_tasks=False, decon_tasks=False,
     elif decon_tasks:
         tasks = da.decontextualize_tasks(tasks)
     targs = np.stack(list(t(stim) for t in tasks), axis=1)
-    resps = (outs < .5).astype(int)
-    perf = np.nanmean((targs - resps)**2, axis=0)
+    resps = (outs > .5).astype(int)
+    perf = 1 - np.nanmean((targs - resps)**2, axis=0)
     return perf
     
 def plot_func_rfs(fdg, func=None, extent=2, n_pts=100,
@@ -691,7 +691,7 @@ def plot_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
               ax=None, fwid=3, n_digis=8, eps=.01, colormap='Spectral',
               ms=1, buff=.2, y_axis='regression',
               y_label='learned feature', x_label='contextual feature',
-              use_max_out=False):
+              use_max_out=False, col_eps=0):
     cmap = plt.get_cmap(colormap)
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(fwid, fwid))
@@ -712,6 +712,7 @@ def plot_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     digi_bins = np.linspace(-grid_len, grid_len + eps, n_digis + 1)
     stim_bins = np.digitize(stim[:, use_inds[0]], digi_bins) - 1
     norm_bins = np.max(stim_bins)
+    colors = cmap(np.linspace(col_eps, 1 - col_eps, norm_bins + 1))
     if use_max_out:
         y_grid_len = np.round(max(np.max(np.abs(y_coords)), 1), 0)
     else:
@@ -719,7 +720,7 @@ def plot_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     for i, sb in enumerate(np.unique(stim_bins)):
         coord_mask = sb == stim_bins
         ax.plot(x_coords[coord_mask], y_coords[coord_mask], 'o',
-                ms=ms, color=cmap(sb/norm_bins))
+                ms=ms, color=colors[sb])
 
     if len(model.p_vectors) > 0:
         plot_tasks(model, use_inds=use_inds, extent=grid_len, buff=buff, ax=ax,
@@ -1615,8 +1616,10 @@ def compute_contextual_extrapolation(fdg, models, **kwargs):
     for ind in u.make_array_ind_iterator(models.shape):
         m = models[ind]
         perf = compute_task_performance(fdg, m, **kwargs)
+        print(perf)
         flip_perf = compute_task_performance(fdg, m, flip_tasks=True,
                                              **kwargs)
+        print(flip_perf)
         perf_all[ind] = np.mean(perf)
         flip_perf_all[ind] = np.mean(flip_perf)
     return perf_all, flip_perf_all
