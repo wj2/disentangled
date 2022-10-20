@@ -198,10 +198,6 @@ def generate_partition_functions_linear(
             plane_vec_context = np.expand_dims(plane_vec_context, 0)
         print('pv', np.sum(plane_vec*plane_vec_context, axis=1))
         print(plane_vec.shape, plane_vec_context.shape)
-    
-        direction_c = np.random.randn(n_funcs, dim)
-        norms_c = np.expand_dims(np.sqrt(np.sum(direction_c**2, axis=1)), 1)
-        plane_vec_context = direction_c/norms_c
     else:
         plane_vec_context = (None,)*n_funcs
     if context_offset:
