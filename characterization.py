@@ -2166,7 +2166,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                           dg_type=dg_type, model_type=model_type,
                                           file_template=f_pattern, analysis_only=True,
                                           multi_train=multi_train, **kwargs)
-            n_parts, _, _, _, p, c, _, sc, _ = data
+            n_parts, _, _, _, p, c, _, sc, _ = data[:9]
             if rl_model:
                 p = p[0]
                 sc = sc[0]
@@ -2179,7 +2179,7 @@ def plot_recon_gen_summary(run_ind, f_pattern, fwid=3, log_x=True,
                                       dg_type=dg_type, model_type=model_type,
                                       file_template=f_pattern, analysis_only=True,
                                       multi_train=multi_train, **kwargs) 
-        n_parts, _, _, _, p, c, _, sc, _ = data
+        n_parts, _, _, _, p, c, _, sc, _ = data[:9]
         if len(legend) == 0 and label_field is not None:
             legend = '{:1.0e}'.format(info['args'][0][label_field])
 
