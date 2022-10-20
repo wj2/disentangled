@@ -1277,6 +1277,7 @@ class Figure2(DisentangledFigure):
                                           noise=.1,
                                           contextual_partitions=context_bounds,
                                           offset_distr=task_offset_distr,
+                                          orthog_context=True,
                                           use_early_stopping=True) 
                                for num_p in n_parts)
         
@@ -2412,7 +2413,7 @@ class FigureGPRevised(FigureGP):
 class Figure4(DisentangledFigure):
 
     def __init__(self, fig_key='figure4', colors=colors, **kwargs):
-        fsize = (6, 4)
+        fsize = (7, 5.5)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
@@ -2609,56 +2610,130 @@ class SIFigureContext(DisentangledFigure):
         
         extrap_run_inds = self.params.getlist('extrap_inds')
         pts = []
+        pts_reg = []
         for ri in extrap_run_inds:
             out = self.load_run(ri)
+            p = out[1]
+            print(p.shape)
             n_parts = out[0]
             extrap = out[-1]
+            # ax.plot(n_parts, np.mean(p[0, :, :, -1], axis=1))
             for i, n in enumerate(n_parts):
                 reg, extr = extrap[i]['contextual_extrapolation']
                 nps = (n,)*extr.shape[-1]
                 es = extr[0, 0]
+                rs = reg[0, 0]
                 pts.extend(zip(nps, es))
+                pts_reg.extend(zip(nps, rs))
         pts = np.array(pts)
+        pts_reg = np.array(pts_reg)
         ax.plot(pts[:, 0], pts[:, 1], 'o')
+        ax.plot(pts_reg[:, 0], pts_reg[:, 1], 'o')
         
 class SIFigureRandomRF(Figure4):
 
     def __init__(self, fig_key='sifigure_random_rf', **kwargs):
         super().__init__(fig_key=fig_key, **kwargs)
 
+    def make_gss(self):
+        gss = {}
+
+        rf_inp_grid = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100,
+                                           0, 45, 5, 14)
+        axs_3ds = np.zeros((3, 2), dtype=bool)
+        axs_3ds[0, 1] = self.params.getboolean('vis_3d')
+        gss[self.panel_keys[0]] = self.get_axs(rf_inp_grid,
+                                               plot_3ds=axs_3ds)
+
+        rep_grids = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100,
+                                         55, 100, 5, 5)
+        axs_3ds = np.zeros((3, 2), dtype=bool)
+        axs_3ds[0, 1] = self.params.getboolean('vis_3d')
+        gss[self.panel_keys[1]] = self.get_axs(rep_grids, plot_3ds=axs_3ds)
+        
+        self.gss = gss
+
+        
     def make_rfdg(self, kernel=None, **kwargs):
         return self.make_random_rfdg(**kwargs)
 
-    def panel_disentangling_comparison(self):
-        key = self.panel_keys[1]
+    def panel_rf_input(self, kernel=None):
+        key = self.panel_keys[0]
         axs = self.gss[key]
-        rfdg = self.make_rfdg()
+        schem_ax, proj_ax = axs[0]
+        gen_axs = axs[1]
+        dec_c_ax, dec_r_ax = axs[2]
+        
+        rfdg = self.make_rfdg(kernel=kernel)
 
-        if not key in self.data.keys():
-            out_bvae = train_eg_bvae(rfdg, self.params)
-            out_fd = train_eg_fd(rfdg, self.params)
-            m_fd = out_fd[0][0, 0]
-            m_bvae = out_bvae[0][0, 0]
-            ident_gen = characterize_generalization(rfdg, dd.IdentityModel(), 10)
-            fd_gen = characterize_generalization(rfdg, m_fd, 10)
-            bvae_gen = characterize_generalization(rfdg, m_bvae, 10)
-            self.data[key] = (out_fd, out_bvae, ident_gen, fd_gen, bvae_gen)
-        if len(self.data[key]) > 2:
-            out_fd, out_bvae, ident_gen, fd_gen, bvae_gen = self.data[key]
-        else:
-            out_fd, out_bvae = self.data[key]
-        m_fd = out_fd[0][0, 0]
-        m_bvae = out_bvae[0][0, 0]
+        rf_eg_color = self.params.getcolor('rf_eg_color')
+        if not kernel:
+            rfdg.plot_rfs(schem_ax, color=rf_eg_color, thin=20,
+                          x_scale=.5, y_scale=.5, lw=1)
+            schem_ax.set_aspect('equal')
 
+        pass_model = dd.IdentityModel()
         rs = self.params.getlist('manifold_radii', typefunc=float)
         n_arcs = self.params.getint('manifold_arcs')
         vis_3d = self.params.getboolean('vis_3d')
+        dc.plot_diagnostics(rfdg, pass_model, rs, n_arcs,
+                            scale_mag=.5, markers=False, ax=proj_ax,
+                            plot_3d=vis_3d)
+
+        grid_len = self.params.getfloat('grid_len')
+        grid_pts = self.params.getint('grid_pts')
+        dc.plot_class_grid(rfdg, pass_model, grid_pts=grid_pts,
+                           grid_len=grid_len,
+                           ax=gen_axs[0], col_eps=.15)
+        dc.plot_regr_grid(rfdg, pass_model, grid_pts=grid_pts,
+                          grid_len=grid_len,
+                          ax=gen_axs[1])
+
+
+        if not key in self.data.keys():
+            c_reps = self.params.getint('dg_classifier_reps')
+            out = characterize_generalization(rfdg, pass_model,
+                                              c_reps)
+            self.data[key] = out
+        results_class, results_regr = self.data[key]
+
+        color = self.params.getcolor('dg_color')
+        plot_bgp(results_class, results_regr, dec_c_ax, dec_r_ax,
+                 color=color)
+        
+    
+    def panel_disentangling_comparison(self, kernel=None):
+        key = self.panel_keys[1]
+        axs = self.gss[key]
+        vis_ax = axs[0, 1]
+        gen_axs = axs[1]
+        quant_axs = axs[2:]
+        rfdg = self.make_rfdg()
+
+        if not key in self.data.keys():
+            out_fd = train_eg_fd(rfdg, self.params, use_early_stopping=True)
+            m_fd = out_fd[0][0, 0]
+            fd_gen = characterize_generalization(rfdg, m_fd, 10)
+            self.data[key] = (rfdg, m_fd, fd_gen)
+        rfdg, m_fd, fd_gen = self.data[key]
+ 
+        rs = self.params.getlist('manifold_radii', typefunc=float)
+        n_arcs = self.params.getint('manifold_arcs')
+        vis_3d = self.params.getboolean('vis_3d')
+        grid_pts = self.params.getint('grid_pts')
+        grid_len = self.params.getfloat('grid_len')
+
         dc.plot_diagnostics(rfdg, m_fd, rs, n_arcs, 
                             scale_mag=20, markers=False,
-                            ax=axs[0, 0], plot_3d=vis_3d)
-        dc.plot_diagnostics(rfdg, m_bvae, rs, n_arcs, 
-                            scale_mag=.01, markers=False,
-                            ax=axs[0, 1], plot_3d=vis_3d)
+                            ax=vis_ax, plot_3d=vis_3d)
+
+        dc.plot_class_grid(rfdg, m_fd, grid_pts=grid_pts,
+                           grid_len=grid_len,
+                           ax=gen_axs[0], col_eps=.15)
+        dc.plot_regr_grid(rfdg, m_fd, grid_pts=grid_pts,
+                          grid_len=grid_len,
+                          ax=gen_axs[1])
+
 
         run_ind_fd = self.params.getlist('run_ind_fd')  
         run_ind_beta = self.params.get('run_ind_beta')
@@ -2666,36 +2741,27 @@ class SIFigureRandomRF(Figure4):
         beta_f_pattern = self.params.get('beta_f_pattern')
         folder = self.params.get('mp_simulations_path')
         beta_folder = self.params.get('beta_simulations_path')
-        res_axs = axs[1:]
 
         part_color = self.params.getcolor('partition_color')
         bvae_color = self.params.getcolor('bvae_color')
         xlab = r'tasks'
         
         pv_mask = np.array([False, True, False])
-        # pv_mask = np.array([False, False, False, True, False])
         o = dc.plot_recon_gen_summary(run_ind_fd, f_pattern, log_x=False, 
                                       collapse_plots=False, folder=folder,
-                                      axs=res_axs, legend='multi-tasking model',
+                                      axs=quant_axs, legend='multi-tasking model',
                                       print_args=False, pv_mask=pv_mask,
                                       set_title=False, color=part_color,
                                       xlab=xlab, set_lims=False, ret_info=True,
                                       list_run_ind=True,
                                       intermediate=True,
                                       plot_intermediate=False)[1]
-        pv_mask = np.array([False, True, False])
-        # o2 = dc.plot_recon_gen_summary(run_ind_beta, beta_f_pattern, log_x=False, 
-        #                           collapse_plots=False, folder=beta_folder,
-        #                           axs=res_axs, legend=r'$\beta$VAE',
-        #                           print_args=False, pv_mask=pv_mask,
-        #                           set_title=False, color=bvae_color,
-        #                           xlab=xlab, set_lims=False, ret_info=True)[1]
-        res_axs[0, 0].set_ylim([.5, 1])
-        res_axs[0, 1].set_ylim([0, 1])
-        res_axs[0, 1].set_yticks([0, 1])
-        gpl.add_hlines(0, res_axs[0, 1], linewidth=1)
-        gpl.add_vlines(rfdg.input_dim, res_axs[0, 0])
-        gpl.add_vlines(rfdg.input_dim, res_axs[0, 1])
+        quant_axs[0, 0].set_ylim([.5, 1])
+        quant_axs[0, 1].set_ylim([0, 1])
+        quant_axs[0, 1].set_yticks([0, 1])
+        gpl.add_hlines(0, quant_axs[0, 1], linewidth=1)
+        gpl.add_vlines(rfdg.input_dim, quant_axs[0, 0])
+        gpl.add_vlines(rfdg.input_dim, quant_axs[0, 1])
 
         
 class FigureImg(DisentangledFigure):
@@ -3611,7 +3677,7 @@ class SIFigureReg(DisentangledFigure):
             for i, ri in enumerate(run_inds):
                 out = da.load_full_run(folder, ri, file_template=f_pattern,
                                        analysis_only=False, skip_gd=False)
-                ls_l1, inps_l1, reps_l1 = out[0][-1]
+                ls_l1, inps_l1, reps_l1 = out[0][-2]
                 l1 = out[1]['args'][0]['l1_weight']
                 if l1 is None:
                     l1 = 0 
@@ -3624,11 +3690,14 @@ class SIFigureReg(DisentangledFigure):
         l1_weights, avg_sparse = self.data[key]
 
         cmap = plt.get_cmap(self.params.get('l1_color_cmap'))
-        gpl.plot_trace_werr(l1_weights, avg_sparse.T, ax=ax,
-                            color=cmap(.5))
-        ax.set_xlabel('L1 weight')
+        norm_col = self.params.getcolor('partition_color')
+        ms = self.params.getfloat('markersize')
+        col_pts = np.linspace(.3, .9, len(l1_weights))
+        colors = (norm_col,) + tuple(cmap(col_pts))
+        gpl.plot_colored_pts(l1_weights, avg_sparse.T, ax=ax,
+                             colors=colors, markersize=ms)
+        ax.set_xlabel('L2 weight')
         ax.set_ylabel('sparseness')
-        
         
 
     def panel_sparseness_l2(self):
@@ -3650,7 +3719,7 @@ class SIFigureReg(DisentangledFigure):
             for i, ri in enumerate(run_inds):
                 out = da.load_full_run(folder, ri, file_template=f_pattern,
                                        analysis_only=False, skip_gd=False)
-                ls_l2, inps_l2, reps_l2 = out[0][-1]
+                ls_l2, inps_l2, reps_l2 = out[0][-2]
                 l2 = out[1]['args'][0]['l2_weight']
                 if l2 is None:
                     l2 = 0 
@@ -3661,10 +3730,16 @@ class SIFigureReg(DisentangledFigure):
             self.data[key] = (np.array(l2_weights),
                               np.stack(avg_sparse, axis=0))
         l2_weights, avg_sparse = self.data[key]
-
+        
+        norm_col = self.params.getcolor('partition_color')
         cmap = plt.get_cmap(self.params.get('l2_color_cmap'))
-        gpl.plot_trace_werr(l2_weights, avg_sparse.T, ax=ax,
-                            color=cmap(.5))
+        ms = self.params.getfloat('markersize')
+        col_pts = np.linspace(.3, .9, len(l2_weights))
+        colors = (norm_col,) + tuple(cmap(col_pts))
+        gpl.plot_colored_pts(l2_weights, avg_sparse.T, ax=ax,
+                             colors=colors, markersize=ms)
+        # gpl.plot_trace_werr(l2_weights, avg_sparse.T, ax=ax,
+        #                     color=cmap(.5))
         ax.set_xlabel('L2 weight')
         ax.set_ylabel('sparseness')
 

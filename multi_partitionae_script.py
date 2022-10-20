@@ -353,6 +353,10 @@ if __name__ == '__main__':
     if args.contextual_extrapolation and not contextual_partitions:
         contextual_partitions = True
         print('setting contextual partitions')
+    if args.contextual_extrapolation:
+        orthog_context = True
+    else:
+        orthog_context = False
     if pre_net:
         net_type = dd.FlexibleDisentanglerPre
     else:
@@ -389,7 +393,8 @@ if __name__ == '__main__':
         use_early_stopping=args.use_early_stopping,
         early_stopping_field=args.early_stopping_field,
         full_reg=args.full_reg,
-        weight_reg_type=weight_reg_type
+        weight_reg_type=weight_reg_type,
+        orthog_context=orthog_contex,
     )
                        for p in partitions)
         

@@ -273,13 +273,15 @@ def make_tasks(true_learn_dim, n_partitions, orthog_partitions=False,
                context_offset=False, grid_coloring=False,
                n_granules=2, granule_sparseness=.5,
                n_grids=0, use_gp_tasks=False,
-               gp_tasks=0, gp_task_length_scale=.5):
+               gp_tasks=0, gp_task_length_scale=.5,
+               orthog_context=False):
     out = da.generate_partition_functions(
-            true_learn_dim,
-            n_funcs=n_partitions,
-            orth_basis=orthog_partitions,
-            offset_distribution=offset_distr,
-            contextual=contextual_partitions)
+        true_learn_dim,
+        n_funcs=n_partitions,
+        orth_basis=orthog_partitions,
+        offset_distribution=offset_distr,
+        contextual=contextual_partitions,
+        orth_context=orthog_context)
     p_funcs, p_vectors, p_offsets = out
     if grid_coloring or n_grids > 0:
         if grid_coloring:
@@ -327,6 +329,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                  noise=0, context_offset=False, nan_salt=None,
                  grid_coloring=False, n_granules=2, granule_sparseness=.5,
                  n_grids=0, no_learn_lvs=None, use_gp_tasks=False,
+                 orthog_context=False,
                  gp_tasks=0, gp_task_length_scale=.5, use_early_stopping=False,
                  early_stopping_field='val_class_branch_loss',
                  **layer_params):
@@ -346,7 +349,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                          offset_distr, contextual_partitions,
                          context_offset, grid_coloring, n_granules,
                          granule_sparseness, n_grids, use_gp_tasks, gp_tasks,
-                         gp_task_length_scale)
+                         gp_task_length_scale, orthog_context=orthog_context)
         self.p_funcs, self.p_vectors, self.p_offsets = out
             
         out = self.make_encoder(input_shape, layer_shapes, encoded_size,
