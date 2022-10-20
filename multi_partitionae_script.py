@@ -394,7 +394,7 @@ if __name__ == '__main__':
         early_stopping_field=args.early_stopping_field,
         full_reg=args.full_reg,
         weight_reg_type=weight_reg_type,
-        orthog_context=orthog_contex,
+        orthog_context=orthog_context,        
     )
                        for p in partitions)
         
