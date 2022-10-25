@@ -199,6 +199,8 @@ def create_parser():
     parser.add_argument('--use_random_rfs', default=False, action='store_true')
     parser.add_argument('--contextual_extrapolation', default=False,
                         action='store_true')
+    parser.add_argument('--use_expander_net', default=False,
+                        action='store_true')                        
     return parser
 
 if __name__ == '__main__':
@@ -359,6 +361,8 @@ if __name__ == '__main__':
         orthog_context = False
     if pre_net:
         net_type = dd.FlexibleDisentanglerPre
+    elif args.use_expander_net:
+        net_type = dd.FlexibleDisentanglerExpAE
     else:
         net_type = dd.FlexibleDisentanglerAE
     if args.nan_salt == -1:

@@ -317,6 +317,7 @@ def make_tasks(true_learn_dim, n_partitions, orthog_partitions=False,
         p_funcs = np.concatenate((self.p_funcs, p_fs_gp))
     return p_funcs, p_vectors, p_offsets
 
+
 class FlexibleDisentanglerAE(FlexibleDisentangler):
 
     def __init__(self, input_shape, layer_shapes, encoded_size,
@@ -549,6 +550,90 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         recon = self.get_reconstruction(reps)
         return np.mean((samples - recon)**2)
 
+class FlexibleDisentanglerExpAE(FlexibleDisentanglerAE):
+
+    def make_encoder(self, input_shape, layer_shapes, encoded_size,
+                     n_partitions, act_func=tf.nn.relu, regularizer_weight=.1,
+                     layer_type=tfkl.Dense, branch_names=('a', 'b'),
+                     regularizer_type=tfk.regularizers.l2,
+                     dropout_rate=0, noise=0, weight_reg_weight=0,
+                     weight_reg_type=tfk.regularizers.l2,
+                     readout_bias_reg_str=0,
+                     readout_bias_reg_type=tfk.regularizers.l2,
+                     full_reg=False, expander_layers=((500,), (500,),),
+                     expander_reg_type=dr.L2PRRegularizerInv,
+                     exp_reg_weight=(0, .1),
+                     **layer_params):
+        inputs = tfk.Input(shape=input_shape)
+        x = inputs
+        y = inputs
+        if weight_reg_weight > 0:
+            kernel_reg = weight_reg_type(weight_reg_weight)
+        else:
+            kernel_reg = None
+        if readout_bias_reg_str > 0:
+            readout_bias_reg = readout_bias_reg_type(readout_bias_reg_str)
+        else:
+            readout_bias_reg = None
+
+        expander_reg = expander_reg_type(exp_reg_weight)
+        for el in expander_layers:
+            y = layer_type(*el, activation=act_func,
+                           kernel_regularizer=kernel_reg,
+                           activity_regularizer=expander_reg,
+                           **layer_params)(y)
+            
+        # representation layer
+        act_reg = regularizer_type(regularizer_weight)
+        if full_reg:
+            layer_act_reg = act_reg
+        else:
+            layer_act_reg = None
+
+        x = tfkl.concatenate([x, y])
+        for lp in layer_shapes:
+            x = layer_type(*lp, activation=act_func,
+                           kernel_regularizer=kernel_reg,
+                           activity_regularizer=layer_act_reg,
+                           **layer_params)(x)
+
+        if dropout_rate > 0:
+            x = tfkl.Dropout(dropout_rate)(x)
+
+        rep = tfkl.Dense(encoded_size, activation=None,
+                         activity_regularizer=act_reg,
+                         kernel_regularizer=kernel_reg,
+                         bias_regularizer=readout_bias_reg)(x)
+        if noise > 0:
+            rep = tfkl.GaussianNoise(noise)(rep)
+        rep_model = tfk.Model(inputs=inputs, outputs=rep)
+        rep_inp = tfk.Input(shape=encoded_size)
+        
+        # partition branch
+        class_inp = rep_inp
+        sig_act = tf.keras.activations.sigmoid
+        class_branch = tfkl.Dense(n_partitions, activation=sig_act,
+                                  bias_regularizer=readout_bias_reg,
+                                  name=branch_names[0])(class_inp)
+        class_model = tfk.Model(inputs=rep_inp, outputs=class_branch,
+                                name=branch_names[0])
+
+        # decoder branch
+        z = rep_inp
+        for lp in layer_shapes[::-1]:
+            z = tfkl.Dense(*lp, activation=act_func, **layer_params)(z)
+
+        autoenc_branch = layer_type(input_shape, activation=act_func,
+                                    name=branch_names[1], **layer_params)(z)
+        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch,
+                                  name=branch_names[1])
+
+        outs = [class_model(rep), autoenc_model(rep)]
+        full_model = tfk.Model(inputs=inputs, outputs=outs)
+        
+        return full_model, rep_model, autoenc_model, class_model
+
+    
 default_pre_model = ('https://tfhub.dev/google/imagenet/'
                      'mobilenet_v3_small_100_224/feature_vector/5')
 class FlexibleDisentanglerPre(FlexibleDisentanglerAE):

@@ -92,7 +92,7 @@ def _contextual_binary_classification(x, plane=None, off=0, context=None,
                                       context_off=0):
     ret = (np.sum(plane*x, axis=1) - off > 0).astype(float)
     if context is not None and context[0] is not None:
-        mask = np.sum(context*x, axis=1) - context_off < 0
+        mask = (np.sum(context*x, axis=1) - context_off) < 0
         ret[mask] = np.nan
     return ret
 

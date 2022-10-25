@@ -2614,7 +2614,6 @@ class SIFigureContext(DisentangledFigure):
         for ri in extrap_run_inds:
             out = self.load_run(ri)
             p = out[1]
-            print(p.shape)
             n_parts = out[0]
             extrap = out[-1]
             # ax.plot(n_parts, np.mean(p[0, :, :, -1], axis=1))

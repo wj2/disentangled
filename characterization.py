@@ -604,7 +604,9 @@ def make_rep_grid(dg_use, model, grid_len=2, grid_pts=100, use_inds=(0, 1),
     return stim, inp_rep, lat_rep
 
 def make_task_mask(task, grid_len=2, grid_pts=100, use_inds=(0, 1),
-                   dims=5):
+                   dims=None):
+    if dims is None:
+        dims = task.keywords['plane'].shape[1]
     side_pts = np.linspace(-grid_len, grid_len, grid_pts)
     grid = np.array(list(it.product(side_pts, side_pts)))
     stim = np.zeros((grid.shape[0], dims))
