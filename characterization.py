@@ -369,7 +369,8 @@ def compute_task_performance(fdg, m, flip_tasks=False, decon_tasks=False,
     
 def plot_func_rfs(fdg, func=None, extent=2, n_pts=100,
                   axs_flat=None, mask=True, fwid=3,
-                  random_order=False, **kwargs):
+                  random_order=False, show_ticks=False,
+                  rasterized=True, **kwargs):
     rng = np.random.default_rng()
     vals_x = np.linspace(-extent, extent, n_pts)
     vals_y = np.linspace(-extent, extent, n_pts)
@@ -403,11 +404,16 @@ def plot_func_rfs(fdg, func=None, extent=2, n_pts=100,
     else:
         inds = np.arange(len(axs_flat), dtype=int)
     for i, ax in enumerate(axs_flat):
-        gpl.pcolormesh(vals_x, vals_y, rep_map[..., inds[i]], ax=ax,
-                       **kwargs)
-        ax.set_xticks([-extent, 0, extent])
-        ax.set_yticks([-extent, 0, extent])
-    return axs_flat
+        m = gpl.pcolormesh(vals_x, vals_y, rep_map[..., inds[i]], ax=ax,
+                           rasterized=rasterized, **kwargs)
+        if show_ticks:
+            ax.set_xticks([-extent, 0, extent])
+            ax.set_yticks([-extent, 0, extent])
+        else:
+            ax.set_xticks([])
+            ax.set_yticks([])
+            
+    return m, axs_flat
     
 
 def plot_dg_rfs(fdg, func=None, n_plots_rows=5, axs=None, fwid=1,
@@ -419,9 +425,9 @@ def plot_dg_rfs(fdg, func=None, n_plots_rows=5, axs=None, fwid=1,
                                                     fwid*n_plots_rows))
 
     axs_flat = axs.flatten()
-    plot_func_rfs(fdg, func=func, axs_flat=axs_flat, random_order=True,
+    out = plot_func_rfs(fdg, func=func, axs_flat=axs_flat, random_order=True,
                   **kwargs)
-    return axs
+    return out
 
 def compute_sparsity(model, n_samps=10000):
     _, reps = model.sample_reps(n_samps)

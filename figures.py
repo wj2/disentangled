@@ -262,6 +262,53 @@ class DisentangledFigure(pu.Figure):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, find_panel_keys=False, **kwargs)
 
+    def _generate_panel_training_rep_data(self, use_gpdg=False, retrain=False,
+                                          use_rf_dg=False, **kwargs):
+        if self.data.get(self.models_key) is None or retrain:
+            if use_gpdg:
+                fdg = self.make_gpdg(**kwargs)
+            elif use_rf_dg:
+                fdg = self.make_random_rfdg(**kwargs)
+            else:
+                fdg = self.make_fdg()
+            n_parts = self.params.getlist('n_parts', typefunc=int)
+            latent_dim = self.params.getint('latent_dim')
+            n_reps = self.params.getint('n_reps')
+            dg_epochs = self.params.getint('dg_epochs')
+            n_epochs = self.params.getint('n_epochs')
+            n_train_bounds = self.params.getlist('n_train_eg_bounds',
+                                                 typefunc=float)
+            n_train_diffs = self.params.getint('n_train_eg_diffs')
+            layer_spec = self.params.getlist('layers', typefunc=tuple_int)
+            no_autoencoder = self.params.getboolean('no_autoencoder')
+            task_offset_var = self.params.getfloat('task_offset_var')
+            context_bounds = self.params.getboolean('contextual_boundaries')
+            task_offset_distr = sts.norm(0, task_offset_var)
+            
+            model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
+                                          true_inp_dim=fdg.input_dim, 
+                                          n_partitions=num_p,
+                                          no_autoenc=no_autoencoder,
+                                          noise=.1,
+                                          contextual_partitions=context_bounds,
+                                          offset_distr=task_offset_distr,
+                                          orthog_context=True,
+                                          use_early_stopping=True) 
+                               for num_p in n_parts)
+        
+            out = dc.test_generalization_new(
+                dg_use=fdg, layer_spec=layer_spec,
+                est_inp_dim=latent_dim,
+                inp_dim=fdg.output_dim,
+                dg_train_epochs=dg_epochs,
+                model_n_epochs=n_epochs,
+                n_reps=n_reps, model_kinds=model_kinds,
+                models_n_diffs=n_train_diffs,
+                models_n_bounds=n_train_bounds,
+                p_mean=False, plot=False)
+            self.data[self.models_key] = (out, (n_parts, n_epochs))
+        return self.data[self.models_key]
+
     def make_gpdg(self, retrain=False, dg_dim=None, gp_ls=None):
         try:
             assert not retrain
@@ -381,7 +428,6 @@ class DisentangledFigure(pu.Figure):
             colors=colors*multi_num
         else:
             double_inds = (None,)*len(run_inds)
-        print(double_inds)
         for i, ri in enumerate(run_inds):
             dc.plot_recon_gen_summary(ri, f_pattern, log_x=False, 
                                       collapse_plots=collapse_plots,
@@ -1245,54 +1291,6 @@ class Figure2(DisentangledFigure):
                             dim_red=False, 
                             scale_mag=.2, markers=False, ax=axs[0, 1])
         axs[0, 1].set_xlabel('PC 1')
-
-
-    def _generate_panel_training_rep_data(self, use_gpdg=False, retrain=False,
-                                          use_rf_dg=False, **kwargs):
-        if self.data.get(self.models_key) is None or retrain:
-            if use_gpdg:
-                fdg = self.make_gpdg(**kwargs)
-            elif use_rf_dg:
-                fdg = self.make_random_rfdg(**kwargs)
-            else:
-                fdg = self.make_fdg()
-            n_parts = self.params.getlist('n_parts', typefunc=int)
-            latent_dim = self.params.getint('latent_dim')
-            n_reps = self.params.getint('n_reps')
-            dg_epochs = self.params.getint('dg_epochs')
-            n_epochs = self.params.getint('n_epochs')
-            n_train_bounds = self.params.getlist('n_train_eg_bounds',
-                                                 typefunc=float)
-            n_train_diffs = self.params.getint('n_train_eg_diffs')
-            layer_spec = self.params.getlist('layers', typefunc=tuple_int)
-            no_autoencoder = self.params.getboolean('no_autoencoder')
-            task_offset_var = self.params.getfloat('task_offset_var')
-            context_bounds = self.params.getboolean('contextual_boundaries')
-            task_offset_distr = sts.norm(0, task_offset_var)
-            
-            model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
-                                          true_inp_dim=fdg.input_dim, 
-                                          n_partitions=num_p,
-                                          no_autoenc=no_autoencoder,
-                                          noise=.1,
-                                          contextual_partitions=context_bounds,
-                                          offset_distr=task_offset_distr,
-                                          orthog_context=True,
-                                          use_early_stopping=True) 
-                               for num_p in n_parts)
-        
-            out = dc.test_generalization_new(
-                dg_use=fdg, layer_spec=layer_spec,
-                est_inp_dim=latent_dim,
-                inp_dim=fdg.output_dim,
-                dg_train_epochs=dg_epochs,
-                model_n_epochs=n_epochs,
-                n_reps=n_reps, model_kinds=model_kinds,
-                models_n_diffs=n_train_diffs,
-                models_n_bounds=n_train_bounds,
-                p_mean=False, plot=False)
-            self.data[self.models_key] = (out, (n_parts, n_epochs))
-        return self.data[self.models_key]
         
     def panel_training_rep(self):
         key = self.panel_keys[1]
@@ -2582,41 +2580,106 @@ class Figure4(DisentangledFigure):
 class SIFigureContext(DisentangledFigure):
 
     def __init__(self, fig_key='sifigure_context', colors=colors, **kwargs):
-        fsize = (2, 5)
+        fsize = (4.5, 8)
         cf = u.ConfigParserColor()
         cf.read(config_path)
         
         params = cf[fig_key]
         self.fig_key = fig_key
         self.panel_keys = ('extrapolation',
-                           'task_egs',
-                           'resp_egs')
+                           'egs',
+                           'gen_performance',
+                           )
+        self.models_key = 'trained_models'
         super().__init__(fsize, params, colors=colors, **kwargs)
 
     def make_gss(self):
         gss = {}
 
-        grids = pu.make_mxn_gridspec(self.gs, 3, 1, 0, 100, 0, 100,
-                                     10, 10)
+        grids = pu.make_mxn_gridspec(self.gs, 6, 7, 0, 50, 0, 100,
+                                     2, 2)
+        grid_axs = self.get_axs(grids, aspect='equal')
+        
+        grids = pu.make_mxn_gridspec(self.gs, 2, 2, 55, 100, 0, 100,
+                                     10, 20)
         axs = self.get_axs(grids)
-        gss[self.panel_keys[0]] = axs[2, 0]
-        gss[self.panel_keys[1]] = axs[0, 0]
-        gss[self.panel_keys[2]] = axs[1, 0]
+        gss[self.panel_keys[1]] = grid_axs
+        gss[self.panel_keys[0]] = axs[0]
+        gss[self.panel_keys[2]] = axs[1]
         self.gss = gss
 
+    def panel_egs(self):
+        key = self.panel_keys[1]
+        axs = self.gss[key]
+        axs_rfs = axs[:3]
+        axs_tasks = axs[3:]
+
+        out = self._generate_panel_training_rep_data()
+        fdg, (models, _) = out[0][:2]
+        models = models[0, :, 0]
+
+        c1_col = self.params.getcolor('c1_color')
+        c2_col = self.params.getcolor('c2_color')
+        task_cmap = gpl.make_linear_cmap(c2_col, c1_col)
+        for i, m in enumerate(models):
+            p = m.n_partitions
+
+            func = lambda x: m.get_representation(x).numpy()
+            m1, _ = dc.plot_dg_rfs(fdg, func, cmap='viridis',
+                                   axs=axs_rfs[:, i], mask=False)
+            
+            func = lambda x: m.class_model(m.get_representation(x)).numpy()
+            m2, _ = dc.plot_func_rfs(fdg, func, cmap='RdBu', mask=False,
+                                     axs_flat=axs_tasks[:p, i])
+    
+            xs = np.linspace(-2, 2, 100)
+            max_ax = np.min([p, len(axs_tasks)])
+            for j, pf in enumerate(m.p_funcs[:max_ax]):
+                mask = dc.make_task_mask(pf)
+                gpl.pcolormesh(xs, xs, mask, ax=axs_tasks[j, i], alpha=.3,
+                               cmap=task_cmap, rasterized=True)
+                axs_tasks[j, i].set_xticks([])
+                axs_tasks[j, i].set_yticks([])
+        
+            axs_rfs[0, i].set_title('P = {}'.format(p), rotation=45)
+        self.f.colorbar(m1, ax=axs_rfs)
+        
+    def panel_gen_performance(self):
+        key = self.panel_keys[2]
+        axs = np.expand_dims(self.gss[key], 0)
+
+        run_inds = self.params.getlist('extrap_inds')
+        f_pattern = self.params.get('f_pattern')
+        folder = self.params.get('mp_simulations_path')
+        con_color = self.params.getcolor('contextual_color')
+        label = 'contextual tasks'
+        pv_mask = np.array([True,])
+
+        dc.plot_recon_gen_summary(run_inds, f_pattern, log_x=False, 
+                                  collapse_plots=False, folder=folder,
+                                  intermediate=False,
+                                  pv_mask=pv_mask,
+                                  axs=axs, legend=label,
+                                  plot_hline=False, set_title=False,
+                                  color=con_color,
+                                  set_lims=True, list_run_ind=True)
+        gpl.add_vlines(5, axs[0, 0])
+        gpl.add_vlines(5, axs[0, 1])
+        
     def panel_extrapolation(self):
         key = self.panel_keys[0]
-        ax = self.gss[key]
+        axs = self.gss[key]
         
         extrap_run_inds = self.params.getlist('extrap_inds')
+        con_color = self.params.getcolor('contextual_color')
+        
         pts = []
         pts_reg = []
         for ri in extrap_run_inds:
             out = self.load_run(ri)
-            p = out[1]
+            p = out[1][0]
             n_parts = out[0]
             extrap = out[-1]
-            # ax.plot(n_parts, np.mean(p[0, :, :, -1], axis=1))
             for i, n in enumerate(n_parts):
                 reg, extr = extrap[i]['contextual_extrapolation']
                 nps = (n,)*extr.shape[-1]
@@ -2626,8 +2689,17 @@ class SIFigureContext(DisentangledFigure):
                 pts_reg.extend(zip(nps, rs))
         pts = np.array(pts)
         pts_reg = np.array(pts_reg)
-        ax.plot(pts[:, 0], pts[:, 1], 'o')
-        ax.plot(pts_reg[:, 0], pts_reg[:, 1], 'o')
+        axs[1].plot(pts[:, 0], pts[:, 1], 'o', color=con_color)
+        axs[0].plot(pts_reg[:, 0], pts_reg[:, 1], 'o', color=con_color)
+        axs[0].set_xlabel('tasks')
+        axs[1].set_xlabel('tasks')
+        axs[0].set_ylabel('trained context accuracy')
+        axs[1].set_ylabel('tested context accuracy')
+        axs[0].set_ylim([.5, 1])
+        axs[1].set_ylim([.5, 1])
+        gpl.clean_plot(axs[0], 0)
+        gpl.clean_plot(axs[1], 0)
+        
         
 class SIFigureRandomRF(Figure4):
 
@@ -3367,7 +3439,6 @@ class FigureRL(DisentangledFigure):
         run_inds = self.params.getlist('run_ind_comb')
         f_pattern = self.params.get('f_pattern')
         folder = self.params.get('mp_simulations_path')
-        print(run_inds)
         for i, ri in enumerate(run_inds):
             out = da.load_full_run(folder, ri, merge_axis=0, file_template=f_pattern,
                                    analysis_only=False, add_hist=True)
