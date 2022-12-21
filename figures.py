@@ -952,7 +952,7 @@ class SIFigureGPTask(DisentangledFigure):
             out_dict = {}
             for i, run_ind in enumerate(run_inds):
             
-                n_parts, p, c, sc, _, info = self.load_run(run_ind, double_ind=0,
+                n_parts, p, c, sc, _, info, _ = self.load_run(run_ind, double_ind=0,
                                                            multi_train=True)
                 
                 lg_args = info['args'][0]['training_samples_seq']
@@ -1518,21 +1518,24 @@ class Figure3(DisentangledFigure):
         unbalanced_class_grid = self.gs[:30, 55:70]
         unbalanced_regress_grid = self.gs[:30, 80:]
 
-        axs_3d = np.zeros(4, dtype=bool)
-        axs_3d[1] = self.params.getboolean('vis_3d')
+        axs_3d = np.zeros((1, 4), dtype=bool)
+        axs_3d[0, 1] = self.params.getboolean('vis_3d')
         axs_left = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 0, 40,
                                         3, 0)
         axs_right = pu.make_mxn_gridspec(self.gs, 3, 2, 0, 100, 54, 100,
                                          5, 15)
         gss[self.panel_keys[0]] = self.get_axs(np.concatenate((axs_left[0],
                                                                axs_right[0])),
-                                               plot_3ds=axs_3d)
+                                               plot_3ds=axs_3d,
+                                               squeeze=True)
         gss[self.panel_keys[1]] = self.get_axs(np.concatenate((axs_left[1],
                                                                axs_right[1])),
-                                               plot_3ds=axs_3d)
+                                               plot_3ds=axs_3d,
+                                               squeeze=True)
         gss[self.panel_keys[2]] = self.get_axs(np.concatenate((axs_left[2],
                                                                axs_right[2])),
-                                               plot_3ds=axs_3d)
+                                               plot_3ds=axs_3d,
+                                               squeeze=True)
 
         self.gss = gss
 
@@ -2913,11 +2916,11 @@ class FigureImg(DisentangledFigure):
         id_model.learn_lvs = np.array(learned_lvs)
         return id_model
 
-    def panel_img_egs(self):
+    def panel_img_egs(self, resample=False):
         key = self.panel_keys[2]
         axs = self.gss[key]
 
-        if key not in self.data.keys():
+        if key not in self.data.keys() or resample:
             shape_dg = self.make_shape_dg()
             _, shape_imgs = shape_dg.sample_reps(2)
             chair_dg = self.make_chair_dg()
