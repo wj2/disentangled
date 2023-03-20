@@ -2001,10 +2001,8 @@ def plot_distgen(perfs, plot_labels, x_labels, p_ind, axs=None, fwid=3,
         if not log_y:
             ax.set_ylim([-1, 1])    
 
-def quantify_sparseness(reps, axis=0):
-    a = (np.mean(reps, axis=axis)**2)/np.mean(reps**2, axis=axis)
-    s = (1 - a)/(1 - 1/reps.shape[axis])
-    return s
+def quantify_sparseness(*args, **kwargs):
+    return u.quantify_sparseness(*args, **kwargs)
 
 def centered_hyperplane_regions(dim, planes):
     ms = np.arange(dim)

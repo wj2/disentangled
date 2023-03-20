@@ -352,7 +352,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                          granule_sparseness, n_grids, use_gp_tasks, gp_tasks,
                          gp_task_length_scale, orthog_context=orthog_context)
         self.p_funcs, self.p_vectors, self.p_offsets = out
-            
+
         out = self.make_encoder(input_shape, layer_shapes, encoded_size,
                                 len(self.p_funcs), act_func=act_func,
                                 regularizer_weight=regularizer_weight,

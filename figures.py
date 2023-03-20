@@ -8,6 +8,8 @@ import scipy.linalg as spla
 import itertools as it
 import matplotlib.pyplot as plt
 
+import tensorflow as tf
+
 import general.plotting as gpl
 import general.plotting_styles as gps
 import general.paper_utilities as pu
@@ -131,6 +133,7 @@ def train_eg_fd(dg, params, offset_var=True, **kwargs):
     batch_size = params.getint('batch_size')
     hide_print = params.getboolean('hide_print')
     no_autoenc = params.getboolean('no_autoencoder')
+    
     if offset_var:
         offset_var_eg = params.getfloat('offset_var_eg')
         offset_distr = sts.norm(0, offset_var_eg)
@@ -283,6 +286,12 @@ class DisentangledFigure(pu.Figure):
             no_autoencoder = self.params.getboolean('no_autoencoder')
             task_offset_var = self.params.getfloat('task_offset_var')
             context_bounds = self.params.getboolean('contextual_boundaries')
+            activation_func = self.params.get('activation_func')
+            act_func_dict = {
+                'relu':tf.nn.relu,
+                'none':None,
+            }
+            act_func = act_func_dict[activation_func]
             task_offset_distr = sts.norm(0, task_offset_var)
             
             model_kinds = list(ft.partial(dd.FlexibleDisentanglerAE,
@@ -290,6 +299,7 @@ class DisentangledFigure(pu.Figure):
                                           n_partitions=num_p,
                                           no_autoenc=no_autoencoder,
                                           noise=.1,
+                                          act_func=act_func,
                                           contextual_partitions=context_bounds,
                                           offset_distr=task_offset_distr,
                                           orthog_context=True,
@@ -1399,7 +1409,7 @@ class Figure2Alt(Figure2):
         
         out = self._generate_panel_training_rep_data()
         fdg, (models, th), (p, _), (_, scrs, _) = out[0][:4]
-        n_parts, n_epochs = self.data[key][1]
+        n_parts, n_epochs = out[1]
 
         vis_3d = self.params.getboolean('vis_3d')
         colormap = self.params.get('vis_colormap')

@@ -17,6 +17,8 @@ import general.plotting as gpl
 import disentangled.aux as da
 import disentangled.regularizer as dr
 import disentangled.disentanglers as dd
+import modularity.auxiliary as maux
+import composite_tangling.code_creation as cc
 
 import superposition_codes.codes as spc
 
@@ -125,19 +127,72 @@ def visualize_gp(length_scale, inp_dim=2, dim=0, domain=(-2, 2), n_samples=1000,
             ax.plot(out[:, 0, i], out[:, 1, i], out[:, 2, i], **kwargs)
     return ax
     
+class RollDataGenerator(DataGenerator):
+
+    def __init__(self, inp_dim, transform_width, out_dim,
+                 period_distribution=None,
+                 source_distribution=None,
+                 single_period=None, 
+                 use_unit_directions=True,
+                 distrib_variance=1):
+        if source_distribution is None:
+            source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
+                                                          distrib_variance)
+        self.source_distribution = source_distribution
+
+        if period_distribution is None:
+            period_distribution = sts.uniform(.1, .5)
+        self.period_distribution = period_distribution
+
+        self.input_dim = inp_dim
+        self.output_dim = out_dim
+        self.use_unit_directions = use_unit_directions
+        self.single_period = single_period
+
+    def fit(self, train_x=None, train_y=None, eval_x=None, eval_y=None,
+            source_distribution=None, epochs=15, train_samples=1000,
+            eval_samples=10**3, batch_size=32, **kwargs):
+        if self.single_period is None:
+            periods = self.period_distribution.rvs((self.output_dim, 1))
+        else:
+            periods = np.ones((self.output_dim, 1))*self.single_period
+        
+        self.periods = periods
+
+        directions = sts.norm(0, 1).rvs((self.output_dim,
+                                         self.input_dim))
+        intercepts = sts.norm(0, 1).rvs((self.output_dim, 1))
+        if self.use_unit_directions:
+            directions = u.make_unit_vector(directions, squeeze=False)
+        self.directions = directions
+        self.intercepts = intercepts
+
+    def _compile(self, *args, **kwargs):
+        self.compiled = True
+
+    def generator(self, x):
+        if len(x.shape) == 1:
+            x = np.expand_dims(x, 0)
+        raw = x @ self.directions.T + self.intercepts.T
+        out = np.sin(raw/self.periods.T)
+        return out
+
+    def get_representation(self, x):
+        return self.generator(x)
+
 class GaussianProcessDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_width, out_dim,
                  kernel_func=skgp.kernels.RBF, l2_weight=(0, .1),
                  layer=None, distrib_variance=1, low_thr=None,
                  source_distribution=None, noise=.01, rand_state=None,
-                 **kernel_kwargs):
+                 alpha=1e-10, **kernel_kwargs):
         self.input_dim = inp_dim
         self.output_dim = out_dim
         self.compiled=False
         self.kernel_init = True
         kernel = kernel_func(**kernel_kwargs)
-        self.model = skgp.GaussianProcessRegressor(kernel)
+        self.model = skgp.GaussianProcessRegressor(kernel, alpha=alpha)
         if source_distribution is None:
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)
@@ -934,7 +989,66 @@ class ShiftMapDataGenerator(DataGenerator):
 
     def get_representation(self, x):
         return self.generator(x)
-        
+
+def svd_loss_encourage(prod, stim, weight=.1, eps=1e-5):
+    svd_sum = 0
+    if len(prod.shape) < 3:
+        prod = tf.expand_dims(prod, 2)
+    for i in range(prod.shape[1]):
+        mat = (tf.transpose(prod[:, i]) @ stim)/stim.shape[0]
+        # add noise to avoid degenerate svd
+        mat = mat + eps*tf.random.normal(mat.shape)
+        s = tf.linalg.svd(mat, compute_uv=False)
+        nan_mask = tf.math.logical_not(tf.math.is_nan(s))
+        s_use = tf.boolean_mask(s, nan_mask)
+        svd_sum = tf.add(tf.reduce_sum(s_use), svd_sum)/prod.shape[1]
+    return -svd_sum*weight
+
+def svd_loss_discourage(prod, stim, weight=.1, eps=1e-8):
+    svd_sum = 0
+    if len(prod.shape) < 3:
+        prod = tf.expand_dims(prod, 2)
+    for i in range(prod.shape[1]):
+        mat = (tf.transpose(prod[:, i]) @ stim)/stim.shape[0]
+        # add noise to avoid degenerate svd
+        mat = mat + eps*tf.random.normal(mat.shape)
+        s = tf.linalg.svd(mat, compute_uv=False)
+        nan_mask = tf.math.logical_not(tf.math.is_nan(s))
+        s_use = tf.boolean_mask(s, nan_mask)
+        svd_sum = tf.add(tf.reduce_mean(s_use), svd_sum)/prod.shape[1]
+    return svd_sum*weight
+
+def _make_svd_rep_funcs(samps, targs, m, func_list):
+    """ 
+    compute the pre-gated targets in a <samples> X n_funcs X n_dims array
+    """
+    rel_stim = maux.get_relevant_dims(samps, m)
+    
+    out_arr = np.zeros((samps.shape[0], len(func_list), targs.shape[1]))
+    for i, f in enumerate(func_list):
+        out_arr[:, i] = np.expand_dims(f(rel_stim), 1)*targs
+    return out_arr
+
+class MixedDiscreteDataGenerator(DataGenerator):
+
+    def __init__(self, inp_dim, n_vals=2, mix_strength=0, out_dim=None,
+                 total_power=None, n_units=None):
+        if n_units is None:
+            n_units = inp_dim + n_vals**inp_dim
+        code = cc.make_code(1 - mix_strength, total_power, inp_dim, n_vals,
+                            n_units)
+        self.code = code
+        self.generator = self.code.get_representation
+        self.output_dim = n_units
+
+    def sample_reps(self, n_samps=1000, add_noise=False):
+        stim = self.code.sample_stim(n_samps)
+        reps = self.code.get_representation(stim, noise=add_noise)
+        return stim, reps
+
+    def get_representation(self, stim, **kwargs):
+        return self.generator(stim, **kwargs)
+
 class FunctionalDataGenerator(DataGenerator):
 
     def __init__(self, inp_dim, transform_widths, out_dim, l2_weight=(0, .1),
@@ -960,7 +1074,6 @@ class FunctionalDataGenerator(DataGenerator):
             source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
                                                           distrib_variance)
         self.source_distribution = source_distribution
-            
 
     def make_generator(self, inp_dim, hidden_dims, out_dim,
                        layer_type=tfkl.Dense, act_func=tf.nn.relu,
@@ -1029,3 +1142,156 @@ class FunctionalDataGenerator(DataGenerator):
         
     def get_representation(self, x):
         return self.generator(x)
+
+class SVDFunctionalDataGenerator(FunctionalDataGenerator):
+
+    def __init__(self, inp_dim, transform_widths, out_dim, target_model,
+                 l2_weight=(0, .1),
+                 source_distribution=None, noise=.01, use_pr_reg=True,
+                 distrib_variance=1, auto_encoder=True, **kwargs):
+        self.target_model = target_model
+        self.branch_names=('rep_branch_encourage',
+                           'rep_branch_discourage',
+                           'autoencoder_branch')
+        if use_pr_reg:
+            reg = dr.L2PRRegularizerInv
+        else:
+            reg = dr.VarianceRegularizer
+        out = self.make_model(inp_dim, transform_widths,
+                              out_dim, l2_weight=l2_weight,
+                              branch_names=self.branch_names,
+                              noise=noise, reg=reg, **kwargs)
+        self.model, self.generator, self.auto_model = out
+        
+        self.input_dim = inp_dim
+        self.output_dim = out_dim
+        self.compiled = False
+        self.include_ae = auto_encoder
+        if source_distribution is None:
+            source_distribution = sts.multivariate_normal(np.zeros(inp_dim),
+                                                          distrib_variance)
+        self.source_distribution = source_distribution
+    
+    def _compile(self, optimizer=None,
+                 loss_dict=None, loss_ratio=10):
+        if optimizer is None:
+            optimizer = tf.optimizers.Adam(learning_rate=1e-3)
+        if loss_dict is None:
+            loss_dict = {
+                self.branch_names[2]:tf.losses.MeanSquaredError(),
+                self.branch_names[0]:svd_loss_encourage,
+                self.branch_names[1]:svd_loss_discourage,
+            }
+        if not self.include_ae:
+            lw_dict = {self.branch_names[0]:1,
+                       self.branch_names[1]:1,
+                       self.branch_names[2]:0}
+        else:
+            lw_dict = {self.branch_names[0]:1,
+                       self.branch_names[1]:1,
+                       self.branch_names[2]:loss_ratio}
+        if not self.include_ae:
+            loss_dict[self.branch_names[2]] = lambda x, y: 0
+            
+        self.model.compile(optimizer, loss=loss_dict, loss_weights=lw_dict)
+        self.compiled = True
+
+    def make_model(self, input_shape, layer_shapes, encoded_size,
+                   act_func=tf.nn.relu, regularizer_weight=.1,
+                   layer_type=tfkl.Dense,
+                   branch_names=('rep_branch_encourage',
+                                 'rep_branch_discourage',
+                                 'autoencoder_branch'),
+                   reg=dr.L2PRRegularizerInv,
+                   l2_weight=.1,
+                   dropout_rate=0, noise=0, weight_reg_weight=0,
+                   weight_reg_type=tfk.regularizers.l2,
+                   readout_bias_reg_str=0,
+                   readout_bias_reg_type=tfk.regularizers.l2,
+                   kernel_init=None,
+                   full_reg=True,
+                   **layer_params):
+        if kernel_init is None:
+            kernel_init = tfk.initializers.GlorotUniform()
+
+        act_reg = reg(l2_weight)
+        
+        inputs = tfk.Input(shape=input_shape)
+        x = inputs
+        if weight_reg_weight > 0:
+            kernel_reg = weight_reg_type(weight_reg_weight)
+        else:
+            kernel_reg = None
+        if readout_bias_reg_str > 0:
+            readout_bias_reg = readout_bias_reg_type(readout_bias_reg_str)
+        else:
+            readout_bias_reg = None
+
+        # representation layer
+        if full_reg:
+            layer_act_reg = act_reg
+        else:
+            layer_act_reg = None
+            
+        for lp in layer_shapes:
+            x = layer_type(*lp, activation=act_func,
+                           kernel_regularizer=kernel_reg,
+                           activity_regularizer=layer_act_reg,
+                           **layer_params)(x)
+
+        if dropout_rate > 0:
+            x = tfkl.Dropout(dropout_rate)(x)
+
+        rep = tfkl.Dense(encoded_size, activation=None,
+                         activity_regularizer=act_reg,
+                         kernel_regularizer=kernel_reg,
+                         bias_regularizer=readout_bias_reg)(x)
+        if noise > 0:
+            rep = tfkl.GaussianNoise(noise)(rep)
+        rep_model = tfk.Model(inputs=inputs, outputs=rep,
+                              name=branch_names[0])
+        rep_model_discourage = tfk.Model(inputs=inputs, outputs=rep,
+                                         name=branch_names[1])
+        rep_inp = tfk.Input(shape=encoded_size)
+        
+        # decoder branch
+        z = rep_inp
+        for lp in layer_shapes[::-1]:
+            z = tfkl.Dense(*lp, activation=act_func, **layer_params)(z)
+
+        autoenc_branch = layer_type(input_shape, activation=act_func,
+                                    **layer_params)(z)
+        autoenc_model = tfk.Model(inputs=rep_inp, outputs=autoenc_branch,
+                                  name=branch_names[2])
+
+        outs = [rep_model(inputs), rep_model_discourage(inputs),
+                autoenc_model(rep_model(inputs))]
+        full_model = tfk.Model(inputs=inputs, outputs=outs)
+        
+        return full_model, rep_model, autoenc_model
+        
+    def fit(self, encourage_funcs=(), discourage_funcs=(),
+            train_x=None, train_y=None, eval_x=None,
+            eval_y=None,
+            source_distribution=None, epochs=15, train_samples=10**5,
+            eval_samples=10**3, batch_size=200, norm_targs=True,
+            **kwargs):
+        if not self.compiled:
+            self._compile()
+
+        _, train_x, targs = self.target_model.get_x_true(n_train=train_samples)
+        if norm_targs:
+            targs = skp.StandardScaler().fit_transform(targs)
+
+        encourage_reps = _make_svd_rep_funcs(train_x, targs, self.target_model,
+                                             encourage_funcs)
+        discourage_reps = _make_svd_rep_funcs(train_x, targs, self.target_model,
+                                              discourage_funcs)
+        
+        train_y_dict = {self.branch_names[0]:encourage_reps,
+                        self.branch_names[1]:discourage_reps,
+                        self.branch_names[2]:train_x}
+        out = self.model.fit(train_x, train_y_dict, 
+                             epochs=epochs, batch_size=batch_size,
+                             **kwargs)
+        return out
