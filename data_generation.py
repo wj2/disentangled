@@ -1081,7 +1081,7 @@ class FunctionalDataGenerator(DataGenerator):
                        reg=dr.VarianceRegularizer,
                        kernel_init=None):
         if kernel_init is None:
-            kernel_init = tfk.initializers.GlorotUniform()
+            kernel_init = tfk.initializers.GlorotUniform
         layer_list = []
         layer_list.append(tfkl.InputLayer(input_shape=inp_dim))
 
@@ -1090,14 +1090,14 @@ class FunctionalDataGenerator(DataGenerator):
         for hd in hidden_dims:
             l_i = layer_type(hd, activation=act_func,
                              activity_regularizer=regularizer,
-                             kernel_initializer=kernel_init)
+                             kernel_initializer=kernel_init())
             layer_list.append(l_i)
             if noise is not None:
                 layer_list.append(tfkl.GaussianNoise(noise))
 
         last_layer = layer_type(out_dim, activation=act_func,
                                 activity_regularizer=regularizer,
-                                kernel_initializer=kernel_init)
+                                kernel_initializer=kernel_init())
         layer_list.append(last_layer)
 
         gen = tfk.Sequential(layer_list)
@@ -1107,13 +1107,13 @@ class FunctionalDataGenerator(DataGenerator):
                          layer_type=tfkl.Dense, act_func=tf.nn.relu,
                          kernel_init=None):
         if kernel_init is None:
-            kernel_init = tfk.initializers.GlorotUniform()
+            kernel_init = tfk.initializers.GlorotUniform
         layer_list = []
         
         layer_list.append(tfkl.InputLayer(input_shape=out_dim))
         for hd in hidden_dims:
             l_i = layer_type(hd, activation=act_func,
-                             kernel_initializer=kernel_init)
+                             kernel_initializer=kernel_init())
             layer_list.append(l_i)
 
         out_layer = layer_type(inp_dim, activation=None)

@@ -124,21 +124,36 @@ def train_eg_bvae(dg, params):
                                    hide_print=hide_print)
     return out
 
-def train_eg_fd(dg, params, offset_var=True, **kwargs):
-    n_part = params.getint('n_part_eg')
-    latent_dim = params.getint('latent_dim')
-    n_epochs = params.getint('n_epochs')
-    n_train_eg = params.getint('n_train_eg')
-    layer_spec = params.getlist('layers', typefunc=tuple_int)
-    batch_size = params.getint('batch_size')
-    hide_print = params.getboolean('hide_print')
-    no_autoenc = params.getboolean('no_autoencoder')
-    
-    if offset_var:
-        offset_var_eg = params.getfloat('offset_var_eg')
-        offset_distr = sts.norm(0, offset_var_eg)
+def train_eg_fd(dg, params=None, offset_var=True, **kwargs):
+    if params is not None:
+        n_part = params.getint('n_part_eg')
+        latent_dim = params.getint('latent_dim')
+        n_epochs = params.getint('n_epochs')
+        n_train_eg = params.getint('n_train_eg')
+        layer_spec = params.getlist('layers', typefunc=tuple_int)
+        batch_size = params.getint('batch_size')
+        hide_print = params.getboolean('hide_print')
+        no_autoenc = params.getboolean('no_autoencoder')
+        if offset_var:
+            offset_var_eg = params.getfloat('offset_var_eg')
+            offset_distr = sts.norm(0, offset_var_eg)
+        else:
+            offset_distr = None
     else:
-        offset_distr = None
+        n_part = kwargs.pop('n_part_eg', 10)
+        latent_dim = kwargs.pop('latent_dim', 50)
+        n_epochs = kwargs.pop('n_epochs', 100)
+        n_train_eg = kwargs.pop('n_train_eg', 10000)
+        layer_spec = kwargs.pop('layers', ((300,),))
+        batch_size = kwargs.pop('batch_size', 100)
+        hide_print = kwargs.pop('hide_print', True)
+        no_autoenc = kwargs.pop('no_autoencoder', True)
+        if offset_var:
+            offset_var_eg = kwargs.pop('offset_var_eg', .2)
+            offset_distr = sts.norm(0, offset_var_eg)
+        else:
+            offset_distr = None
+    
     eg_model = (ft.partial(dd.FlexibleDisentanglerAE,
                            true_inp_dim=dg.input_dim, 
                            n_partitions=n_part,
