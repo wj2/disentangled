@@ -61,8 +61,7 @@ class DataGenerator(da.TFModel):
         elif source_distribution is None:
             raise Exception('no source distribution provided')
 
-        samples = source_distribution.rvs(sample_size)
-        rep = self.get_representation(samples)
+        samples, rep = self.sample_reps(sample_size)
         if participation_ratio:
             out = u.participation_ratio(rep)
         else:
@@ -1040,7 +1039,7 @@ class MixedDiscreteDataGenerator(DataGenerator):
         self.code = code
         self.generator = self.code.get_representation
         self.output_dim = n_units
-
+        
     def sample_reps(self, n_samps=1000, add_noise=False):
         stim = self.code.sample_stim(n_samps)
         reps = self.code.get_representation(stim, noise=add_noise)
