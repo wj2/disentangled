@@ -53,14 +53,8 @@ class DataGenerator(da.TFModel):
                              epochs=epochs, batch_size=batch_size, **kwargs)
         return out
 
-    def representation_dimensionality(self, source_distribution=None,
-                                      participation_ratio=False,
+    def representation_dimensionality(self, participation_ratio=False,
                                       sample_size=10**4, **pca_args):
-        if source_distribution is None and self.source_distribution is not None:
-            source_distribution = self.source_distribution
-        elif source_distribution is None:
-            raise Exception('no source distribution provided')
-
         samples, rep = self.sample_reps(sample_size)
         if participation_ratio:
             out = u.participation_ratio(rep)
