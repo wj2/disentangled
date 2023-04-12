@@ -201,6 +201,15 @@ def create_parser():
                         action='store_true')
     parser.add_argument('--use_expander_net', default=False,
                         action='store_true')                        
+    parser.add_argument('--use_roll_dg', default=False,
+                        action='store_true')
+    parser.add_argument('--roll_period', default=.4, type=float)
+    parser.add_argument('--use_self_supervised_preprocessing', default=False,
+                        action='store_true')
+    parser.add_argument('--ssp_n_layers', default=2, type=int)
+    parser.add_argument('--ssp_view_distance', default=.1, type=float)
+    parser.add_argument('--ssp_algorithm', default='simclr', type=str)
+    parser.add_argument('--ssp_epochs', default=100, type=int)
     return parser
 
 if __name__ == '__main__':
@@ -274,8 +283,15 @@ if __name__ == '__main__':
     elif args.use_gp_dg:
         dg_use = dg.GaussianProcessDataGenerator(
             true_inp_dim, dg_layers, args.dg_dim, source_distribution=sd,
-            length_scale=args.gp_length_scale)
+            length_scale=args.gp_length_scale
+        )
         dg_use.fit(train_samples=1000)
+    elif args.use_roll_dg:
+        dg_use = dg.RollDataGenerator(
+            true_inp_dim, 100, args.dg_dim,
+            single_period=args.roll_period,
+        )
+        dg_use.fit()
     elif args.use_chairs_dg:
         filter_edges = .4
         chair_file = 'disentangled/datasets/chairs_images/'
@@ -309,6 +325,15 @@ if __name__ == '__main__':
         compute_train_lvs = True
     else:
         dg_use = None
+
+    # ADD SELF SUPERVISED LOGIC
+    if args.use_self_supervised_preprocessing:
+        ie = de.InputExpander(args.dg_dim, (args.dg_dim,)*args.ssp_n_layers,
+                              args.dg_dim, (args.dg_dim,),
+                              algorithm=args.ssp_algorithm)
+        ie.fit(dg_use, view_distance=args.ssp_view_distance,
+               pre_train_epochs=args.ssp_epochs)
+        dg_use = de.ExpandedInput(dg_use, ie)
 
     if args.offset_distr_var == 0:
         offset_distr = None
