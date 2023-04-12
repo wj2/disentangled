@@ -20,6 +20,29 @@ def sample_pairs(fdg, n_samps=1000, distance=.1):
     reps2 = fdg.get_representation(lvs + perturbs)
     return reps1, reps2
 
+class ExpandedInput:
+
+    def __init__(self, fdg, expander):
+        self.input_dim = fdg.input_dim
+        self.fdg = fdg
+        self.expander = expander
+
+    def sample_reps(self, n_samps=1000):
+        inps, i_reps = self.fdg.sample_reps(n_samps)
+        e_reps = self.expander.get_representation(i_reps)
+        return inps, i_reps
+
+    def generator(self, x):
+        return self.get_representation(x)
+
+    def get_representation(self, x):
+        rep = self.expander.get_representation(self.fdg.get_representation(x))
+        return rep
+
+    @property
+    def source_distribution(self):
+        return self.fdg.source_distribution
+
 class InputExpander:
 
     def __init__(self, inp_dim, layers, rep_dim, pred_layers, algorithm='barlow',
@@ -32,6 +55,9 @@ class InputExpander:
         self.rep_model, self.pred_model = out
         self.algorithm = algorithm
 
+    def get_representation(self, x):
+        return self.rep_model(x)
+
     def make_model(self, inp_dim, rep_layers, rep_dim,
                    pred_layers, 
                    act_reg_weight=(0, .1),
@@ -42,8 +68,8 @@ class InputExpander:
                    reg=dr.L2PRRegularizerInv):
         if kernel_init is None:
             kernel_init = tfk.initializers.GlorotUniform
-        layer_list = []
-        layer_list.append(tfkl.InputLayer(input_shape=inp_dim))
+        rep_layer_list = []
+        rep_layer_list.append(tfkl.InputLayer(input_shape=inp_dim))
 
         regularizer = reg(act_reg_weight)
 
@@ -51,27 +77,27 @@ class InputExpander:
             l_i = layer_type(hd, activation=act_func,
                              activity_regularizer=regularizer,
                              kernel_initializer=kernel_init())
-            layer_list.append(l_i)
+            rep_layer_list.append(l_i)
             if noise is not None:
-                layer_list.append(tfkl.GaussianNoise(noise))
+                rep_layer_list.append(tfkl.GaussianNoise(noise))
 
         last_layer = layer_type(rep_dim, activation=act_func,
                                 activity_regularizer=regularizer,
                                 kernel_initializer=kernel_init)
-        layer_list.append(last_layer)
+        rep_layer_list.append(last_layer)
+        
+        rep_model = tfk.Sequential(rep_layer_list)
 
-        rep_model = tfk.Sequential(layer_list)
+        pred_layer_list = []
         for pred in pred_layers:
             l_i = layer_type(pred, activation=act_func,
                              kernel_initializer=kernel_init())
-            layer_list.append(l_i)
+            pred_layer_list.append(l_i)
             
-        pred_model = tfk.Sequential(layer_list)
+        pred_model = tfk.Sequential(pred_layer_list)
         return rep_model, pred_model
 
     def compile(self, **kwargs):
-
-        
         loss, opt = self_super_algorithms[self.algorithm]
         self.model.compile(loss=loss, optimizer=opt)
         self.compiled = True
@@ -107,15 +133,12 @@ class InputExpander:
             warmup_steps = 1000 
             loss = tfsim.losses.Barlow(name=self.algorithm)
             optimizer = tfa.optimizers.LAMB(learning_rate=init_lr)
-            # optimizer = tf.optimizers.Adam(learning_rate=init_lr)
-
         elif self.algorithm == "simclr":
             init_lr = 1e-3  
             temperature = 0.5
             loss = tfsim.losses.SimCLRLoss(name=self.algorithm,
                                            temperature=temperature)
             optimizer = tfa.optimizers.LAMB(learning_rate=init_lr)
-            # optimizer = tf.optimizers.Adam(learning_rate=init_lr)
         elif self.algorithm == "vicreg":
             init_lr = 1e-3
             loss = tfsim.losses.VicReg(name=self.algorithm)
