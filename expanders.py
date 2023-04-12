@@ -8,6 +8,7 @@ import tensorflow_similarity as tfsim
 import tensorflow_addons as tfa
 
 import disentangled.regularizer as dr
+import disentangled.data_generation as dg
 
 tfk = tf.keras
 tfkl = tf.keras.layers
@@ -20,7 +21,7 @@ def sample_pairs(fdg, n_samps=1000, distance=.1):
     reps2 = fdg.get_representation(lvs + perturbs)
     return reps1, reps2
 
-class ExpandedInput:
+class ExpandedInput(dg.DataGenerator):
 
     def __init__(self, fdg, expander):
         self.input_dim = fdg.input_dim
