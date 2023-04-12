@@ -65,7 +65,7 @@ def make_data_dict(fdg, n_training_samples=10**4, n_val_samples=10**3,
 class LinearDisentangler:
 
     def __init__(self, inp_dim, layers, rep_dim, underlying_dim, n_tasks,
-                 offset_var=.4, **kwargs):
+                 offset_var=.4, expansion_model=None, **kwargs):
 
         self.inp_dim = inp_dim
         self.rep_dim = rep_dim
@@ -80,6 +80,8 @@ class LinearDisentangler:
         self.rep_model, self.out_model = out
 
         self.compiled = False
+        self.expansion_model = expansion_model
+        
 
     def get_representation(self, x):
         return self.rep_model(x)
@@ -101,6 +103,8 @@ class LinearDisentangler:
 
     def _make_training_data(self, fdg, n_samps=10**4):
         lvs, inp_rs = fdg.sample_reps(n_samps)
+        if self.expansion_model is not None:
+            inp_rs = self.expansion_model.get_representation(inp_rs)
         return self.get_training_targets(inp_rs, lvs)
 
     def get_training_targets(self, inp_rs, lvs):
