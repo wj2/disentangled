@@ -56,15 +56,18 @@ def training_characterizing_script(envs, model_maker, ou_stddev=1,
     all_models = np.zeros((len(envs), len(initial_collects), model_n_diffs,
                            n_reps), dtype=object)
     all_hist = np.zeros_like(all_models)
+    print(all_models.shape)
     for ind in u.make_array_ind_iterator(all_models.shape):
         m_ind = model_maker(envs[ind[0]][1])
         m_ind._compile(ou_stddev=ou_stddev)
+        print(train_samples[ind[2]])
         hist = m_ind.fit_tf(envs[ind[0]][1],
                             num_iterations=train_samples[ind[2]],
                             batch_size=batch_size,
                             initial_collect_episodes=initial_collects[ind[1]],
                             **fit_kwargs)
         all_models[ind] = m_ind.actor
+        print(hist)
         all_hist[ind] = hist
 
     dg_use = envs[0][0].dg
@@ -99,7 +102,7 @@ def training_characterizing_script(envs, model_maker, ou_stddev=1,
       n_test_samples=n_test_samples, mean=p_mean)
 
     lts_scores = dc.find_linear_mappings(
-      dg_use, models, half=True, n_samps=n_test_samples)
+      dg_use, models, half=True, n_test_samps=n_test_samples)
 
     return dg_use, (models, all_hist), (p, c), lts_scores, None                   
 

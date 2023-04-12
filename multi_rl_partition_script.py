@@ -227,7 +227,7 @@ if __name__ == '__main__':
         dg_use = dg.ShiftMapDataGenerator(true_inp_dim, None, args.dg_dim,
                                           source_distribution=sd)
     elif args.use_prf_dg:
-        prf_train_epochs = 5
+        prf_train_epochs = 0 # 5
         dg_layers = (100, 200)
         dg_use = dg.FunctionalDataGenerator(true_inp_dim, dg_layers,
                                             args.dg_dim,
@@ -341,11 +341,14 @@ if __name__ == '__main__':
 
     use_mp = not args.no_multiprocessing
 
+    initial_collects = args.initial_collects
+    model_n_bounds = args.n_train_bounds
+    model_n_diffs = args.n_train_diffs
     out = drl.training_characterizing_script(
-        envs, model_kind, n_reps=args.n_reps,
-        initial_collects=args.initial_collects,
-        model_n_bounds=args.n_train_bounds,
-        model_n_diffs=args.n_train_diffs,
+        envs, model_kind, n_reps=n_reps,
+        initial_collects=initial_collects,
+        model_n_bounds=model_n_bounds,
+        model_n_diffs=model_n_diffs,
         ou_stddev=args.ou_stddev,
         batch_size=args.batch_size)
 

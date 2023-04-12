@@ -1033,6 +1033,7 @@ class MixedDiscreteDataGenerator(DataGenerator):
         self.code = code
         self.generator = self.code.get_representation
         self.output_dim = n_units
+        self.input_dim = inp_dim
         
     def sample_reps(self, n_samps=1000, add_noise=False):
         stim = self.code.sample_stim(n_samps)
