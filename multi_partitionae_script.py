@@ -13,6 +13,7 @@ import disentangled.aux as da
 import disentangled.disentanglers as dd
 import disentangled.data_generation as dg
 import disentangled.regularizer as dr
+import disentangled.expanders as de
 
 def create_parser():
     parser = argparse.ArgumentParser(description='fit several autoencoders')
@@ -326,7 +327,6 @@ if __name__ == '__main__':
     else:
         dg_use = None
 
-    # ADD SELF SUPERVISED LOGIC
     if args.use_self_supervised_preprocessing:
         ie = de.InputExpander(args.dg_dim, (args.dg_dim,)*args.ssp_n_layers,
                               args.dg_dim, (args.dg_dim,),
