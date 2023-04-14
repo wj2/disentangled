@@ -28,8 +28,8 @@ class ExpandedInput(dg.DataGenerator):
         self.fdg = fdg
         self.expander = expander
 
-    def sample_reps(self, **kwargs):
-        inps, i_reps = self.fdg.sample_reps(**kwargs)
+    def sample_reps(self, sample_size=10**4, **kwargs):
+        inps, i_reps = self.fdg.sample_reps(sample_size=sample_size, **kwargs)
         e_reps = self.expander.get_representation(i_reps)
         return inps, i_reps
 
