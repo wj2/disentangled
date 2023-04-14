@@ -27,6 +27,7 @@ class ExpandedInput(dg.DataGenerator):
         self.input_dim = fdg.input_dim
         self.fdg = fdg
         self.expander = expander
+        self.output_dim = expander.rep_dim
 
     def sample_reps(self, sample_size=10**4, **kwargs):
         inps, i_reps = self.fdg.sample_reps(sample_size=sample_size, **kwargs)
@@ -48,7 +49,6 @@ class InputExpander:
 
     def __init__(self, inp_dim, layers, rep_dim, pred_layers, algorithm='barlow',
                  **kwargs):
-
         self.inp_dim = inp_dim
         self.rep_dim = rep_dim
 
