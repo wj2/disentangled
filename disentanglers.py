@@ -251,11 +251,10 @@ class SingleLayer(da.TFModel):
     def get_representation(self, x):
         return self.generator(x)
 
-class IntermediateLayers():
 
+class GenericIntermediateLayers():
     def __init__(self, model, use_i=0, learn_lvs=None):
         self.model = model
-        self.learn_lvs = learn_lvs
         layers = self.model.layers
         i_models = []
         for i in range(1, len(self.model.layers) + 1):
@@ -267,6 +266,13 @@ class IntermediateLayers():
         if layer_ind is None:
             layer_ind = self.use_i
         return self.i_models[layer_ind](x)
+
+
+class IntermediateLayers(GenericIntermediateLayers):
+    def __init__(self, *args, learn_lvs=None, **kwargs):
+        self.learn_lvs = learn_lvs
+        super().__init__(*args, **kwargs)
+
 
 def make_tasks(true_learn_dim, n_partitions, orthog_partitions=False,
                offset_distr=None, contextual_partitions=False,
