@@ -182,6 +182,8 @@ def generate_partition_functions_linear(
         offset_distribution = sts.multivariate_normal(0, offset_var)
     if offset_distribution is not None:
         offsets = offset_distribution.rvs(n_funcs)
+        if n_funcs == 1:
+            offsets = np.expand_dims(offsets, 0)
     else:
         offsets = np.zeros(n_funcs)
     if orth_off is not None:
