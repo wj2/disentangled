@@ -101,6 +101,7 @@ def create_parser():
                         help='do not save representation samples')
     parser.add_argument('--use_tanh', default=False, action='store_true',
                         help='use tanh instead of relu transfer function')
+    parser.add_argument('--use_linear_network', default=False, action='store_true')
     parser.add_argument('--layer_spec', default=None, type=int, nargs='*',
                         help='the layer sizes to use')
     parser.add_argument('--dg_layer_spec', default=None, type=int, nargs='*',
@@ -359,8 +360,13 @@ if __name__ == '__main__':
         
     if args.use_tanh:
         act_func = tf.nn.tanh
+        out_act_func = tf.nn.sigmoid
+    elif args.use_linear_network:
+        act_func = None
+        out_act_func = None
     else:
         act_func = tf.nn.relu
+        out_act_func = tf.nn.sigmoid
 
     if args.layer_spec is None:
         layer_spec = ((50,), (50,), (50,))
@@ -409,6 +415,7 @@ if __name__ == '__main__':
         noise=args.rep_noise,
         context_offset=context_offset,
         act_func=act_func,
+        output_act=out_act_func,
         nan_salt=nan_salt,
         n_grids=args.n_grids,
         n_granules=args.n_granules,

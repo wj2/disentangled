@@ -234,7 +234,7 @@ class IdentityModel(da.TFModel):
         self.p_offsets = []
         self.flatten = flatten
         
-    def get_representation(self, x):
+    def get_representation(self, x, **kwargs):
         if self.flatten:
             x = np.reshape(x, (x.shape[0], -1))
         return x
@@ -406,6 +406,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                      readout_bias_reg_str=0,
                      readout_bias_reg_type=tfk.regularizers.l2,
                      full_reg=False,
+                     output_act=tf.keras.activations.sigmoid,
                      **layer_params):
         inputs = tfk.Input(shape=input_shape)
         x = inputs
@@ -445,8 +446,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         
         # partition branch
         class_inp = rep_inp
-        sig_act = tf.keras.activations.sigmoid
-        class_branch = tfkl.Dense(n_partitions, activation=sig_act,
+        class_branch = tfkl.Dense(n_partitions, activation=output_act,
                                   bias_regularizer=readout_bias_reg,
                                   name=branch_names[0])(class_inp)
         class_model = tfk.Model(inputs=rep_inp, outputs=class_branch,
