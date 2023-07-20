@@ -526,6 +526,39 @@ def make_half_square(n_pts_per_side, lpt=0, rpt=1):
     return pts, corners
     
 
+def project_square(trs, ax, n_rads=3, n_pts=20, r=1, offset=1.5,
+                   cmap='Reds', add_noise=0):
+    bounds = np.linspace(1/n_rads, r, n_rads)
+    cm = plt.get_cmap(cmap)
+    for i, b in enumerate(bounds):
+        pts, corners = make_square(
+            n_pts_per_side=n_pts, lpt=-b + offset, rpt=b + offset
+        )
+        plot_pts = pts @ trs
+        if add_noise > 0:
+            plot_pts += sts.norm(0, 1).rvs(plot_pts.shape)*add_noise
+        ax.plot(*plot_pts.T, color=cm((i + 1)/n_rads))
+
+def make_schematic(trses=None, ax=None, fwid=3, cmaps=('Blues', 'Reds', 'Greens'),
+                   add_noise=.2):
+    if ax is None:
+        f, ax = plt.subplots(1, 1, figsize=(fwid, fwid), subplot_kw={'projection':'3d'})
+    else:
+        f = None
+    if trses is None:
+        trses = np.array([[[1, 0, 0],
+                         [0, 1, 0]],
+                        [[0, 1, 0],
+                         [0, 0, 1]]])
+    
+    for i, trs in enumerate(trses):
+        project_square(trs, ax, cmap=cmaps[i], add_noise=add_noise)
+
+    gpl.clean_3d_plot(ax)
+    gpl.make_3d_bars(ax, bar_len=.5)
+    return f, ax
+    
+
 def make_square(n_pts_per_side=100, lpt=0, rpt=1):
     pts = np.zeros((n_pts_per_side*4, 2))
     side_trav = np.linspace(lpt, rpt, n_pts_per_side)
@@ -545,6 +578,7 @@ def make_square(n_pts_per_side=100, lpt=0, rpt=1):
                         [lpt, lpt]])
 
     return pts, corners
+
 
 def plot_task_reps(dg_use, model, axs=None, fwid=3, n_samps=1000,
                    plot_tasks=None, bins=20, colors=None, **kwargs):

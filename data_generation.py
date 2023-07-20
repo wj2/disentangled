@@ -1316,6 +1316,8 @@ class FunctionalDataGenerator(DataGenerator):
         use_pr_reg=False,
         distrib_variance=1,
         auto_encoder=True,
+        rescale=False,
+        r_eps=.01,
         **kwargs
     ):
         if use_pr_reg:
@@ -1347,6 +1349,18 @@ class FunctionalDataGenerator(DataGenerator):
                 np.zeros(inp_dim), distrib_variance
             )
         self.source_distribution = source_distribution
+        self.rescale = rescale
+        self.rescale_weights = np.ones((1, out_dim))
+        self.r_eps = r_eps
+
+    def fit(self, *args, **kwargs):
+        out = super().fit(*args, **kwargs)
+        if self.rescale:
+            self.rescale_weights = np.max(
+                self.sample_reps()[1], axis=0, keepdims=True
+            )
+            self.rescale_weights[self.rescale_weights < self.r_eps] = self.r_eps
+        return out
 
     def make_generator(
         self,
@@ -1432,7 +1446,8 @@ class FunctionalDataGenerator(DataGenerator):
         self.compiled = True
 
     def get_representation(self, x):
-        return self.generator(x)
+        out = self.generator(x) / self.rescale_weights
+        return out
 
 
 class SVDFunctionalDataGenerator(FunctionalDataGenerator):

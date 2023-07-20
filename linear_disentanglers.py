@@ -8,6 +8,8 @@ import sklearn.svm as skm
 import functools as ft
 import itertools as it
 
+import general.utility as u
+
 tfk = tf.keras
 tfkl = tf.keras.layers
 
@@ -16,6 +18,52 @@ def _task_func(x, vec=None, off=0):
     val = x @ vec.T + off
     cat = val > 0
     return cat
+
+
+def generate_random_task_samples(n_dims, n_tasks, n_samps=10000):
+    ts = u.make_unit_vector(sts.norm(0, 1).rvs((n_tasks, n_dims)))
+    samps = sts.norm(0, 1).rvs((n_samps, n_dims))
+    out = np.sign(ts @ samps.T).T
+    if len(out.shape) == 1:
+        out = np.expand_dims(out, 1)
+    return samps, out
+
+
+def label_abstraction(n_dims, n_tasks, n_samps=10000, dec_dim=0, gen_dim=1,
+                      gap=0, n_reps=20, fdg=None):
+    out_discrete = np.zeros(n_reps)
+    out_cont = np.zeros_like(out_discrete)
+    out_dim = np.zeros_like(out_discrete)
+    for i in range(n_reps):
+        samps, targs = generate_random_task_samples(n_dims, n_tasks, n_samps)
+        if fdg is not None:
+            reps = fdg.get_representation(samps)
+            trs, _, _, _ = np.linalg.lstsq(reps, targs, rcond=None)
+            targs = reps @ trs
+        mask_tr = samps[:, gen_dim] > gap/2
+        mask_te = samps[:, gen_dim] < -gap/2
+        out = compute_abstraction(targs, samps[:, dec_dim], mask_tr, mask_te)
+        out_discrete[i], out_cont[i] = out
+        out_dim[i] = u.participation_ratio(targs)
+    return out_discrete, out_cont, out_dim
+
+
+def empirical_task_dimensionality(n_dims, n_tasks, n_samps=10000):
+    if n_tasks == 0:
+        dim = 0
+    else:
+        out = generate_random_task_samples(n_dims, n_tasks, n_samps=n_samps)
+        dim = u.participation_ratio(out)
+    return dim
+
+
+def task_dimensionality(n_dims, n_tasks, n_samps=1000):
+    v1 = u.make_unit_vector(sts.norm(0, 1).rvs((n_samps, n_dims)))
+    v2 = u.make_unit_vector(sts.norm(0, 1).rvs((n_samps, n_dims)))
+    correls = np.sum(v1*v2, axis=1)
+    c_ij = 1 - (2/np.pi)*np.arccos(correls)
+    dim = n_tasks/(1 + (n_tasks - 1)*np.mean(c_ij**2))
+    return dim
 
 
 def ols_statistics(task_vecs, partition_dim=0, nov_dim=1, eps=1e-5):
@@ -120,23 +168,26 @@ def predict_abstraction(
     print('ols', pred_weights)
     print('trs', trs_te)
 
-    rep_discrete_score = _discrete_abstraction(
-        lin_rep_te, lvs_te[:, dec_dim] > 0, mask_tr, mask_te,
-    )
-    rep_cont_score = _continuous_abstraction(
-        lin_rep_te, lvs_te[:, dec_dim], mask_tr, mask_te,
+    out_rep = compute_abstraction(
+        lin_rep_te, lvs_te[:, dec_dim], mask_tr, mask_te
     )
 
-    targ_discrete_score = _discrete_abstraction(
-        targ_rep_te, lvs_te[:, dec_dim] > 0, mask_tr, mask_te,
-    )
-    targ_cont_score = _continuous_abstraction(
+    out_targ = compute_abstraction(
         targ_rep_te, lvs_te[:, dec_dim], mask_tr, mask_te,
     )
 
-    scores = ((rep_discrete_score, rep_cont_score),
-              (targ_discrete_score, targ_cont_score))
+    scores = (out_rep, out_targ)
     return scores
+
+
+def compute_abstraction(rep, label, mask_tr, mask_te):
+    discrete_score = _discrete_abstraction(
+        rep, label > 0, mask_tr, mask_te,
+    )
+    cont_score = _continuous_abstraction(
+        rep, label, mask_tr, mask_te,
+    )
+    return discrete_score, cont_score
 
 
 def make_simple_model(
