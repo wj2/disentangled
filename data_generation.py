@@ -1295,9 +1295,36 @@ class MixedDiscreteDataGenerator(DataGenerator):
         self.output_dim = n_units
         self.input_dim = inp_dim
 
+    def get_predicted_ccgp(self, order=2):
+        sig = self.code.noise_cov
+        dls = list(code_i.get_minimum_distance_theor() for code_i in self.code.codes
+                   if c.order <= order)
+        dns = list(code_i.get_minimum_distance_theor() for code_i in self.code.codes
+                   if c.order > order)
+        dl = np.sqrt(np.sum(dls**2))
+        dn = np.sqrt(np.sum(dns**2))
+        f3 = (dl**2 - .5*dl**2)/(sig*np.sqrt(dl**2 + dn**2))
+        out = sts.norm(0, 1).cdf(-f3)
+        return out
+
+    def get_predicted_classification(self):
+        sig = self.code.noise_cov
+        ds = list(code_i.get_minimum_distance_theor() for code_i in self.code.codes)
+        d = np.sqrt(np.sum(ds**2))
+        out = sts.norm(0, 1).cdf(-d/np.sqrt(sig))
+        return out
+
     def sample_reps(self, n_samps=1000, add_noise=False):
         stim = self.code.sample_stim(n_samps)
         reps = self.code.get_representation(stim, noise=add_noise)
+        return stim, reps
+
+    def get_all_stim(self, con_dims=None, **kwargs):
+        stim = np.array(self.code.stim)
+        if con_dims is not None:
+            mask = np.sum(stim[:, con_dims], axis=1) == 1
+            stim = stim[mask]
+        reps = self.get_representation(stim)
         return stim, reps
 
     def get_representation(self, stim, **kwargs):
