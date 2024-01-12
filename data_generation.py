@@ -1277,6 +1277,56 @@ def _make_svd_rep_funcs(samps, targs, m, func_list):
     return out_arr
 
 
+class InputAugmentor:
+    def __init__(self, fdg, weight=.5, augment=True, n_samples=1000):
+        self.fdg = fdg
+        self.input_dim = fdg.input_dim
+        try:
+            _, reps = fdg.get_all_stim()
+        except AttributeError:
+            _, reps = fdg.sample_reps(n_samples)
+        if augment:
+            self.output_dim = fdg.output_dim + reps.shape[0]
+        else:
+            self.output_dim = reps.shape[0]
+        self.reference_reps = reps
+        self.weight = weight
+        self.augment = augment
+
+    def sample_reps(self, *args, **kwargs):
+        samps, reps = self.fdg.sample_reps(*args, **kwargs)
+        reps = self.augment_reps(reps)
+        return samps, reps
+
+    def get_representation(self, *args, **kwargs):
+        reps = self.fdg.get_representation(*args, **kwargs)
+        aug_rep = self.augment_reps(reps)
+        return aug_rep
+
+    def augment_reps(self, reps):
+        related_reps = self.augment_func(reps)
+        if self.augment:
+            o_rep = (1 - self.weight)*reps
+            a_rep = self.weight*related_reps
+            out = np.concatenate((o_rep, a_rep), axis=1)
+        else:
+            out = related_reps
+        return out
+
+
+class RelationalAugmentor(InputAugmentor):
+    def __init__(self, *args, demean_reps=True, standardize_reps=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        trs = skp.StandardScaler(with_std=standardize_reps, with_mean=demean_reps)
+        self.reference_reps = trs.fit_transform(self.reference_reps)
+        self.trs = trs
+        
+    def augment_func(self, reps):
+        reps = self.trs.transform(reps)
+        related_reps = reps @ self.reference_reps.T
+        return related_reps
+
+
 class MixedDiscreteDataGenerator(DataGenerator):
     def __init__(
         self,
