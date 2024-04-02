@@ -1317,7 +1317,7 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         self.p_units = p_len
         self.m_units = m_len
         self.trs_mat = sp.linalg.orth(
-            rng.normal(size=(n_units, n_units))
+            self.rng.normal(size=(n_units, n_units))
         )[:, :p_len + m_len]
         self.trs_mat = u.make_unit_vector(self.trs_mat)
         self.mix_strength = mix_strength
