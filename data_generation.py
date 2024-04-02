@@ -3,6 +3,7 @@ import tensorflow_probability as tfp
 
 import collections as c
 import numpy as np
+import scipy as sp
 import scipy.stats as sts
 import scipy.special as ss
 import sklearn.decomposition as skd
@@ -287,64 +288,6 @@ class GaussianProcessDataGenerator(DataGenerator):
 
     def get_representation(self, x):
         return self.generator(x)
-
-
-# from sklearn import gaussian_process as gp
-# from sklearn import svm
-# import numpy as np
-# import scipy.linalg as la
-# import matplotlib.pyplot as plt
-
-# from tqdm import tqdm
-
-
-# #%%
-
-# dim = 50
-# num_var = 2
-# ndat = 3000
-# num_test = 50 # how many partitions to test
-
-# clf = svm.LinearSVC()
-
-# fake_labels =  2*np.random.rand(ndat,num_var)-1
-# basis = la.qr(np.random.rand(dim, dim))[0]
-
-# CCG = []
-# CV = []
-# for sigma in tqdm(np.logspace(5,1,100)):
-#     coords = gp.GaussianProcessRegressor(gp.kernels.RBF(1/sigma))
-
-#     ys = coords.sample_y(fake_labels, n_samples=dim)
-#     ys -= ys.mean(0)
-
-#     rep = fake_labels@basis[:2,:] + ys
-
-#     ccg = []
-#     cv = []
-#     for i in range(num_test):
-#         part_dir = np.random.randn(num_var,1)
-#         part_dir /= la.norm(part_dir)
-
-#         ctx_dir = np.random.randn(num_var,1)
-#         ctx_dir -= (ctx_dir.T@part_dir)*part_dir
-#         ctx_dir /= la.norm(ctx_dir)
-
-#         labs = np.squeeze((fake_labels-fake_labels.mean(0))@part_dir > 0)
-
-#         trn_set = np.squeeze((fake_labels-fake_labels.mean(0))@ctx_dir > 0)
-#         tst_set = 1-trn_set
-
-#         clf.fit(rep[trn_set,:], labs[trn_set])
-#         ccg.append(clf.score(rep[tst_set,:],labs[tst_set]))
-
-#         trn_set_cv = np.random.permutation(trn_set)
-#         tst_set_cv = 1- trn_set_cv
-#         clf.fit(rep[trn_set_cv,:], labs[trn_set_cv])
-#         cv.append(clf.score(rep[tst_set_cv,:],labs[tst_set_cv]))
-
-#     CCG.append(ccg)
-#     CV.append(cv)
 
 
 class VariationalDataGenerator(DataGenerator):
@@ -1373,7 +1316,9 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         self.output_dim = n_units
         self.p_units = p_len
         self.m_units = m_len
-        self.trs_mat = sts.ortho_group(n_units).rvs()[:, :p_len + m_len]
+        self.trs_mat = sp.linalg.orth(
+            rng.normal(size=(n_units, n_units))
+        )[:, :p_len + m_len]
         self.trs_mat = u.make_unit_vector(self.trs_mat)
         self.mix_strength = mix_strength
         
