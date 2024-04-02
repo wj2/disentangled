@@ -1348,7 +1348,7 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         self.total_power = total_power
         self.m_units_nz = ss.comb(inp_dim, mixing_order) * n_vals**mixing_order
         categories = [np.arange(n_vals)] * inp_dim
-        ohe = skp.OneHotEncoder(categories=categories)
+        ohe = skp.OneHotEncoder(categories=categories, sparse=False)
         if mixing_order is None:
             mixing_order = inp_dim
         pf = skp.PolynomialFeatures(
