@@ -4,12 +4,14 @@ import tensorflow_probability as tfp
 import collections as c
 import numpy as np
 import scipy.stats as sts
+import scipy.special as ss
 import sklearn.decomposition as skd
 import sklearn.kernel_approximation as skka
 import sklearn.gaussian_process as skgp
 import sklearn.preprocessing as skp
 import functools as ft
 import matplotlib.pyplot as plt
+import sklearn.pipeline as sklpipe
 
 import general.rf_models as rfm
 import general.utility as u
@@ -1327,6 +1329,86 @@ class RelationalAugmentor(InputAugmentor):
         return related_reps
 
 
+class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
+    def __init__(
+        self,
+        inp_dim,
+        n_vals=2,
+        mix_strength=0,
+        out_dim=None,
+        total_power=1,
+        n_units=None,
+        mixing_order=None,
+        seed=None,
+        n_stim_set=10000,
+    ):
+        self.input_dim = inp_dim
+        self.rng = np.random.default_rng(seed)
+        self.n_vals = n_vals
+        self.total_power = total_power
+        self.m_units_nz = ss.comb(inp_dim, mixing_order) * n_vals**mixing_order
+        categories = [np.arange(n_vals)] * inp_dim
+        ohe = skp.OneHotEncoder(categories=categories, sparse_output=False)
+        if mixing_order is None:
+            mixing_order = inp_dim
+        pf = skp.PolynomialFeatures(
+            degree=(mixing_order, mixing_order),
+            include_bias=False,
+            interaction_only=True
+        )
+        scaler = skp.StandardScaler()
+        make_mix_feats = sklpipe.make_pipeline(ohe, pf, scaler)
+        fit_stim = self.sample_stim(n_stim_set)
+        self.scaler = None
+        if mix_strength > 0 and mixing_order > 1:
+            self.mix_pipe = make_mix_feats.fit(fit_stim)
+            m_len = self.mix_pipe.transform(fit_stim).shape[1]
+        else:
+            self.mix_pipe = None
+            m_len = 0
+        p_len = fit_stim.shape[1]
+        self.pure_pipe = skp.StandardScaler().fit(fit_stim)
+        if n_units is None:
+            n_units = p_len + m_len
+        self.output_dim = n_units
+        self.p_units = p_len
+        self.m_units = m_len
+        self.trs_mat = sts.ortho_group(n_units).rvs()[:, :p_len + m_len]
+        self.trs_mat = u.make_unit_vector(self.trs_mat)
+        self.mix_strength = mix_strength
+        
+
+    def sample_stim(self, n_samps=1000):
+        stim = self.rng.choice(np.arange(self.n_vals), size=(n_samps, self.input_dim))
+        return stim
+
+    def get_representation(self, stim, noise=0):
+        if self.mix_pipe is not None:
+            mix_rep = (
+                self.mix_pipe.transform(stim)
+                * np.sqrt(self.total_power * self.mix_strength)
+                / np.sqrt(self.m_units_nz)
+            )
+        else:
+            mix_rep = np.zeros((stim.shape[0], 0))
+
+        pure_rep = (
+            self.pure_pipe.transform(stim)
+            * np.sqrt(self.total_power * (1 - self.mix_strength))
+            / np.sqrt(self.p_units)
+        )
+        pre_rep = np.concatenate((pure_rep, mix_rep), axis=1)
+        rep = pre_rep @ self.trs_mat.T
+        if noise > 0:
+            rep = rep + rng.normal(0, noise, size=rep.shape)
+        return rep
+
+    def sample_reps(self, n_samps, add_noise=False):
+        stim = self.sample_stim(n_samps)
+        reps = self.get_representation(stim, noise=add_noise)
+        return stim, reps
+
+
 class MixedDiscreteDataGenerator(DataGenerator):
     def __init__(
         self,
@@ -1336,10 +1418,22 @@ class MixedDiscreteDataGenerator(DataGenerator):
         out_dim=None,
         total_power=None,
         n_units=None,
+        mixing_order=None,
     ):
         if n_units is None:
-            n_units = inp_dim + n_vals**inp_dim
-        code = cc.make_code(1 - mix_strength, total_power, inp_dim, n_vals, n_units)
+            if mixing_order is None:
+                order = inp_dim
+            else:
+                order = mixing_order
+            n_units = int(inp_dim + ss.comb(inp_dim, order) * n_vals**order)
+        code = cc.make_code(
+            1 - mix_strength,
+            total_power,
+            inp_dim,
+            n_vals,
+            n_units,
+            mixing_order=mixing_order,
+        )
         self.code = code
         self.generator = self.code.get_representation
         self.output_dim = n_units
