@@ -317,7 +317,7 @@ class VariationalDataGenerator(DataGenerator):
         beta=1,
     ):
         layer_list = []
-        layer_list.append(tfkl.InputLayer(input_shape=inp_dim))
+        layer_list.append(tfkl.InputLayer(shape=(inp_dim,)))
 
         for hd in hidden_dims:
             l_i = layer_type(hd, activation=act_func)
@@ -352,7 +352,7 @@ class VariationalDataGenerator(DataGenerator):
     ):
         layer_list = []
 
-        layer_list.append(tfkl.InputLayer(input_shape=out_dim))
+        layer_list.append(tfkl.InputLayer(shape=(out_dim,)))
         for hd in hidden_dims:
             l_i = layer_type(hd, activation=act_func)
             layer_list.append(l_i)
@@ -1494,7 +1494,7 @@ class FunctionalDataGenerator(DataGenerator):
         if kernel_init is None:
             kernel_init = tfk.initializers.GlorotUniform
         layer_list = []
-        layer_list.append(tfkl.InputLayer(input_shape=inp_dim))
+        layer_list.append(tfkl.InputLayer(shape=(inp_dim,)))
 
         regularizer = reg(l2_weight)
 
@@ -1533,7 +1533,7 @@ class FunctionalDataGenerator(DataGenerator):
             kernel_init = tfk.initializers.GlorotUniform
         layer_list = []
 
-        layer_list.append(tfkl.InputLayer(input_shape=out_dim))
+        layer_list.append(tfkl.InputLayer(shape=(out_dim,)))
         for hd in hidden_dims:
             l_i = layer_type(hd, activation=act_func, kernel_initializer=kernel_init())
             layer_list.append(l_i)
