@@ -1284,6 +1284,7 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         mixing_order=None,
         seed=None,
         n_stim_set=10000,
+        corr_groups=None,
     ):
         self.input_dim = inp_dim
         self.rng = np.random.default_rng(seed)
@@ -1316,10 +1317,7 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         self.output_dim = n_units
         self.p_units = p_len
         self.m_units = m_len
-        self.trs_mat = sp.linalg.orth(
-            self.rng.normal(size=(n_units, n_units))
-        )[:, :p_len + m_len]
-        self.trs_mat = u.make_unit_vector(self.trs_mat)
+        self.trs_mat = u.make_trs_matrix(n_units, p_len + m_len, corr_groups=corr_groups)
         self.mix_strength = mix_strength
         
 
