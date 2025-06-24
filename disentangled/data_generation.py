@@ -1290,6 +1290,8 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         self.rng = np.random.default_rng(seed)
         self.n_vals = n_vals
         self.total_power = total_power
+        if mixing_order is None:
+            mixing_order = self.input_dim
         self.m_units_nz = ss.comb(inp_dim, mixing_order) * n_vals**mixing_order
         categories = [np.arange(n_vals)] * inp_dim
         ohe = skp.OneHotEncoder(categories=categories, sparse_output=False)
@@ -1362,6 +1364,7 @@ class MixedDiscreteDataGenerator(DataGenerator):
         total_power=None,
         n_units=None,
         mixing_order=None,
+        sigma=1,
     ):
         if n_units is None:
             if mixing_order is None:
@@ -1376,6 +1379,7 @@ class MixedDiscreteDataGenerator(DataGenerator):
             n_vals,
             n_units,
             mixing_order=mixing_order,
+            noise_cov=sigma ** 2,
         )
         self.code = code
         self.generator = self.code.get_representation
@@ -1400,6 +1404,9 @@ class MixedDiscreteDataGenerator(DataGenerator):
         d = np.sqrt(np.sum(ds**2))
         out = sts.norm(0, 1).cdf(-d/np.sqrt(sig))
         return out
+
+    def sample_stim(self, n_samps=1000):
+        return self.code.sample_stim(n_samps)
 
     def sample_reps(self, n_samps=1000, add_noise=False):
         stim = self.code.sample_stim(n_samps)

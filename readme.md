@@ -1,9 +1,15 @@
 
 ## Disentangling via multi-tasking: Models and analysis
 
-This code relies on code from my
-[mixed selectivity](https://github.com/wj2/nms_error-correction) and
-[general](https://github.com/wj2/general-neural) repositories. It is all
+This code relies on code from my other repositories:
+
+```
+nms_error-correction
+general-neural
+superposition_codes
+```
+
+It is all
 written in Python 3, making
 extensive use of the Python scientific computing environment. Further
 dependencies include:

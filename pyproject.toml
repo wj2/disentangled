@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "disentangled"
+dynamic = ["version"]
+description = 'Code for Johnston & Fusi (2023)'
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "wj2", email = "wjeffreyjohnston@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "numpy~=1.26.4",
+  "pandas>=2.2.2",
+  "matplotlib>=3.9.2",
+  "scikit-learn>=1.5.1",
+  "scikit-video~=1.1.11",
+  "imbalanced-learn~=0.12.3",
+  "rsatoolbox~=0.1.5",
+  "scikit-image~=0.22.0",
+  "tensorboard~=2.16.2",
+  "tensorflow~=2.16.2",
+  "tensorflow-hub~=0.16.1",
+  "tensorflow-probability~=0.24.0",
+  "tf_keras~=2.16.0",
+  "keras-cv~=0.9.0",
+  "keras~=3.4.1",
+]
+
+[project.scripts]
+np_decoding = "disentangled.multi_partitionae_script:main"
+
+[project.urls]
+Documentation = "https://github.com/wj2/disentangled#readme"
+Issues = "https://github.com/wj2/disentangled/issues"
+Source = "https://github.com/wj2/disentangled"
+
+[tool.hatch.version]
+path = "disentangled/__about__.py"

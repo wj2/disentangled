@@ -214,7 +214,7 @@ def create_parser():
     parser.add_argument('--ssp_epochs', default=100, type=int)
     return parser
 
-if __name__ == '__main__':
+def main():
     parser = create_parser()
     args = parser.parse_args()
 
