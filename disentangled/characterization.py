@@ -264,7 +264,6 @@ def train_multiple_models(dg_use, model_kinds, layer_spec, n_reps=10, batch_size
             th = m.fit_sets(train_set, eval_set=eval_set, epochs=epochs,
                             batch_size=batch_size,
                             standard_loss=standard_loss,
-                            use_multiprocessing=use_mp,
                             verbose=not hide_print,
                             true_eval_set=true_eval_set)
             if save_and_discard:

@@ -408,7 +408,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
                      full_reg=False,
                      output_act=tf.keras.activations.sigmoid,
                      **layer_params):
-        inputs = tfk.Input(shape=input_shape)
+        inputs = tfk.Input(shape=(input_shape,))
         x = inputs
         if weight_reg_weight > 0:
             kernel_reg = weight_reg_type(weight_reg_weight)
@@ -442,7 +442,7 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         if noise > 0:
             rep = tfkl.GaussianNoise(noise)(rep)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
-        rep_inp = tfk.Input(shape=encoded_size)
+        rep_inp = tfk.Input(shape=(encoded_size,))
         
         # partition branch
         class_inp = rep_inp
@@ -482,9 +482,9 @@ class FlexibleDisentanglerAE(FlexibleDisentangler):
         if loss_ratio is None:
             loss_ratio = self.loss_ratio
         if self.no_autoencoder:
-            loss_weights = {self.branch_names[0]:1, self.branch_names[1]:0}
+            loss_weights = {self.branch_names[0]:1., self.branch_names[1]:0.}
         else:
-            loss_weights = {self.branch_names[0]:1,
+            loss_weights = {self.branch_names[0]:1.,
                             self.branch_names[1]:loss_ratio}
         if self.n_partitions == 0:
             loss_dict[self.branch_names[0]] = lambda x, y: 0.
@@ -570,7 +570,7 @@ class FlexibleDisentanglerExpAE(FlexibleDisentanglerAE):
                      expander_reg_type=dr.L2PRRegularizerInv,
                      exp_reg_weight=(0, .1),
                      **layer_params):
-        inputs = tfk.Input(shape=input_shape)
+        inputs = tfk.Input(shape=(input_shape,))
         x = inputs
         y = inputs
         if weight_reg_weight > 0:
@@ -613,7 +613,7 @@ class FlexibleDisentanglerExpAE(FlexibleDisentanglerAE):
         if noise > 0:
             rep = tfkl.GaussianNoise(noise)(rep)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
-        rep_inp = tfk.Input(shape=encoded_size)
+        rep_inp = tfk.Input(shape=(encoded_size,))
         
         # partition branch
         class_inp = rep_inp
@@ -683,7 +683,7 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
                      noise=0, 
                      branch_names=('a', 'b'),
                      **layer_params):
-        inputs = tfk.Input(shape=input_shape)
+        inputs = tfk.Input(shape=(input_shape,))
         x = inputs
         strides = []
         ll = len(input_shape)
@@ -716,7 +716,7 @@ class FlexibleDisentanglerAEConv(FlexibleDisentanglerAE):
         if noise > 0:
             rep = tfkl.GaussianNoise(noise)(rep)
         rep_model = tfk.Model(inputs=inputs, outputs=rep)
-        rep_inp = tfk.Input(shape=encoded_size)
+        rep_inp = tfk.Input(shape=(encoded_size,))
         
         # partition branch
         class_inp = rep_inp

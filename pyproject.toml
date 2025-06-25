@@ -30,7 +30,7 @@ dependencies = [
   "matplotlib>=3.9.2",
   "scikit-learn>=1.5.1",
   "scikit-video~=1.1.11",
-  "imbalanced-learn~=0.12.3",
+  "imbalanced-learn>=0.12.3",
   "rsatoolbox~=0.1.5",
   "scikit-image~=0.22.0",
   "tensorboard~=2.16.2",
@@ -43,7 +43,25 @@ dependencies = [
 ]
 
 [project.scripts]
-np_decoding = "disentangled.multi_partitionae_script:main"
+disentangle_ae = "disentangled.multi_partitionae_script:main"
+disentangle_simple = "disentangled.simple_cl_script:main"
+
+
+[project.optional-dependencies]
+complete = [
+   "general @ git+https://github.com/wj2/general-neural.git",
+   "mixedselectivity_theory @ git+https://github.com/wj2/nms_error-correction.git",
+   "composite_tangling @ git+https://github.com/wj2/composite_tangling.git",
+   "superposition_codes @ git+https://github.com/wj2/superposition_codes.git",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.envs.test]
+features = [
+   "complete",
+]
 
 [project.urls]
 Documentation = "https://github.com/wj2/disentangled#readme"

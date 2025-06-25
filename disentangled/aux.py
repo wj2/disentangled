@@ -422,7 +422,7 @@ def load_models(path, model_type=None, model_type_arr=None, replace_head=True):
     return model_arr
 
 def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
-                               gd=None, other=None, seed_str='genout_{}.tfmod',
+                               gd=None, other=None, seed_str='genout_{}.keras',
                                save_tf_models=True, save_args=None,
                                save_hists=True):
     os.mkdir(folder)
