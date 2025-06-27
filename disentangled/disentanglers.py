@@ -6,7 +6,7 @@ import functools as ft
 
 import numpy as np
 
-import disentangled.aux as da
+import disentangled.auxiliary as da
 import disentangled.regularizer as dr
 
 

@@ -28,7 +28,7 @@ from tf_agents.utils import nest_utils
 
 import general.utility as u
 import general.plotting as gpl
-import disentangled.aux as da
+import disentangled.auxiliary as da
 import disentangled.regularizer as dr
 import disentangled.disentanglers as dd
 import disentangled.characterization as dc

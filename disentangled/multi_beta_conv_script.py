@@ -7,7 +7,7 @@ import tensorflow as tf
 import tensorflow.keras as tfk
 
 import disentangled.characterization as dc
-import disentangled.aux as da
+import disentangled.auxiliary as da
 import disentangled.disentanglers as dd
 import disentangled.data_generation as dg
 

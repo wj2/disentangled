@@ -9,7 +9,7 @@ import sklearn.decomposition as skd
 import sklearn.cross_decomposition as skcd
 
 import general.utility as u
-import disentangled.aux as da
+import disentangled.auxiliary as da
 
 def generate_2d_rep(n_pts, stds, rows=1, std_factor=1):
     vert_std, horiz_std = stds

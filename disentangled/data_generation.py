@@ -17,7 +17,7 @@ import sklearn.pipeline as sklpipe
 import general.rf_models as rfm
 import general.utility as u
 import general.plotting as gpl
-import disentangled.aux as da
+import disentangled.auxiliary as da
 import disentangled.regularizer as dr
 import disentangled.disentanglers as dd
 import modularity.auxiliary as maux

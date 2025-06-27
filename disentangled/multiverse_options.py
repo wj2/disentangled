@@ -10,7 +10,7 @@ import sklearn.linear_model as sklm
 import sklearn.model_selection as skms
 import matplotlib.pyplot as plt
 
-import disentangled.aux as da
+import disentangled.auxiliary as da
 
 def make_common_multi_dict(multi_dict=None):
     if multi_dict is None:

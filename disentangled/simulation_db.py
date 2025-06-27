@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import pickle
 
-import disentangled.aux as da
+import disentangled.auxiliary as da
 import general.utility as u
 
 def read_in_files(folders, pd_db=None):

@@ -18,7 +18,7 @@ import general.plotting as gpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-import disentangled.aux as da
+import disentangled.auxiliary as da
 import disentangled.data_generation as dg
 import disentangled.disentanglers as dd
 

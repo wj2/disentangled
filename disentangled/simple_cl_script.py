@@ -8,7 +8,7 @@ import tensorflow as tf
 import general.utility as u
 
 import disentangled.characterization as dc
-import disentangled.aux as da
+import disentangled.auxiliary as da
 import disentangled.disentanglers as dd
 import disentangled.data_generation as ddg
 import disentangled.regularizer as dr

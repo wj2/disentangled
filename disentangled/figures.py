@@ -16,7 +16,7 @@ import general.utility as u
 import disentangled.data_generation as dg
 import disentangled.disentanglers as dd
 import disentangled.characterization as dc
-import disentangled.aux as da
+import disentangled.auxiliary as da
 import disentangled.theory as dt
 import disentangled.multiverse_options as dmo
 import disentangled.simulation_db as dsb
