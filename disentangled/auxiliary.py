@@ -484,7 +484,7 @@ def save_generalization_output(folder, dg, models, th, p, c, lr=None, sc=None,
 def load_generalization_output(folder, manifest='manifest.pkl',
                                dg_type=None, analysis_only=False,
                                model_type=None, model_type_arr=None,
-                               key_template='.*_([a-z]+)\.tfmod',
+                               key_template='.*_([a-z]+)\\.tfmod',
                                skip_gd=True, add_hist=False,
                                add_other=True):
     fnames = pickle.load(open(os.path.join(folder, manifest), 'rb'))
@@ -760,7 +760,7 @@ def load_3d_shapes(file_, img_key='images', param_vals='labels',
                          img_size=img_size, norm_pixels=norm_pixels,
                          **kwargs)    
 
-chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\.png'
+chair_temp = 'image_([0-9]{3})_p([0-9]{3})_t([0-9]{3})_r([0-9]{3})\\.png'
 def load_chair_images(folder, file_template=chair_temp, mid_folder='renders',
                       img_size=(64, 64), max_load=np.inf, norm_pixels=True,
                       norm_params=False, grayscale=False, filter_edges=None,
