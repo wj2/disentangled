@@ -54,14 +54,14 @@ def create_parser():
     parser.add_argument(
         "-t",
         "--n_train_diffs",
-        default=6,
+        default=1,
         type=int,
         help="number of different training data sample sizes " "to use",
     )
     parser.add_argument(
         "--n_train_bounds",
         nargs=2,
-        default=(2, 6.5),
+        default=(4, 4),
         type=float,
         help="order of magnitudes for range to "
         "sample training differences from within (using "
