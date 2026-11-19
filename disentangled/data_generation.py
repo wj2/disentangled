@@ -1357,9 +1357,11 @@ class CompositeMDDG(DataGenerator):
         self.dgs = dgs
         if weights is None:
             weights = [sdg.input_dim for sdg in dgs]
-        weights = np.array(weights) / np.sum(weights)
-        self.weights = weights
+        self.weights = np.array(weights) / np.sum(weights)
         self.input_dim = sum([sdg.input_dim for sdg in dgs])
+        self.output_dim = dgs[0].output_dim
+        if np.var([sdg.output_dim for sdg in dgs]) > 0:
+            raise AttributeError("the output dimensions must all be the same")
         start = 0
         self.masks = []
         dims = np.arange(self.input_dim)
