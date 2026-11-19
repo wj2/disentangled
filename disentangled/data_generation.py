@@ -1382,18 +1382,18 @@ class CompositeMDDG(DataGenerator):
             rep = rep + self.rng.normal(0, noise, size=rep.shape)
         return rep
 
-    def sample_stim(self, **kwargs):
-        return np.concatenate([sdg.sample_stim(**kwargs) for sdg in self.dgs], axis=1)
+    def sample_stim(self, *args, **kwargs):
+        return np.concatenate([sdg.sample_stim(*args, **kwargs) for sdg in self.dgs], axis=1)
 
-    def sample_reps(self, **kwargs):
-        stim = self.sample_stim(**kwargs)
+    def sample_reps(self, *args, **kwargs):
+        stim = self.sample_stim(*args, **kwargs)
         reps = self.get_representation(stim)
         return stim, reps
 
-    def get_all_stim(self, con_dims=None, **kwargs):
+    def get_all_stim(self, *args, con_dims=None, **kwargs):
         stims = []
         for sdg in self.dgs:
-            stim, _ = sdg.get_all_stim(**kwargs)
+            stim, _ = sdg.get_all_stim(*args, **kwargs)
             stims.append(stim)
         stim_all = np.array([np.concatenate(comb) for comb in it.product(*stims)])
         reps_all = self.get_representation(stim_all)
