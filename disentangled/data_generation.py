@@ -1,29 +1,28 @@
+import collections as c
+import functools as ft
+import itertools as it
+
+import composite_tangling.code_creation as cc
+import general.plotting as gpl
+import general.rf_models as rfm
+import general.utility as u
+import matplotlib.pyplot as plt
+# import modularity.auxiliary as maux
+import numpy as np
+import scipy.special as ss
+import scipy.stats as sts
+import sklearn.decomposition as skd
+import sklearn.gaussian_process as skgp
+import sklearn.kernel_approximation as skka
+import sklearn.pipeline as sklpipe
+import sklearn.preprocessing as skp
+import superposition_codes.codes as spc
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-import collections as c
-import numpy as np
-import scipy as sp
-import scipy.stats as sts
-import scipy.special as ss
-import sklearn.decomposition as skd
-import sklearn.kernel_approximation as skka
-import sklearn.gaussian_process as skgp
-import sklearn.preprocessing as skp
-import functools as ft
-import matplotlib.pyplot as plt
-import sklearn.pipeline as sklpipe
-
-import general.rf_models as rfm
-import general.utility as u
-import general.plotting as gpl
 import disentangled.auxiliary as da
-import disentangled.regularizer as dr
 import disentangled.disentanglers as dd
-import modularity.auxiliary as maux
-import composite_tangling.code_creation as cc
-
-import superposition_codes.codes as spc
+import disentangled.regularizer as dr
 
 tfk = tf.keras
 tfkl = tf.keras.layers
@@ -43,7 +42,7 @@ class DataGenerator(da.TFModel):
         train_samples=10**5,
         eval_samples=10**3,
         batch_size=32,
-        **kwargs
+        **kwargs,
     ):
         if not self.compiled:
             self._compile()
@@ -67,7 +66,7 @@ class DataGenerator(da.TFModel):
             validation_data=(eval_x, eval_y),
             epochs=epochs,
             batch_size=batch_size,
-            **kwargs
+            **kwargs,
         )
         return out
 
@@ -83,9 +82,7 @@ class DataGenerator(da.TFModel):
             out = (p.explained_variance_ratio_, p.components_)
         return out
 
-    def sample_reps(
-        self, sample_size=10**4, source_distribution=None, repl_mean=None
-    ):
+    def sample_reps(self, sample_size=10**4, source_distribution=None, repl_mean=None):
         if source_distribution is None and self.source_distribution is not None:
             source_distribution = self.source_distribution
         elif source_distribution is None:
@@ -125,7 +122,7 @@ def visualize_gp(
     plot_dim=1,
     ax=None,
     fwid=5,
-    **kwargs
+    **kwargs,
 ):
     if ax is None:
         if plot_dim == 3:
@@ -189,7 +186,7 @@ class RollDataGenerator(DataGenerator):
         train_samples=1000,
         eval_samples=10**3,
         batch_size=32,
-        **kwargs
+        **kwargs,
     ):
         if self.single_period is None:
             periods = self.period_distribution.rvs((self.output_dim, 1))
@@ -234,7 +231,7 @@ class GaussianProcessDataGenerator(DataGenerator):
         noise=0.01,
         rand_state=None,
         alpha=1e-10,
-        **kernel_kwargs
+        **kernel_kwargs,
     ):
         self.input_dim = inp_dim
         self.output_dim = out_dim
@@ -265,7 +262,7 @@ class GaussianProcessDataGenerator(DataGenerator):
         train_samples=1000,
         eval_samples=10**3,
         batch_size=32,
-        **kwargs
+        **kwargs,
     ):
         in_samp = self.source_distribution.rvs(train_samples)
         if self.input_dim == 1:
@@ -376,7 +373,7 @@ class VariationalDataGenerator(DataGenerator):
         return self.generator(x).mean()
 
 
-class ImageSourceDistrib(object):
+class ImageSourceDistrib:
     def __init__(
         self,
         datalist,
@@ -439,9 +436,8 @@ class ImageSourceDistrib(object):
             rvs[mask] = sample[mask]
             iters += 1
             if iters > max_iters:
-                raise IOError(
-                    "could not find enough samples in {} "
-                    "iterations".format(max_iters)
+                raise OSError(
+                    f"could not find enough samples in {max_iters} iterations"
                 )
         return rvs
 
@@ -698,7 +694,7 @@ class ImageDatasetGenerator(DataGenerator):
         source_distribution=None,
         sample_size=10**3,
         participation_ratio=False,
-        **pca_args
+        **pca_args,
     ):
         if source_distribution is None and self.source_distribution is not None:
             source_distribution = self.source_distribution
@@ -729,7 +725,7 @@ def make_split_chair_generators(
     pre_model=None,
     percent_split=0.5,
     id_key="chair_id_num",
-    **kwargs
+    **kwargs,
 ):
     categorical_variables = np.array([True, False, False, False, False])
     data = da.load_chair_images(
@@ -738,7 +734,7 @@ def make_split_chair_generators(
         norm_params=True,
         max_load=max_load,
         filter_edges=filter_edges,
-        **kwargs
+        **kwargs,
     )
 
     param_keys = ChairGenerator.default_param_keys
@@ -782,7 +778,7 @@ class ChairGenerator(ImageDatasetGenerator):
         filter_edges=None,
         pre_model=None,
         param_keys=["chair_id_num", "rotation", "pitch"],
-        **kwargs
+        **kwargs,
     ):
         categorical_variables = np.array([True, False, False, False, False])
         data = da.load_chair_images(
@@ -791,7 +787,7 @@ class ChairGenerator(ImageDatasetGenerator):
             norm_params=True,
             max_load=max_load,
             filter_edges=filter_edges,
-            **kwargs
+            **kwargs,
         )
         if pre_model is not None:
             pre_model = dd.PretrainedModel(img_size, pre_model, trainable=False)
@@ -820,7 +816,7 @@ class TwoDShapeGenerator(ImageDatasetGenerator):
         convert_color=False,
         pre_model=None,
         cached_data_table=None,
-        **kwargs
+        **kwargs,
     ):
         self.img_identifier = None
         categorical_variables = np.array([True, False, False, False, False])
@@ -861,7 +857,7 @@ class ThreeDShapeGenerator(ImageDatasetGenerator):
         max_load=np.inf,
         param_keys=default_pks,
         pre_model=None,
-        **kwargs
+        **kwargs,
     ):
         self.img_identifier = None
         if pre_model is not None:
@@ -934,7 +930,7 @@ class RFDataGenerator(DataGenerator):
         thin=1,
         x_scale=None,
         y_scale=None,
-        **kwargs
+        **kwargs,
     ):
         if ax is None:
             f, ax = plt.subplots(1, 1)
@@ -951,7 +947,7 @@ class RFDataGenerator(DataGenerator):
                 cps[:, 0] * rfw[0] + rfc[0],
                 cps[:, 1] * rfw[1] + rfc[1],
                 color=color,
-                **kwargs
+                **kwargs,
             )
             if plot_dots:
                 ax.plot(rfc[0], rfc[1], "o", color=l[0].get_color())
@@ -1089,7 +1085,7 @@ class KernelDataGenerator(DataGenerator):
         low_thr=None,
         source_distribution=None,
         noise=0.01,
-        **kernel_kwargs
+        **kernel_kwargs,
     ):
         self.kernel = kernel_func(n_components=out_dim, **kernel_kwargs)
         self.input_dim = inp_dim
@@ -1118,7 +1114,7 @@ class KernelDataGenerator(DataGenerator):
         train_samples=10**5,
         eval_samples=10**3,
         batch_size=32,
-        **kwargs
+        **kwargs,
     ):
         if source_distribution is not None:
             train_x = source_distribution.rvs(train_samples)
@@ -1223,7 +1219,7 @@ def _make_svd_rep_funcs(samps, targs, m, func_list):
 
 
 class InputAugmentor:
-    def __init__(self, fdg, weight=.5, augment=True, n_samples=1000):
+    def __init__(self, fdg, weight=0.5, augment=True, n_samples=1000):
         self.fdg = fdg
         self.input_dim = fdg.input_dim
         try:
@@ -1251,8 +1247,8 @@ class InputAugmentor:
     def augment_reps(self, reps):
         related_reps = self.augment_func(reps)
         if self.augment:
-            o_rep = (1 - self.weight)*reps
-            a_rep = self.weight*related_reps
+            o_rep = (1 - self.weight) * reps
+            a_rep = self.weight * related_reps
             out = np.concatenate((o_rep, a_rep), axis=1)
         else:
             out = related_reps
@@ -1265,7 +1261,7 @@ class RelationalAugmentor(InputAugmentor):
         trs = skp.StandardScaler(with_std=standardize_reps, with_mean=demean_reps)
         self.reference_reps = trs.fit_transform(self.reference_reps)
         self.trs = trs
-        
+
     def augment_func(self, reps):
         reps = self.trs.transform(reps)
         related_reps = reps @ self.reference_reps.T
@@ -1300,7 +1296,7 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         pf = skp.PolynomialFeatures(
             degree=(mixing_order, mixing_order),
             include_bias=False,
-            interaction_only=True
+            interaction_only=True,
         )
         scaler = skp.StandardScaler()
         make_mix_feats = sklpipe.make_pipeline(ohe, pf, scaler)
@@ -1319,9 +1315,10 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         self.output_dim = n_units
         self.p_units = p_len
         self.m_units = m_len
-        self.trs_mat = u.make_trs_matrix(n_units, p_len + m_len, corr_groups=corr_groups)
+        self.trs_mat = u.make_trs_matrix(
+            n_units, p_len + m_len, corr_groups=corr_groups
+        )
         self.mix_strength = mix_strength
-        
 
     def sample_stim(self, n_samps=1000):
         stim = self.rng.choice(np.arange(self.n_vals), size=(n_samps, self.input_dim))
@@ -1345,13 +1342,61 @@ class NonexhaustiveMixedDiscreteDataGenerator(DataGenerator):
         pre_rep = np.concatenate((pure_rep, mix_rep), axis=1)
         rep = pre_rep @ self.trs_mat.T
         if noise > 0:
-            rep = rep + rng.normal(0, noise, size=rep.shape)
+            rep = rep + self.rng.normal(0, noise, size=rep.shape)
         return rep
 
     def sample_reps(self, n_samps, add_noise=False):
         stim = self.sample_stim(n_samps)
         reps = self.get_representation(stim, noise=add_noise)
         return stim, reps
+
+
+class CompositeMDDG(DataGenerator):
+    def __init__(self, *dgs, weights=None):
+        self.rng = np.random.default_rng()
+        self.dgs = dgs
+        if weights is None:
+            weights = np.ones(len(dgs))
+        weights = np.array(weights) / np.sum(weights)
+        self.weights = weights
+        self.input_dim = sum([sdg.input_dim for sdg in dgs])
+        start = 0
+        self.masks = []
+        dims = np.arange(self.input_dim)
+        for sdg in dgs:
+            mask = np.logical_and(dims >= start, dims < start + sdg.input_dim)
+            start = start + sdg.input_dim
+            self.masks.append(mask)
+
+    def get_representation(self, stim, noise=0):
+        rep = np.sum(
+            [
+                self.weights[i] * sdg.get_representation(stim[:, self.masks[i]])
+                for i, sdg in enumerate(self.dgs)
+            ],
+            axis=0,
+        )
+        if noise > 0:
+            rep = rep + self.rng.normal(0, noise, size=rep.shape)
+        return rep
+
+    def sample_stim(self, **kwargs):
+        return np.concatenate([sdg.sample_stim(**kwargs) for sdg in self.dgs], axis=1)
+
+    def sample_reps(self, **kwargs):
+        stim = self.sample_stim(**kwargs)
+        reps = self.get_representation(stim)
+        return stim, reps
+
+    def get_all_stim(self, con_dims=None, **kwargs):
+        stims = []
+        for sdg in self.dgs:
+            stim, _ = sdg.get_all_stim(**kwargs)
+            stims.append(stim)
+        stim_all = np.array([np.concatenate(comb) for comb in it.product(*stims)])
+        reps_all = self.get_representation(stim_all)
+        return stim_all, reps_all
+        
 
 
 class MixedDiscreteDataGenerator(DataGenerator):
@@ -1379,7 +1424,7 @@ class MixedDiscreteDataGenerator(DataGenerator):
             n_vals,
             n_units,
             mixing_order=mixing_order,
-            noise_cov=sigma ** 2,
+            noise_cov=sigma**2,
         )
         self.code = code
         self.generator = self.code.get_representation
@@ -1388,13 +1433,19 @@ class MixedDiscreteDataGenerator(DataGenerator):
 
     def get_predicted_ccgp(self, order=2):
         sig = self.code.noise_cov
-        dls = list(code_i.get_minimum_distance_theor() for code_i in self.code.codes
-                   if c.order <= order)
-        dns = list(code_i.get_minimum_distance_theor() for code_i in self.code.codes
-                   if c.order > order)
+        dls = list(
+            code_i.get_minimum_distance_theor()
+            for code_i in self.code.codes
+            if c.order <= order
+        )
+        dns = list(
+            code_i.get_minimum_distance_theor()
+            for code_i in self.code.codes
+            if c.order > order
+        )
         dl = np.sqrt(np.sum(dls**2))
         dn = np.sqrt(np.sum(dns**2))
-        f3 = (dl**2 - .5*dl**2)/(sig*np.sqrt(dl**2 + dn**2))
+        f3 = (dl**2 - 0.5 * dl**2) / (sig * np.sqrt(dl**2 + dn**2))
         out = sts.norm(0, 1).cdf(-f3)
         return out
 
@@ -1402,7 +1453,7 @@ class MixedDiscreteDataGenerator(DataGenerator):
         sig = self.code.noise_cov
         ds = list(code_i.get_minimum_distance_theor() for code_i in self.code.codes)
         d = np.sqrt(np.sum(ds**2))
-        out = sts.norm(0, 1).cdf(-d/np.sqrt(sig))
+        out = sts.norm(0, 1).cdf(-d / np.sqrt(sig))
         return out
 
     def sample_stim(self, n_samps=1000):
@@ -1438,8 +1489,8 @@ class FunctionalDataGenerator(DataGenerator):
         distrib_variance=1,
         auto_encoder=True,
         rescale=False,
-        r_eps=.01,
-        **kwargs
+        r_eps=0.01,
+        **kwargs,
     ):
         if use_pr_reg:
             reg = dr.L2PRRegularizerInv
@@ -1452,7 +1503,7 @@ class FunctionalDataGenerator(DataGenerator):
             l2_weight=l2_weight,
             noise=noise,
             reg=reg,
-            **kwargs
+            **kwargs,
         )
         self.degenerator = self.make_degenerator(
             inp_dim, transform_widths[::-1], out_dim, **kwargs
@@ -1477,9 +1528,7 @@ class FunctionalDataGenerator(DataGenerator):
     def fit(self, *args, **kwargs):
         out = super().fit(*args, **kwargs)
         if self.rescale:
-            self.rescale_weights = np.max(
-                self.sample_reps()[1], axis=0, keepdims=True
-            )
+            self.rescale_weights = np.max(self.sample_reps()[1], axis=0, keepdims=True)
             self.rescale_weights[self.rescale_weights < self.r_eps] = self.r_eps
         return out
 
@@ -1584,7 +1633,7 @@ class SVDFunctionalDataGenerator(FunctionalDataGenerator):
         use_pr_reg=True,
         distrib_variance=1,
         auto_encoder=True,
-        **kwargs
+        **kwargs,
     ):
         self.target_model = target_model
         self.branch_names = (
@@ -1604,7 +1653,7 @@ class SVDFunctionalDataGenerator(FunctionalDataGenerator):
             branch_names=self.branch_names,
             noise=noise,
             reg=reg,
-            **kwargs
+            **kwargs,
         )
         self.model, self.generator, self.auto_model = out
 
@@ -1668,7 +1717,7 @@ class SVDFunctionalDataGenerator(FunctionalDataGenerator):
         readout_bias_reg_type=tfk.regularizers.l2,
         kernel_init=None,
         full_reg=True,
-        **layer_params
+        **layer_params,
     ):
         if kernel_init is None:
             kernel_init = tfk.initializers.GlorotUniform()
@@ -1698,7 +1747,7 @@ class SVDFunctionalDataGenerator(FunctionalDataGenerator):
                 activation=act_func,
                 kernel_regularizer=kernel_reg,
                 activity_regularizer=layer_act_reg,
-                **layer_params
+                **layer_params,
             )(x)
 
         if dropout_rate > 0:
@@ -1752,7 +1801,7 @@ class SVDFunctionalDataGenerator(FunctionalDataGenerator):
         eval_samples=10**3,
         batch_size=200,
         norm_targs=True,
-        **kwargs
+        **kwargs,
     ):
         if not self.compiled:
             self._compile()
