@@ -1356,6 +1356,7 @@ class CompositeMDDG(DataGenerator):
         self.rng = np.random.default_rng()
         self.dgs = dgs
         if weights is None:
+            weights = [sdg.input_dim for sdg in dgs]
             weights = np.ones(len(dgs))
         weights = np.array(weights) / np.sum(weights)
         self.weights = weights
