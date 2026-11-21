@@ -1396,6 +1396,9 @@ class CompositeMDDG(DataGenerator):
             stim, _ = sdg.get_all_stim(*args, **kwargs)
             stims.append(stim)
         stim_all = np.array([np.concatenate(comb) for comb in it.product(*stims)])
+        if con_dims is not None:
+            mask = np.sum(stim_all[:, con_dims], axis=1) == 1
+            stim_all = stim_all[mask]
         reps_all = self.get_representation(stim_all)
         return stim_all, reps_all
         
